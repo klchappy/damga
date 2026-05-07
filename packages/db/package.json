@@ -17,6 +17,7 @@
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
+    "dotenv": "^16.6.1",
     "drizzle-orm": "^0.39.3",
     "pg": "^8.13.1",
     "postgres": "^3.4.5"

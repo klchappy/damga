@@ -8,8 +8,15 @@ import { SignUpPage } from '@/pages/sign-up';
 import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
 import { EmployeeHomePage } from '@/pages/employee-home';
 import { ManagerHomePage } from '@/pages/manager-home';
+import { ManagerTeamPage } from '@/pages/manager-team';
+import { ManagerReportsPage } from '@/pages/manager-reports';
 import { AdminLocationsPage } from '@/pages/admin-locations';
+import { AdminApiKeysPage } from '@/pages/admin-api-keys';
 import { LeavesMinePage } from '@/pages/leaves-mine';
+import { HistoryPage } from '@/pages/history';
+import { ProfilePage } from '@/pages/profile';
+import { MenuPage } from '@/pages/menu';
+import { AnnouncementsPage } from '@/pages/announcements';
 import { KvkkPage, TermsPage } from '@/pages/legal';
 
 const queryClient = new QueryClient({
@@ -66,7 +73,13 @@ function AppInner() {
         }
       >
         <Route index element={<EmployeeHomePage />} />
+        <Route path="history" element={<HistoryPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="leaves" element={<LeavesMinePage />} />
+        <Route path="menu" element={<MenuPage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
+
+        {/* Manager+ */}
         <Route
           path="manager"
           element={
@@ -76,10 +89,36 @@ function AppInner() {
           }
         />
         <Route
+          path="manager/team"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <ManagerTeamPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="manager/reports"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <ManagerReportsPage />
+            </RoleGate>
+          }
+        />
+
+        {/* Admin+ */}
+        <Route
           path="admin/locations"
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminLocationsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/api-keys"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminApiKeysPage />
             </RoleGate>
           }
         />

@@ -76,7 +76,7 @@ RETURNS TABLE (
   is_valid BOOLEAN,
   expected_hash TEXT,
   actual_hash TEXT,
-  position BIGINT
+  chain_position BIGINT
 ) AS $$
 DECLARE
   rec RECORD;
@@ -105,7 +105,7 @@ BEGIN
     is_valid := (expected = rec.this_event_hash);
     expected_hash := expected;
     actual_hash := rec.this_event_hash;
-    position := pos;
+    chain_position := pos;
     RETURN NEXT;
     prev_hash := rec.this_event_hash;
   END LOOP;

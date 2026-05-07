@@ -6,15 +6,17 @@
  * 2) src/migrations/custom/*.sql dosyalarını sırayla çalıştırır
  *    (hash chain trigger, append-only constraint, vs)
  */
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// Monorepo root .env'i yükle
+loadEnv({ path: resolve(__dirname, '../../../.env'), override: true });
 
 async function run() {
   const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;

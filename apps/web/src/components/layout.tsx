@@ -28,12 +28,17 @@ export function AppLayout() {
             <span className="font-display text-lg font-semibold">Damga</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1 flex-wrap">
             <NavItem to="/">Bugün</NavItem>
-            <NavItem to="/history">Geçmişim</NavItem>
-            <NavItem to="/leaves">İzinlerim</NavItem>
+            <NavItem to="/history">Geçmiş</NavItem>
+            <NavItem to="/leaves">İzin</NavItem>
+            <NavItem to="/menu">Menü</NavItem>
+            <NavItem to="/announcements">Duyuru</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
-            {isAdmin && <NavItem to="/admin/locations">Lokasyonlar</NavItem>}
+            {isManager && <NavItem to="/manager/reports">Rapor</NavItem>}
+            {isAdmin && <NavItem to="/admin/locations">Lokasyon</NavItem>}
+            {isAdmin && <NavItem to="/admin/api-keys">API</NavItem>}
+            <NavItem to="/profile">Profil</NavItem>
           </nav>
 
           <div className="flex items-center gap-3">
