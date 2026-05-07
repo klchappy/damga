@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #FFF4E8;
+  color: #1A1A1A;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-orange-100 bg-white p-5 shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 font-medium transition;
+  }
+  .btn-primary {
+    @apply btn bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink hover:bg-orange-50 disabled:opacity-50;
+  }
+  .btn-outline {
+    @apply btn border border-orange-200 bg-white hover:bg-orange-50 disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-md border border-orange-200 bg-white px-3 py-2 text-ink placeholder:text-muted focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200;
+  }
+  .label {
+    @apply text-sm font-medium text-ink;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+}
+
+/* Camera viewport (QR scanner) */
+.qr-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 1 / 1;
+  background: #000;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.qr-viewport video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qr-viewport::after {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  border: 3px solid #FF6B35;
+  border-radius: 14px;
+  pointer-events: none;
+}

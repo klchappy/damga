@@ -1,0 +1,183 @@
+import { Router } from 'express';
+import { eq, and } from 'drizzle-orm';
+import { checkInSchema } from '@damga/shared';
+import { computeTrustScore, computeEvidenceHash } from '@damga/verification';
+import { getDb, attendanceEvents, locations, users } from '@damga/db';
+import { env } from '../config/env';
+import { HttpError } from '../middleware/error';
+import { requireAuth, requireScope } from '../middleware/auth';
+import { checkInLimiter } from '../middleware/rate-limit';
+import { logger } from '../config/logger';
+
+export const checkInRouter = Router();
+
+/**
+ * POST /v1/check-in   ve   /v1/check-out
+ * Trust score hesaplar, evidence hash + hash chain ile event'i ekler.
+ */
+async function performAttendance(
+  type: 'check_in' | 'check_out',
+  req: import('express').Request,
+  res: import('express').Response,
+) {
+  if (!req.authUserId || !req.authOrgId) {
+    throw new HttpError(401, 'Yetki yok');
+  }
+  const input = checkInSchema.parse(req.body);
+  const db = getDb();
+
+  // Lokasyon getir (location_id verildiyse veya kullanıcının org'undaki tek lokasyon)
+  let location: typeof locations.$inferSelect | null = null;
+  if (input.location_id) {
+    const [loc] = await db
+      .select()
+      .from(locations)
+      .where(and(eq(locations.id, input.location_id), eq(locations.org_id, req.authOrgId)));
+    location = loc ?? null;
+  } else {
+    const allLocs = await db.select().from(locations).where(eq(locations.org_id, req.authOrgId));
+    if (allLocs.length === 1) location = allLocs[0]!;
+  }
+
+  if (!location) {
+    throw new HttpError(404, 'Lokasyon bulunamadı veya seçilmedi', 'LOCATION_REQUIRED');
+  }
+
+  // Trust score
+  const trust = computeTrustScore({
+    nfc_raw: input.nfc_tag_id,
+    qr_raw: input.qr_code_payload,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    gps_accuracy_m: input.gps_accuracy_m ?? null,
+    wifi_bssid: input.wifi_bssid ?? null,
+    device_id: input.device_id ?? null,
+    client_time: new Date(input.client_time),
+    location: {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      geofence_radius_m: location.geofence_radius_m,
+      wifi_bssids: location.wifi_bssids,
+      nfc_tag_ids: location.nfc_tag_ids,
+    },
+    knownDeviceIds: req.authUser?.device_ids ?? [],
+    serverTime: new Date(),
+    signingSecret: env.NFC_SIGNING_SECRET,
+  });
+
+  if (trust.decision === 'reject') {
+    throw new HttpError(
+      400,
+      'Doğrulama yetersiz, check-in reddedildi',
+      'TRUST_REJECTED',
+      { trust },
+    );
+  }
+
+  // Evidence hash
+  const evidenceHash = computeEvidenceHash({
+    user_id: req.authUserId,
+    type,
+    client_time: input.client_time,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    nfc_tag_id: input.nfc_tag_id ?? null,
+    qr_code_payload: input.qr_code_payload ?? null,
+    wifi_bssid: input.wifi_bssid ?? null,
+    device_id: input.device_id ?? null,
+  });
+
+  // IP maskele
+  const rawIp = req.ip ?? '0.0.0.0';
+  const maskedIp = rawIp.replace(/\.\d+$/, '.0').replace(/(\d+\.\d+)\.\d+\.\d+/, '$1.0.0');
+
+  const now = new Date();
+  // Insert (hash chain trigger this_event_hash + previous_event_hash'i otomatik hesaplar)
+  // NOT: Trigger evidence_hash + this_event_hash gerektirir, biz boş bir placeholder ile insert ederiz
+  const [event] = await db
+    .insert(attendanceEvents)
+    .values({
+      org_id: req.authOrgId,
+      user_id: req.authUserId,
+      type,
+      client_time: new Date(input.client_time),
+      server_time: now,
+      effective_time: now,
+      timezone_at_time: 'Europe/Istanbul',
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      gps_accuracy_m: input.gps_accuracy_m ?? null,
+      location_id: location.id,
+      distance_from_office_m: trust.distance_from_office_m ?? null,
+      nfc_tag_id: input.nfc_tag_id ?? null,
+      nfc_signature: null, // raw NFC içeriğindeki imzayı tag_id'den ayrı saklamıyoruz
+      qr_code_payload: input.qr_code_payload ?? null,
+      wifi_bssid: input.wifi_bssid ?? null,
+      device_id: input.device_id ?? null,
+      ip_address: maskedIp,
+      user_agent: req.headers['user-agent']?.slice(0, 200),
+      verification_methods: trust.verification_methods,
+      verification_score: trust.score,
+      evidence_hash: evidenceHash,
+      this_event_hash: 'PENDING', // trigger hesaplayacak
+      app_version: input.app_version,
+      device_info: input.device_info as never,
+      flags: trust.flags,
+    })
+    .returning();
+
+  if (!event) {
+    throw new HttpError(500, 'Event kaydedilemedi');
+  }
+
+  // Yeni cihazsa kullanıcının device_ids'ine ekle
+  if (input.device_id && !req.authUser?.device_ids.includes(input.device_id)) {
+    await db
+      .update(users)
+      .set({
+        device_ids: [...(req.authUser?.device_ids ?? []), input.device_id].slice(-5),
+      })
+      .where(eq(users.id, req.authUserId));
+  }
+
+  logger.info(
+    {
+      userId: req.authUserId,
+      type,
+      score: trust.score,
+      decision: trust.decision,
+      flags: trust.flags,
+    },
+    `✓ ${type}`,
+  );
+
+  res.status(201).json({
+    event_id: event.id,
+    server_time: event.server_time.toISOString(),
+    verification_score: trust.score,
+    decision: trust.decision,
+    flags: trust.flags,
+    verification_methods: trust.verification_methods,
+    distance_from_office_m: trust.distance_from_office_m,
+    breakdown: trust.breakdown,
+    this_event_hash: event.this_event_hash,
+    xp_gained: 10, // basit MVP — gamification daha sonra detaylandırılır
+    new_streak: req.authUser?.current_streak ?? 0,
+  });
+}
+
+checkInRouter.post('/check-in', requireAuth, requireScope('events:write'), checkInLimiter, async (req, res, next) => {
+  try {
+    await performAttendance('check_in', req, res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+checkInRouter.post('/check-out', requireAuth, requireScope('events:write'), checkInLimiter, async (req, res, next) => {
+  try {
+    await performAttendance('check_out', req, res);
+  } catch (err) {
+    next(err);
+  }
+});

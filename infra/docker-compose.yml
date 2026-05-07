@@ -1,0 +1,25 @@
+# Damga lokal dev için Postgres (Supabase'den ayrı, izole)
+# Çalıştır: docker compose -f infra/docker-compose.yml up -d
+# TahminIO ile çakışmasın diye port 5433 (TahminIO yok ama yine de tahsis)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: damga-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: damga
+      POSTGRES_PASSWORD: damga
+      POSTGRES_DB: damga
+    ports:
+      - '5433:5432'
+    volumes:
+      - damga_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U damga -d damga']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  damga_pg:

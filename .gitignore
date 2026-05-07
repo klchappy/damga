@@ -1,0 +1,28 @@
+node_modules
+dist
+build
+.next
+.cache
+.DS_Store
+
+# env
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor
+.vscode
+.idea
+
+# turbo / drizzle
+.turbo
+drizzle/
+
+# capacitor
+android/
+ios/
