@@ -5,6 +5,7 @@ import { createLeaveSchema, rejectLeaveSchema } from '@damga/shared';
 import { getDb, leaves, users } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole, requireScope } from '../middleware/auth';
+import { dispatchWebhook } from '../modules/webhook-delivery';
 
 export const leavesRouter = Router();
 
@@ -76,6 +77,11 @@ leavesRouter.post('/leaves', requireAuth, requireScope('leaves:write'), async (r
         business_days: String(businessDays),
       })
       .returning();
+    void dispatchWebhook({
+      orgId: req.authOrgId,
+      eventType: 'leave.created',
+      payload: leave,
+    });
     res.status(201).json({ leave });
   } catch (err) {
     next(err);
@@ -101,6 +107,11 @@ leavesRouter.patch(
         .where(and(eq(leaves.id, id), eq(leaves.org_id, req.authOrgId)))
         .returning();
       if (!leave) throw new HttpError(404, 'İzin bulunamadı');
+      void dispatchWebhook({
+        orgId: req.authOrgId,
+        eventType: 'leave.approved',
+        payload: leave,
+      });
       res.json({ leave });
     } catch (err) {
       next(err);
@@ -129,6 +140,11 @@ leavesRouter.patch(
         .where(and(eq(leaves.id, id), eq(leaves.org_id, req.authOrgId)))
         .returning();
       if (!leave) throw new HttpError(404, 'İzin bulunamadı');
+      void dispatchWebhook({
+        orgId: req.authOrgId,
+        eventType: 'leave.rejected',
+        payload: leave,
+      });
       res.json({ leave });
     } catch (err) {
       next(err);

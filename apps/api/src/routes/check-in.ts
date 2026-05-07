@@ -8,6 +8,7 @@ import { HttpError } from '../middleware/error';
 import { requireAuth, requireScope } from '../middleware/auth';
 import { checkInLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
+import { dispatchWebhook } from '../modules/webhook-delivery';
 
 export const checkInRouter = Router();
 
@@ -150,6 +151,21 @@ async function performAttendance(
     },
     `✓ ${type}`,
   );
+
+  // Webhook tetikle (fire-and-forget)
+  void dispatchWebhook({
+    orgId: req.authOrgId,
+    eventType: type === 'check_in' ? 'check_in.created' : 'check_out.created',
+    payload: {
+      event_id: event.id,
+      user_id: req.authUserId,
+      type,
+      server_time: event.server_time.toISOString(),
+      verification_score: trust.score,
+      flags: trust.flags,
+      location_id: location.id,
+    },
+  });
 
   res.status(201).json({
     event_id: event.id,

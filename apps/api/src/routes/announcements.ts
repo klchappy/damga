@@ -5,6 +5,7 @@ import { createAnnouncementSchema } from '@damga/shared';
 import { getDb, announcements, announcementReads, users } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { dispatchWebhook } from '../modules/webhook-delivery';
 
 export const announcementsRouter = Router();
 
@@ -81,6 +82,11 @@ announcementsRouter.post(
           expires_at: input.expires_at ? new Date(input.expires_at) : null,
         })
         .returning();
+      void dispatchWebhook({
+        orgId: req.authOrgId,
+        eventType: 'announcement.published',
+        payload: a,
+      });
       res.status(201).json({ announcement: a });
     } catch (err) {
       next(err);

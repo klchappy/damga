@@ -79,11 +79,15 @@ async function deliver(
         );
       }, delay);
     } else if (!res.ok) {
-      // Final fail — webhook'u disable et failure_count++
+      // Final fail — failure_count++ + last error metadata
+      const [current] = await db
+        .select({ c: webhooks.failure_count })
+        .from(webhooks)
+        .where(eq(webhooks.id, webhookId));
       await db
         .update(webhooks)
         .set({
-          failure_count: (await db.select({ c: webhooks.failure_count }).from(webhooks).where(eq(webhooks.id, webhookId)))[0]?.c ?? 0 + 1,
+          failure_count: (current?.c ?? 0) + 1,
           last_failure_at: new Date(),
           last_failure_reason: `${res.status}: ${respText.slice(0, 200)}`,
         })
