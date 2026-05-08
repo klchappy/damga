@@ -118,17 +118,31 @@ usersRouter.post(
         })
         .returning();
 
-      // Şifre belirleme maili
-      let mailSent = false;
+      // Şifre belirleme URL'si — generateLink ile mail GÖNDERMEDEN üret.
+      // (resetPasswordForEmail Supabase rate-limit'ine takılıyor; bu yöntem email
+      // göndermez, doğrudan kullanılabilir bir URL döner — admin link'i manuel
+      // paylaşır: WhatsApp, kurumsal mail, fiziksel teslim, vb.)
+      const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      let resetLink: string | null = null;
+      let resetError: string | null = null;
       try {
-        await supabase.auth.resetPasswordForEmail(input.email, {
-          redirectTo: `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`,
+        const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+          type: 'recovery',
+          email: input.email,
+          options: { redirectTo },
         });
-        mailSent = true;
+        if (linkErr || !linkData?.properties?.action_link) {
+          resetError = linkErr?.message ?? 'Link üretilemedi';
+        } else {
+          resetLink = linkData.properties.action_link;
+        }
       } catch (e) {
+        resetError = e instanceof Error ? e.message : 'Bilinmeyen hata';
+      }
+      if (!resetLink) {
         logger.warn(
-          { err: e, email: input.email },
-          'Şifre belirleme maili gönderilemedi — admin manuel paylaşmalı',
+          { err: resetError, email: input.email },
+          'Şifre belirleme link üretilemedi — kullanıcı şifre sıfırlama akışıyla giriş yapsın',
         );
       }
 
@@ -137,7 +151,12 @@ usersRouter.post(
         'Admin yeni çalışan ekledi',
       );
 
-      res.status(201).json({ user, password_reset_sent: mailSent });
+      res.status(201).json({
+        user,
+        /** Direkt paylaşılabilir şifre belirleme URL'si (admin kopyalar/share eder) */
+        password_reset_link: resetLink,
+        password_reset_error: resetError,
+      });
     } catch (err) {
       next(err);
     }

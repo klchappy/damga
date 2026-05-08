@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Pencil, KeyRound, UserCheck, UserX, UserPlus, Loader2, X } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
+import { ShareLinkModal } from '@/components/share-link-modal';
 
 interface User {
   id: string;
@@ -202,7 +203,6 @@ export function AdminTeamPage() {
           onClose={() => setCreating(false)}
           onCreated={() => {
             qc.invalidateQueries({ queryKey: ['admin', 'users'] });
-            setCreating(false);
           }}
         />
       )}
@@ -231,6 +231,12 @@ function CreateUserModal({
     annual_leave_quota_days: 14,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [shareData, setShareData] = useState<{
+    name: string;
+    email: string;
+    link: string | null;
+    error: string | null;
+  } | null>(null);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -254,20 +260,42 @@ function CreateUserModal({
       if (form.title.trim()) payload.title = form.title.trim();
       if (form.hired_at) payload.hired_at = form.hired_at;
       const r = await api.post('/users', payload);
-      return r.data as { user: User; password_reset_sent: boolean };
+      return r.data as {
+        user: User;
+        password_reset_link: string | null;
+        password_reset_error: string | null;
+      };
     },
     onSuccess: (data) => {
-      if (data.password_reset_sent) {
-        toast.success(
-          `✅ ${data.user.full_name} eklendi · şifre belirleme maili ${data.user.email} adresine gönderildi`,
-        );
-      } else {
-        toast.success(`✅ ${data.user.full_name} eklendi (mail gönderilemedi — manuel paylaş)`);
-      }
+      toast.success(`✅ ${data.user.full_name} eklendi`);
       onCreated();
+      // Form modal'ı kapatma — yerine paylaşım modal'ı göster
+      setShareData({
+        name: data.user.full_name,
+        email: data.user.email,
+        link: data.password_reset_link,
+        error: data.password_reset_error,
+      });
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
+
+  if (shareData) {
+    return (
+      <ShareLinkModal
+        title="Çalışan eklendi"
+        description="Şifre belirleme linkini kullanıcıya ulaştır — dilediğin kanaldan (WhatsApp, kurumsal mail, fiziksel teslim). Mail göndermeden link'i paylaşabilirsin."
+        recipientName={shareData.name}
+        recipientEmail={shareData.email}
+        link={shareData.link}
+        error={shareData.error}
+        onClose={() => {
+          setShareData(null);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <div
@@ -285,8 +313,9 @@ function CreateUserModal({
             </div>
             <h3 className="font-display text-xl mt-1">Şirketine yeni biri ekle</h3>
             <p className="text-xs text-muted mt-1">
-              Hesap oluşturulup şifre belirleme maili gönderilir. Kullanıcı maille gelen
-              linkle kendi şifresini belirler.
+              Hesap oluşturulur ve <strong className="text-ink">şifre belirleme link'i</strong>{' '}
+              ekrana gelir — WhatsApp/kurumsal mail/fiziksel teslim ile manuel paylaşırsın
+              (Supabase mail rate-limit'inden bağımsız).
             </p>
           </div>
           <button
@@ -427,7 +456,7 @@ function CreateUserModal({
             className="btn-primary flex-1"
           >
             {mut.isPending && <Loader2 className="size-4 animate-spin" />}
-            Ekle ve Mail Gönder
+            Ekle ve Şifre Linkini Göster
           </button>
         </div>
       </div>

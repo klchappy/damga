@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
+import { ShareLinkModal } from '@/components/share-link-modal';
 
 interface OrgApplication {
   id: string;
@@ -63,6 +64,12 @@ export function AdminApplicationsPage() {
   );
   const [rejecting, setRejecting] = useState<OrgApplication | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [shareData, setShareData] = useState<{
+    name: string;
+    email: string;
+    link: string | null;
+    error: string | null;
+  } | null>(null);
 
   const { data, isLoading } = useQuery<{ items: OrgApplication[] }>({
     queryKey: ['admin', 'applications', statusFilter],
@@ -86,9 +93,14 @@ export function AdminApplicationsPage() {
     },
     onSuccess: (data) => {
       if (data.action === 'approved') {
-        toast.success(
-          `✅ Başvuru onaylandı — owner hesabı oluşturuldu, mail gönderildi (${data.magic_link_sent_to})`,
-        );
+        toast.success('✅ Başvuru onaylandı — owner hesabı oluşturuldu');
+        // Owner'a paylaşılacak şifre belirleme link'ini admin'e göster
+        setShareData({
+          name: data.applicant_full_name ?? 'Yeni owner',
+          email: data.applicant_email,
+          link: data.password_reset_link ?? null,
+          error: data.password_reset_error ?? null,
+        });
       } else {
         toast.success('Başvuru reddedildi');
       }
@@ -246,12 +258,25 @@ export function AdminApplicationsPage() {
               {app.status === 'approved' && app.created_org_id && (
                 <div className="text-xs text-success font-medium flex items-center gap-1.5">
                   <CheckCircle2 className="size-3.5" />
-                  Org oluşturuldu · Owner mail aldı
+                  Org + owner kuruldu
                 </div>
               )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Owner şifre belirleme link'ini admin'e gösteren paylaşım modalı */}
+      {shareData && (
+        <ShareLinkModal
+          title="Şirket onaylandı"
+          description="Owner için şifre belirleme link'i hazır. Başvurana ulaştır — link tek kullanımlık ve süresi sınırlıdır."
+          recipientName={shareData.name}
+          recipientEmail={shareData.email}
+          link={shareData.link}
+          error={shareData.error}
+          onClose={() => setShareData(null)}
+        />
       )}
 
       {/* Reddet modal */}

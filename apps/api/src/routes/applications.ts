@@ -225,13 +225,29 @@ applicationsRouter.post(
         })
         .returning();
 
-      // Magic link / şifre belirleme maili (Supabase recovery → ResetPassword sayfası)
+      // Şifre belirleme URL'si — generateLink (mail göndermez, rate-limit'e takılmaz)
+      const redirectTo = `${process.env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      let resetLink: string | null = null;
+      let resetError: string | null = null;
       try {
-        await supabaseAdmin.auth.resetPasswordForEmail(app.applicant_email, {
-          redirectTo: `${process.env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`,
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: app.applicant_email,
+          options: { redirectTo },
         });
+        if (linkErr || !linkData?.properties?.action_link) {
+          resetError = linkErr?.message ?? 'Link üretilemedi';
+        } else {
+          resetLink = linkData.properties.action_link;
+        }
       } catch (e) {
-        logger.warn({ err: e }, 'magic link gönderim hatası — admin manuel paylaşmalı');
+        resetError = e instanceof Error ? e.message : 'Bilinmeyen hata';
+      }
+      if (!resetLink) {
+        logger.warn(
+          { err: resetError, email: app.applicant_email },
+          'Owner şifre belirleme link üretilemedi — fallback gerekli',
+        );
       }
 
       // Application'ı approved olarak işaretle
@@ -256,7 +272,11 @@ applicationsRouter.post(
         action: 'approved',
         org_id: newOrg!.id,
         user_id: newUser!.id,
-        magic_link_sent_to: app.applicant_email,
+        applicant_email: app.applicant_email,
+        applicant_full_name: app.applicant_full_name,
+        /** Owner'a paylaşılacak şifre belirleme URL'si (admin manuel paylaşır) */
+        password_reset_link: resetLink,
+        password_reset_error: resetError,
       });
     } catch (err) {
       next(err);
