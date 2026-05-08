@@ -68,8 +68,9 @@ export function AppLayout() {
             {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
+            <NavItem to="/leaderboard">🏆 Sıralama</NavItem>
+            <NavItem to="/rewards">🎁 Ödüller</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
-            {isManager && <NavItem to="/manager/reports">Rapor</NavItem>}
             {isAdmin && <NavItem to="/admin">Admin</NavItem>}
             {can('profile') && <NavItem to="/profile">Profil</NavItem>}
           </nav>

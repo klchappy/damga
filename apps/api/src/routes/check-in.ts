@@ -11,6 +11,7 @@ import { checkInLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
 import { dispatchWebhook } from '../modules/webhook-delivery';
 import { uploadSelfie } from '../lib/storage';
+import { awardXp, computeOnTimeBonus } from '../lib/xp';
 
 export const checkInRouter = Router();
 
@@ -310,6 +311,58 @@ async function performAttendance(
         device_ids: [...(req.authUser?.device_ids ?? []), input.device_id].slice(-5),
       })
       .where(eq(users.id, req.authUserId));
+  }
+
+  // === XP audit log ===
+  // Pending review olmayan damgalarda XP kazanılır (admin onaylamadan kazanım yok).
+  if (event.review_status === 'approved') {
+    // 1) Temel damga XP'si
+    await awardXp({
+      orgId: req.authOrgId,
+      userId: req.authUserId,
+      source: type === 'check_in' ? 'check_in' : 'check_out',
+      amount: 10,
+      description: type === 'check_in' ? 'Giriş damgası' : 'Çıkış damgası',
+      refId: event.id,
+      refType: 'attendance_event',
+    });
+
+    // 2) Çalışma saatlerine uygunluk bonusu
+    const onTime = computeOnTimeBonus({
+      type,
+      serverTime: event.server_time,
+      workStart: location.work_hours_start || '09:00',
+      workEnd: location.work_hours_end || '18:00',
+    });
+    if (onTime.bonus > 0) {
+      await awardXp({
+        orgId: req.authOrgId,
+        userId: req.authUserId,
+        source: onTime.reason,
+        amount: onTime.bonus,
+        description:
+          onTime.reason === 'on_time_check_in'
+            ? 'Zamanında giriş bonusu'
+            : onTime.reason === 'full_day_check_out'
+              ? 'Tam gün çıkışı bonusu'
+              : 'Çalışma saati bonusu',
+        refId: event.id,
+        refType: 'attendance_event',
+      });
+    }
+
+    // 3) Tam doğrulama bonusu (trust 100)
+    if (trust.score >= 100) {
+      await awardXp({
+        orgId: req.authOrgId,
+        userId: req.authUserId,
+        source: 'check_in_full_trust',
+        amount: 5,
+        description: 'Tam doğrulama bonusu (trust 100)',
+        refId: event.id,
+        refType: 'attendance_event',
+      });
+    }
   }
 
   logger.info(

@@ -23,6 +23,8 @@ import { AdminSettingsPage } from '@/pages/admin-settings';
 import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
 import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
 import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
+import { LeaderboardPage } from '@/pages/leaderboard';
+import { RewardsPage } from '@/pages/rewards';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -128,6 +130,8 @@ function AppInner() {
             </EmployeePageGate>
           }
         />
+        <Route path="leaderboard" element={<LeaderboardPage />} />
+        <Route path="rewards" element={<RewardsPage />} />
 
         {/* Manager+ */}
         <Route

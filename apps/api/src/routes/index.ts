@@ -16,6 +16,8 @@ import { announcementsRouter } from './announcements';
 import { apiKeysRouter } from './api-keys';
 import { webhooksRouter } from './webhooks';
 import { reportsRouter } from './reports';
+import { leaderboardRouter } from './leaderboard';
+import { rewardsRouter } from './rewards';
 
 export const apiRouter = Router();
 
@@ -36,6 +38,8 @@ apiRouter.use(announcementsRouter);
 apiRouter.use(apiKeysRouter);
 apiRouter.use(webhooksRouter);
 apiRouter.use(reportsRouter);
+apiRouter.use(leaderboardRouter);
+apiRouter.use(rewardsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({

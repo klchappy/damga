@@ -57,6 +57,13 @@
       "when": 1778250997751,
       "tag": "0007_dear_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778254479498,
+      "tag": "0008_mixed_patriot",
+      "breakpoints": true
     }
   ]
 }
