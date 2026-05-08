@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   KeyRound,
@@ -12,6 +13,10 @@ import {
   Mail,
   Building2,
   CheckCircle2,
+  Trophy,
+  Crown,
+  Medal,
+  Award,
 } from 'lucide-react';
 import { useAuthStore, updatePassword, type AuthUser } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
@@ -27,6 +32,16 @@ export function ProfilePage() {
     mutationFn: async (emoji: string) => (await api.post('/moods', { emoji })).data,
     onSuccess: () => toast.success('🎉 Mood kaydedildi'),
     onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const { data: lb } = useQuery<{
+    me_rank: number | null;
+    me_xp: number | null;
+    items: Array<{ user_id: string; period_xp: number }>;
+  }>({
+    queryKey: ['leaderboard', 'weekly', 'profile'],
+    queryFn: async () => (await api.get('/leaderboard?period=weekly')).data,
+    staleTime: 60_000,
   });
 
   if (!user) return null;
@@ -115,6 +130,55 @@ export function ProfilePage() {
             <div className="text-xs text-muted">Shield 🛡️</div>
           </div>
         </div>
+
+        {/* Bu hafta sıram */}
+        <Link
+          to="/leaderboard"
+          className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-cream px-3 py-2.5 hover:border-orange-300 transition group"
+        >
+          <div className="flex items-center gap-2.5">
+            {lb?.me_rank === 1 ? (
+              <span className="flex size-9 items-center justify-center rounded-full bg-yellow-400 text-white shrink-0">
+                <Crown className="size-5" />
+              </span>
+            ) : lb?.me_rank === 2 ? (
+              <span className="flex size-9 items-center justify-center rounded-full bg-zinc-300 text-white shrink-0">
+                <Medal className="size-5" />
+              </span>
+            ) : lb?.me_rank === 3 ? (
+              <span className="flex size-9 items-center justify-center rounded-full bg-orange-300 text-white shrink-0">
+                <Award className="size-5" />
+              </span>
+            ) : (
+              <span className="flex size-9 items-center justify-center rounded-full bg-orange-100 text-orange-600 shrink-0">
+                <Trophy className="size-5" />
+              </span>
+            )}
+            <div>
+              <div className="text-xs text-muted">Bu hafta sıran</div>
+              <div className="font-display text-lg leading-tight">
+                {lb?.me_rank ? (
+                  <>
+                    #{lb.me_rank}
+                    {lb.me_rank <= 3 && (
+                      <span className="text-xs text-muted ml-1">
+                        · {lb.me_rank === 1 ? '🥇 +500 XP' : lb.me_rank === 2 ? '🥈 +300 XP' : '🥉 +100 XP'}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted">Bu hafta XP yok</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-muted">Haftalık XP</div>
+            <div className="font-display text-base">
+              {lb?.me_xp ?? 0}
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Mood */}

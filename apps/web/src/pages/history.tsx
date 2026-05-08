@@ -9,6 +9,7 @@ import {
   Smartphone,
   Camera,
   Lock,
+  Plane,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTr, formatTimeTr } from '@/lib/utils';
@@ -28,6 +29,24 @@ interface Event {
   review_reasons?: string[];
   selfie_url?: string | null;
 }
+
+interface Leave {
+  id: string;
+  type: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reason?: string | null;
+}
+
+const LEAVE_TYPE_TR: Record<string, string> = {
+  annual: 'Yıllık',
+  sick: 'Hastalık',
+  unpaid: 'Ücretsiz',
+  maternity: 'Doğum',
+  paternity: 'Babalık',
+  compassionate: 'Mazeret',
+};
 
 /**
  * Bir damga için "konum doğrulama rozeti" — yönetici/admin/owner için açıkça
@@ -111,12 +130,38 @@ export function HistoryPage() {
       (await api.get(`/events?date_from=${startISO}&date_to=${endISO}&limit=200`)).data,
   });
 
+  const { data: leavesData } = useQuery<{ items: Leave[] }>({
+    queryKey: ['leaves', 'me', 'history'],
+    queryFn: async () => (await api.get('/leaves')).data,
+    staleTime: 60_000,
+  });
+
   // Günlere göre grupla
   const byDay: Record<string, Event[]> = {};
   for (const e of data?.items ?? []) {
     const day = e.server_time.slice(0, 10);
     (byDay[day] ??= []).push(e);
   }
+
+  // Onaylı izin günleri haritası: YYYY-MM-DD → leave
+  const leaveByDay = useMemo(() => {
+    const map: Record<string, Leave> = {};
+    for (const l of leavesData?.items ?? []) {
+      if (l.status !== 'approved') continue;
+      // start_date - end_date arası tüm günler (inclusive)
+      const start = new Date(l.start_date + 'T00:00:00');
+      const end = new Date(l.end_date + 'T00:00:00');
+      const cur = new Date(start);
+      while (cur <= end) {
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        map[`${y}-${m}-${d}`] = l;
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    return map;
+  }, [leavesData]);
 
   const monthName = new Intl.DateTimeFormat('tr-TR', {
     month: 'long',
@@ -128,11 +173,11 @@ export function HistoryPage() {
   const daysInMonth = new Date(month.year, month.month + 1, 0).getDate();
   const startWeekday = (firstDay.getDay() + 6) % 7; // Pazartesi=0
 
-  const cells: Array<{ day?: number; events?: Event[] }> = [];
+  const cells: Array<{ day?: number; events?: Event[]; leave?: Leave }> = [];
   for (let i = 0; i < startWeekday; i++) cells.push({});
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${month.year}-${String(month.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    cells.push({ day: d, events: byDay[dateStr] ?? [] });
+    cells.push({ day: d, events: byDay[dateStr] ?? [], leave: leaveByDay[dateStr] });
   }
 
   return (
@@ -175,41 +220,87 @@ export function HistoryPage() {
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {cells.map((c, i) => (
-            <div
-              key={i}
-              className={`aspect-square rounded-md border ${
-                c.day
-                  ? c.events && c.events.length > 0
-                    ? 'border-success/40 bg-success/5'
-                    : 'border-orange-100 bg-cream'
-                  : 'border-transparent'
-              } p-1.5 text-xs`}
-            >
-              {c.day && (
-                <>
-                  <div className="font-medium text-ink">{c.day}</div>
-                  {c.events && c.events.length > 0 && (
-                    <div className="mt-1 flex gap-0.5 flex-wrap">
-                      {c.events.slice(0, 3).map((e) => (
-                        <span
-                          key={e.id}
-                          title={`${e.type} ${formatTimeTr(e.server_time)} · trust ${e.verification_score}`}
-                          className={`inline-block h-1.5 w-1.5 rounded-full ${
-                            e.verification_score >= 80
-                              ? 'bg-success'
-                              : e.verification_score >= 60
-                                ? 'bg-warning'
-                                : 'bg-danger'
-                          }`}
-                        />
-                      ))}
+          {cells.map((c, i) => {
+            const hasEvents = !!(c.events && c.events.length > 0);
+            const onLeave = !!c.leave;
+            const cellClass = !c.day
+              ? 'border-transparent'
+              : onLeave
+                ? 'border-sky-300 bg-sky-50'
+                : hasEvents
+                  ? 'border-success/40 bg-success/5'
+                  : 'border-orange-100 bg-cream';
+            return (
+              <div
+                key={i}
+                className={`aspect-square rounded-md border ${cellClass} p-1.5 text-xs relative`}
+                title={
+                  onLeave
+                    ? `İzin: ${LEAVE_TYPE_TR[c.leave!.type] ?? c.leave!.type}`
+                    : undefined
+                }
+              >
+                {c.day && (
+                  <>
+                    <div
+                      className={`font-medium ${onLeave ? 'text-sky-700' : 'text-ink'}`}
+                    >
+                      {c.day}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
+                    {onLeave && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-sky-700">
+                        <Plane className="size-2.5" />
+                        <span className="truncate">
+                          {LEAVE_TYPE_TR[c.leave!.type] ?? c.leave!.type}
+                        </span>
+                      </div>
+                    )}
+                    {hasEvents && (
+                      <div className="mt-1 flex gap-0.5 flex-wrap">
+                        {c.events!.slice(0, 3).map((e) => (
+                          <span
+                            key={e.id}
+                            title={`${e.type} ${formatTimeTr(e.server_time)} · trust ${e.verification_score}`}
+                            className={`inline-block h-1.5 w-1.5 rounded-full ${
+                              e.verification_score >= 80
+                                ? 'bg-success'
+                                : e.verification_score >= 60
+                                  ? 'bg-warning'
+                                  : 'bg-danger'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Lejant */}
+        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-muted">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm border border-success/40 bg-success/10" />
+            Damga var
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm border border-sky-300 bg-sky-50" />
+            Onaylı izin
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
+            trust 80+
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
+            60-79
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-danger" />
+            &lt;60
+          </span>
         </div>
       </div>
 

@@ -313,9 +313,77 @@ async function performAttendance(
       .where(eq(users.id, req.authUserId));
   }
 
-  // === XP audit log ===
+  // === XP audit log + Streak ===
   // Pending review olmayan damgalarda XP kazanılır (admin onaylamadan kazanım yok).
   if (event.review_status === 'approved') {
+    // 0) Streak hesaplama (sadece check_in için — günlük 1 kez tetiklenir)
+    if (type === 'check_in') {
+      const today = new Date(event.server_time);
+      today.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // Bugün önceden başka check_in var mı? (varsa streak değişmez)
+      const [todayPriorCheckIn] = await db
+        .select({ id: attendanceEvents.id })
+        .from(attendanceEvents)
+        .where(
+          and(
+            eq(attendanceEvents.user_id, req.authUserId),
+            eq(attendanceEvents.type, 'check_in'),
+            gte(attendanceEvents.server_time, today),
+            sql`${attendanceEvents.id} <> ${event.id}`,
+          ),
+        )
+        .limit(1);
+
+      if (!todayPriorCheckIn) {
+        // Dün check_in var mı?
+        const [yesterdayCheckIn] = await db
+          .select({ id: attendanceEvents.id })
+          .from(attendanceEvents)
+          .where(
+            and(
+              eq(attendanceEvents.user_id, req.authUserId),
+              eq(attendanceEvents.type, 'check_in'),
+              gte(attendanceEvents.server_time, yesterday),
+              sql`${attendanceEvents.server_time} < ${today}`,
+            ),
+          )
+          .limit(1);
+
+        const oldStreak = req.authUser?.current_streak ?? 0;
+        const newStreak = yesterdayCheckIn ? oldStreak + 1 : 1;
+        const newLongest = Math.max(req.authUser?.longest_streak ?? 0, newStreak);
+
+        await db
+          .update(users)
+          .set({ current_streak: newStreak, longest_streak: newLongest })
+          .where(eq(users.id, req.authUserId));
+
+        // Milestone bonusları
+        const milestones: Array<{ value: number; bonus: number; source: string; label: string }> = [
+          { value: 7, bonus: 50, source: 'streak_7', label: '7 günlük seri' },
+          { value: 30, bonus: 200, source: 'streak_30', label: '30 günlük seri' },
+          { value: 100, bonus: 1000, source: 'streak_100', label: '100 günlük seri' },
+        ];
+        for (const m of milestones) {
+          if (newStreak === m.value) {
+            await awardXp({
+              orgId: req.authOrgId,
+              userId: req.authUserId,
+              source: m.source,
+              amount: m.bonus,
+              description: `🔥 ${m.label} bonusu`,
+              refId: event.id,
+              refType: 'attendance_event',
+            });
+            break;
+          }
+        }
+      }
+    }
+
     // 1) Temel damga XP'si
     await awardXp({
       orgId: req.authOrgId,

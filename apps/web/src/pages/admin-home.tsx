@@ -13,6 +13,7 @@ import {
   Building2,
   Settings as SettingsIcon,
   UserPlus,
+  Gift,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -41,6 +42,16 @@ export function AdminHomePage() {
       (await api.get<{ total: number; valid: number; broken: number }>('/events/verify-chain'))
         .data,
   });
+
+  const { data: redemptionsData } = useQuery({
+    queryKey: ['admin', 'redemptions', 'pending-count'],
+    queryFn: async () =>
+      (await api.get<{ items: Array<{ status: string }> }>('/admin/redemptions')).data,
+    refetchInterval: 30_000,
+  });
+  const pendingRedemptions = (redemptionsData?.items ?? []).filter(
+    (r) => r.status === 'pending',
+  ).length;
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-6 space-y-6">
@@ -140,6 +151,13 @@ export function AdminHomePage() {
           title="Damga Akışı"
           desc="Tüm çalışanların damgalarını canlı izle. Her damgada konum doğrulama durumu (yeşil/sarı/gri) gözükür."
         />
+        <AdminCard
+          to="/admin/redemptions"
+          icon={<Gift className="size-6" />}
+          title="Ödül Talepleri"
+          desc="Çalışanların satın aldığı ödülleri burada teslim et veya iptal et (XP iade)."
+          badge={pendingRedemptions > 0 ? pendingRedemptions : undefined}
+        />
       </div>
 
       {/* Sistem durumu */}
@@ -195,22 +213,31 @@ function AdminCard({
   icon,
   title,
   desc,
+  badge,
 }: {
   to: string;
   icon: React.ReactNode;
   title: string;
   desc: string;
+  badge?: number;
 }) {
   return (
     <Link
       to={to}
-      className="card group flex items-start gap-3 hover:border-orange-400 hover:shadow-md transition"
+      className="card group flex items-start gap-3 hover:border-orange-400 hover:shadow-md transition relative"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition">
         {icon}
       </div>
       <div className="flex-1">
-        <div className="font-display font-semibold text-lg">{title}</div>
+        <div className="font-display font-semibold text-lg flex items-center gap-2">
+          {title}
+          {typeof badge === 'number' && badge > 0 && (
+            <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-danger text-white text-[10px] font-semibold animate-pulse">
+              {badge}
+            </span>
+          )}
+        </div>
         <div className="text-sm text-muted">{desc}</div>
       </div>
       <ChevronRight className="size-5 text-muted group-hover:text-orange-500 transition self-center" />
