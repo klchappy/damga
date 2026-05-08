@@ -64,6 +64,13 @@
       "when": 1778254479498,
       "tag": "0008_mixed_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778256247177,
+      "tag": "0009_slippery_bullseye",
+      "breakpoints": true
     }
   ]
 }

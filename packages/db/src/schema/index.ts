@@ -10,3 +10,4 @@ export * from './moods-statuses';
 export * from './menus-announcements';
 export * from './integrations';
 export * from './gamification';
+export * from './shifts';

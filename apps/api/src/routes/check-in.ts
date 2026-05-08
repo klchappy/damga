@@ -12,6 +12,7 @@ import { logger } from '../config/logger';
 import { dispatchWebhook } from '../modules/webhook-delivery';
 import { uploadSelfie } from '../lib/storage';
 import { awardXp, computeOnTimeBonus } from '../lib/xp';
+import { detectOvertime } from '../lib/overtime';
 
 export const checkInRouter = Router();
 
@@ -430,6 +431,26 @@ async function performAttendance(
         refId: event.id,
         refType: 'attendance_event',
       });
+    }
+
+    // 4) Fazla mesai algıla (sadece check_out için)
+    if (type === 'check_out') {
+      try {
+        const ot = await detectOvertime({
+          orgId: req.authOrgId,
+          userId: req.authUserId,
+          eventId: event.id,
+          serverTime: event.server_time,
+        });
+        if (ot.created) {
+          logger.info(
+            { userId: req.authUserId, minutes: ot.minutes, recordId: ot.record_id },
+            '⏰ Otomatik fazla mesai kaydı oluşturuldu',
+          );
+        }
+      } catch (e) {
+        logger.error({ err: e }, 'Overtime detection failed');
+      }
     }
   }
 

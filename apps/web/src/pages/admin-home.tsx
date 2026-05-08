@@ -14,6 +14,8 @@ import {
   Settings as SettingsIcon,
   UserPlus,
   Gift,
+  Clock,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -52,6 +54,14 @@ export function AdminHomePage() {
   const pendingRedemptions = (redemptionsData?.items ?? []).filter(
     (r) => r.status === 'pending',
   ).length;
+
+  const { data: overtimeCount } = useQuery({
+    queryKey: ['admin', 'overtime', 'pending-count'],
+    queryFn: async () =>
+      (await api.get<{ count: number }>('/overtime/pending-count')).data,
+    refetchInterval: 30_000,
+  });
+  const pendingOvertime = overtimeCount?.count ?? 0;
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-6 space-y-6">
@@ -157,6 +167,25 @@ export function AdminHomePage() {
           title="Ödül Talepleri"
           desc="Çalışanların satın aldığı ödülleri burada teslim et veya iptal et (XP iade)."
           badge={pendingRedemptions > 0 ? pendingRedemptions : undefined}
+        />
+        <AdminCard
+          to="/admin/shifts"
+          icon={<Clock className="size-6" />}
+          title="Vardiya Şablonları"
+          desc="Sabah/akşam/gece vardiyalarını lokasyon + saat + mola ile tanımla."
+        />
+        <AdminCard
+          to="/manager/schedule"
+          icon={<CalendarDays className="size-6" />}
+          title="Haftalık Vardiya Planı"
+          desc="Çalışanlara vardiya ata: hücreye tıkla → şablon seç. Drag-drop yakında."
+        />
+        <AdminCard
+          to="/admin/overtime"
+          icon={<Clock className="size-6" />}
+          title="Fazla Mesai"
+          desc="Vardiya bitiminden sonra çalışanların kayıtları. Onayla, opsiyonel XP bonusu ver."
+          badge={pendingOvertime > 0 ? pendingOvertime : undefined}
         />
       </div>
 

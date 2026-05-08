@@ -26,6 +26,10 @@ import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
 import { LeaderboardPage } from '@/pages/leaderboard';
 import { RewardsPage } from '@/pages/rewards';
 import { AdminRedemptionsPage } from '@/pages/admin-redemptions';
+import { AdminShiftsPage } from '@/pages/admin-shifts';
+import { ManagerSchedulePage } from '@/pages/manager-schedule';
+import { AdminOvertimePage } from '@/pages/admin-overtime';
+import { MyShiftsPage } from '@/pages/my-shifts';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -249,6 +253,31 @@ function AppInner() {
             </RoleGate>
           }
         />
+        <Route
+          path="admin/shifts"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminShiftsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="manager/schedule"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <ManagerSchedulePage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/overtime"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <AdminOvertimePage />
+            </RoleGate>
+          }
+        />
+        <Route path="me/shifts" element={<MyShiftsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" />} />

@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { CalendarClock, ArrowRight } from 'lucide-react';
 import { CheckInCard } from '@/components/check-in-card';
 import { api } from '@/lib/api';
 import { formatDateTimeTr, formatTimeTr } from '@/lib/utils';
@@ -12,6 +14,20 @@ interface EventDTO {
   flags: string[];
   verification_methods: string[];
   location?: { name: string } | null;
+}
+
+interface MyShift {
+  id: string;
+  shift_date: string;
+  template_name: string;
+  template_color: string;
+  template_start: string;
+  template_end: string;
+  override_start: string | null;
+  override_end: string | null;
+  location_name: string | null;
+  status: 'scheduled' | 'completed' | 'absent' | 'swapped';
+  notes: string | null;
 }
 
 export function EmployeeHomePage() {
@@ -29,6 +45,17 @@ export function EmployeeHomePage() {
   const lastCheckIn = todayEvents.find((e) => e.type === 'check_in');
   const lastCheckOut = todayEvents.find((e) => e.type === 'check_out');
 
+  const { data: myShifts } = useQuery<{ items: MyShift[] }>({
+    queryKey: ['me', 'shifts'],
+    queryFn: async () => (await api.get('/me/shifts')).data,
+    staleTime: 60_000,
+  });
+  const todayShift = (myShifts?.items ?? []).find((s) => s.shift_date === today);
+  const upcomingShift = (myShifts?.items ?? []).find(
+    (s) => s.shift_date > today && s.status === 'scheduled',
+  );
+  const shiftToShow = todayShift ?? upcomingShift;
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 space-y-6">
       <div>
@@ -37,6 +64,43 @@ export function EmployeeHomePage() {
       </div>
 
       <CheckInCard onSuccess={() => void refetch()} />
+
+      {/* Vardiyam */}
+      {shiftToShow && (
+        <Link
+          to="/me/shifts"
+          className="card flex items-center gap-3 hover:border-orange-400 hover:shadow-md transition relative overflow-hidden"
+          style={{ borderLeft: `4px solid ${shiftToShow.template_color}` }}
+        >
+          <div
+            className="flex size-12 items-center justify-center rounded-xl text-white shrink-0"
+            style={{ backgroundColor: shiftToShow.template_color }}
+          >
+            <CalendarClock className="size-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs uppercase tracking-wider text-muted">
+              {todayShift ? 'Bugünkü vardiyan' : 'Yaklaşan vardiyan'}
+            </div>
+            <div className="font-display text-lg leading-tight truncate">
+              {shiftToShow.template_name}
+              <span className="text-sm text-muted ml-2">
+                {(shiftToShow.override_start ?? shiftToShow.template_start).slice(0, 5)} –{' '}
+                {(shiftToShow.override_end ?? shiftToShow.template_end).slice(0, 5)}
+              </span>
+            </div>
+            <div className="text-xs text-muted">
+              {!todayShift && new Date(shiftToShow.shift_date).toLocaleDateString('tr-TR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+              {shiftToShow.location_name && ` · ${shiftToShow.location_name}`}
+            </div>
+          </div>
+          <ArrowRight className="size-4 text-muted shrink-0" />
+        </Link>
+      )}
 
       {/* Bugünün özeti */}
       <div className="card">

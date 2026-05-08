@@ -65,6 +65,7 @@ export function AppLayout() {
           <nav className="hidden md:flex items-center gap-1 flex-wrap">
             {can('home') && <NavItem to="/">Bugün</NavItem>}
             {can('history') && <NavItem to="/history">Geçmiş</NavItem>}
+            <NavItem to="/me/shifts">Vardiyam</NavItem>
             {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
@@ -104,6 +105,9 @@ export function AppLayout() {
                 Geçmişim
               </NavItem>
             )}
+            <NavItem to="/me/shifts" onClick={() => setOpen(false)}>
+              Vardiyalarım
+            </NavItem>
             {can('leaves') && (
               <NavItem to="/leaves" onClick={() => setOpen(false)}>
                 İzinlerim

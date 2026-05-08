@@ -18,6 +18,7 @@ import { webhooksRouter } from './webhooks';
 import { reportsRouter } from './reports';
 import { leaderboardRouter } from './leaderboard';
 import { rewardsRouter } from './rewards';
+import { shiftsRouter } from './shifts';
 
 export const apiRouter = Router();
 
@@ -40,6 +41,7 @@ apiRouter.use(webhooksRouter);
 apiRouter.use(reportsRouter);
 apiRouter.use(leaderboardRouter);
 apiRouter.use(rewardsRouter);
+apiRouter.use(shiftsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({
@@ -96,6 +98,15 @@ apiRouter.get('/', (_req, res) => {
         'GET /webhooks, POST /webhooks, /webhooks/:id/deliveries|test',
         'GET /reports/attendance, /reports/payroll, /export/events',
         'GET /departments, POST /departments, PATCH /departments/:id',
+      ],
+      shifts: [
+        'GET  /shifts (template list), POST/PATCH/DELETE /shifts[/:id]',
+        'GET  /shift-assignments?date_from&date_to&user_id (manager+)',
+        'POST /shift-assignments (single or { assignments: [...] })',
+        'PATCH/DELETE /shift-assignments/:id',
+        'GET  /me/shifts?date_from&date_to (employee)',
+        'GET  /overtime?status&user_id, POST /overtime/:id/approve|reject',
+        'GET  /overtime/pending-count (badge), PATCH /overtime/:id/reason',
       ],
     },
   });
