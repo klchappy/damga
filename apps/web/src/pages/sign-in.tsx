@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { signInSchema, type SignInInput } from '@damga/shared';
@@ -10,6 +10,9 @@ import { isSupabaseConfigured } from '@/lib/env';
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // QR landing → sign-in → giriş sonrası tekrar QR landing'e dönsün
+  const returnPath = searchParams.get('return') || '/';
   const [submitting, setSubmitting] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
   const {
@@ -30,7 +33,7 @@ export function SignInPage() {
       // 5 saniyelik damga splash → arka planda fetchProfile çalışıyor olacak.
       // PrivateRoute (loading || signInTransition) ise DamgaSplash gösteriyor.
       useAuthStore.getState().startSignInTransition(5000);
-      navigate('/', { replace: true });
+      navigate(returnPath, { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Giriş yapılamadı');
       setSubmitting(false);

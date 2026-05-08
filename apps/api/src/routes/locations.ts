@@ -6,7 +6,7 @@ import {
   createNfcTagSchema,
   createQrCodeSchema,
 } from '@damga/shared';
-import { signNfcTag, signQrCode } from '@damga/verification';
+import { signNfcTag, signQrCode, signQrCodeUrl } from '@damga/verification';
 import { randomBytes } from 'node:crypto';
 import { getDb, locations, locationNfcTags, locationQrCodes } from '@damga/db';
 import { env } from '../config/env';
@@ -258,9 +258,14 @@ locationsRouter.post(
       const locationId = String(req.params.id ?? '').trim();
       const body = createQrCodeSchema.parse({ ...req.body, location_id: locationId });
 
-      const payload = signQrCode(env.NFC_SIGNING_SECRET, {
+      // YENİ v2 URL formatı — telefon kamerası okuyunca tarayıcı /q sayfasını açar.
+      // Server-side GPS+Geofence ZORUNLU doğrulama yapar → fotoğraflanan QR
+      // proxy attack olarak işe yaramaz (evden okutulursa GPS reject eder).
+      const baseUrl = env.CLIENT_URL ?? 'https://damga.deploi.net';
+      const payload = signQrCodeUrl(env.NFC_SIGNING_SECRET, {
         location_id: locationId,
         ttl_days: body.ttl_days,
+        baseUrl,
       });
       const expiresAt = new Date(Date.now() + body.ttl_days * 24 * 60 * 60 * 1000);
 

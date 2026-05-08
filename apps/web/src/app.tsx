@@ -27,6 +27,7 @@ import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
 import { MenuPage } from '@/pages/menu';
 import { MenuFeedbackPage } from '@/pages/menu-feedback';
+import { QLandingPage } from '@/pages/q-landing';
 import { AnnouncementsPage } from '@/pages/announcements';
 import { KvkkPage, TermsPage } from '@/pages/legal';
 
@@ -67,6 +68,8 @@ function AppInner() {
       <Route path="/auth/sign-in" element={<SignInPage />} />
       <Route path="/auth/sign-up" element={<SignUpPage />} />
       <Route path="/apply-org" element={<ApplyOrgPage />} />
+      {/* QR landing — kendi içinde auth check yapar (login yoksa sign-in'e yönlendirir) */}
+      <Route path="/q/:locationId" element={<QLandingPage />} />
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />

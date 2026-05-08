@@ -1,7 +1,32 @@
 import { TRUST_POINTS, TRUST_THRESHOLDS } from '@damga/shared';
 import { haversineDistanceM } from './geo';
 import { verifyNfcTag } from './nfc';
-import { verifyQrCode } from './qr';
+import { verifyQrCode, verifyQrUrlToken, type QrVerifyResult } from './qr';
+
+/**
+ * QR ham metnini hem v1 (pipe-separated payload) hem v2 (URL ?t=token) formatında
+ * doğrulayan tek girişli helper. Frontend'in nasıl gönderdiğine bakmadan çalışır.
+ */
+function verifyAnyQrFormat(secret: string, raw: string): QrVerifyResult {
+  const trimmed = raw.trim();
+  // v2: URL formatında (https://.../q/<id>?t=<token>)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const url = new URL(trimmed);
+      const token = url.searchParams.get('t');
+      if (!token) return { valid: false, reason: 'QR URL\'sinde token yok' };
+      return verifyQrUrlToken(secret, token);
+    } catch {
+      return { valid: false, reason: 'QR URL\'si parse edilemedi' };
+    }
+  }
+  // base64url token tek başına gönderilmiş olabilir (web /q sayfasından gelen)
+  if (/^[A-Za-z0-9_-]+$/.test(trimmed) && !trimmed.includes('|')) {
+    return verifyQrUrlToken(secret, trimmed);
+  }
+  // v1: eski pipe-separated payload
+  return verifyQrCode(secret, trimmed);
+}
 
 export interface TrustInput {
   // Doğrulama kanıtları
@@ -88,8 +113,9 @@ export function computeTrustScore(input: TrustInput): TrustResult {
   }
 
   // === 2) QR: 25 puan (NFC alternatifi) ===
+  // v1 (eski string payload) ve v2 (URL token) ikisini de destekle
   if (input.qr_raw && !methods.includes('nfc')) {
-    const qrResult = verifyQrCode(input.signingSecret, input.qr_raw);
+    const qrResult = verifyAnyQrFormat(input.signingSecret, input.qr_raw);
     if (qrResult.valid) {
       if (
         input.location &&

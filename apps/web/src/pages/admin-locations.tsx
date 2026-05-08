@@ -523,6 +523,8 @@ function QrViewModal({
   locationName: string;
   onClose: () => void;
 }) {
+  // payload artık ya v2 URL (https://...damga.../q/<id>?t=...) ya da v1 string olabilir
+  const isV2Url = qr.payload.startsWith('http://') || qr.payload.startsWith('https://');
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(
     qr.payload,
   )}&margin=2&ecc=H&color=FF6B35&bgcolor=FFF4E8`;
@@ -594,6 +596,15 @@ function QrViewModal({
             crossOrigin="anonymous"
           />
         </div>
+
+        {isV2Url && (
+          <div className="rounded-md bg-success/5 border border-success/20 px-3 py-2 text-[11px] text-muted">
+            🛡️ <strong className="text-ink">Proxy-attack dirençli QR.</strong> Bu QR
+            okuyanı doğrudan Damga sayfasına götürür ve <strong className="text-ink">
+            GPS+Geofence ZORUNLU</strong> server kontrolü yapılır. Fotoğraflanan QR'ı
+            evden okutmaya çalışan kişi reddedilir.
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-md bg-orange-50 px-3 py-2">

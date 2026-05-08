@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { eq, and, desc, gte } from 'drizzle-orm';
+import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { checkInSchema } from '@damga/shared';
 import { computeTrustScore, computeEvidenceHash } from '@damga/verification';
-import { getDb, attendanceEvents, locations, users } from '@damga/db';
+import { getDb, attendanceEvents, locations, users, orgs } from '@damga/db';
 import { env } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireScope } from '../middleware/auth';
@@ -11,6 +11,21 @@ import { logger } from '../config/logger';
 import { dispatchWebhook } from '../modules/webhook-delivery';
 
 export const checkInRouter = Router();
+
+/** Aynı kullanıcının çift damga atmasını engelle (proxy/replay attack) */
+const VELOCITY_WINDOW_MS = 30 * 1000; // 30 saniye
+
+/** İki nokta arası metre cinsinden mesafe (Haversine formülü) */
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius m
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 /**
  * POST /v1/check-in   ve   /v1/check-out
@@ -42,6 +57,80 @@ async function performAttendance(
 
   if (!location) {
     throw new HttpError(404, 'Lokasyon bulunamadı veya seçilmedi', 'LOCATION_REQUIRED');
+  }
+
+  // ============================================================
+  //  PROXY-ATTACK SAVUNMA KATMANLARI (QR fotoğraflanması saldırısı)
+  // ============================================================
+
+  // 1) Velocity check: aynı kullanıcı 30sn içinde tekrar damga atıyorsa reject
+  const velocityCutoff = new Date(Date.now() - VELOCITY_WINDOW_MS);
+  const [recentEvent] = await db
+    .select({ id: attendanceEvents.id, server_time: attendanceEvents.server_time })
+    .from(attendanceEvents)
+    .where(
+      and(
+        eq(attendanceEvents.user_id, req.authUserId),
+        gte(attendanceEvents.server_time, velocityCutoff),
+      ),
+    )
+    .orderBy(desc(attendanceEvents.server_time))
+    .limit(1);
+  if (recentEvent) {
+    throw new HttpError(
+      429,
+      'Çok hızlı tekrar denedin — son damgadan en az 30 saniye sonra tekrar dene.',
+      'VELOCITY_BLOCKED',
+    );
+  }
+
+  // 2) GPS + Geofence ZORUNLU (org settings izin vermiyorsa)
+  // Org settings'te allow_outside_geofence === true ise atlanır (özel durumlar için)
+  const [orgRow] = await db
+    .select({ settings: orgs.settings })
+    .from(orgs)
+    .where(eq(orgs.id, req.authOrgId));
+  const allowOutside = !!orgRow?.settings?.allow_outside_geofence;
+
+  // QR ile damga vuruyorsa GPS+Geofence zorunlu (proxy attack savunması)
+  // NFC ile damgada fiziksel temas zaten sağlanıyor → bu kontrol opsiyonel
+  const usingQrOnly = !!input.qr_code_payload && !input.nfc_tag_id;
+
+  if (usingQrOnly && !allowOutside) {
+    if (
+      input.latitude == null ||
+      input.longitude == null ||
+      input.gps_accuracy_m == null
+    ) {
+      throw new HttpError(
+        400,
+        'QR ile damga vurmak için GPS izni vermelisin (proxy saldırılarını önler).',
+        'GPS_REQUIRED',
+      );
+    }
+    // Mesafe hesaplama trust-score içinde de yapılıyor, ama burada hard reject için tekrar kontrol et
+    const distM = haversineMeters(
+      input.latitude,
+      input.longitude,
+      location.latitude,
+      location.longitude,
+    );
+    if (distM > location.geofence_radius_m) {
+      throw new HttpError(
+        400,
+        `Lokasyon dışındasın — ${Math.round(distM)}m uzakta (sınır: ${location.geofence_radius_m}m). Ofise gel ve tekrar dene.`,
+        'OUT_OF_GEOFENCE',
+        { distance_m: Math.round(distM), geofence_radius_m: location.geofence_radius_m },
+      );
+    }
+    // GPS doğruluğu çok düşükse (örn 500m) reject — fake GPS belirtisi olabilir
+    if (input.gps_accuracy_m > 200) {
+      throw new HttpError(
+        400,
+        `GPS doğruluğu çok düşük (±${Math.round(input.gps_accuracy_m)}m). Açık alana çıkıp tekrar dene.`,
+        'GPS_LOW_ACCURACY',
+      );
+    }
   }
 
   // Trust score
