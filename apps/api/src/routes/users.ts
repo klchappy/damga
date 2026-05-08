@@ -1,11 +1,23 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
+import { createClient } from '@supabase/supabase-js';
 import { createUserSchema, adminUpdateUserSchema } from '@damga/shared';
 import { getDb, users } from '@damga/db';
+import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { logger } from '../config/logger';
 
 export const usersRouter = Router();
+
+function getSupabaseAdmin() {
+  if (!isConfigured.supabase) {
+    throw new HttpError(503, 'Supabase yapılandırılmamış', 'SUPABASE_NOT_CONFIGURED');
+  }
+  return createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 usersRouter.get(
   '/users',
@@ -25,19 +37,107 @@ usersRouter.get(
   },
 );
 
+/**
+ * POST /v1/users — admin/owner yeni çalışan ekler.
+ *
+ * Tek atışta:
+ *  1) Email duplicate kontrolü
+ *  2) Supabase Auth user oluştur (random password, email_confirm:true)
+ *  3) Damga DB users insert (org_id, role, department, vb)
+ *  4) resetPasswordForEmail → kullanıcıya şifre belirleme maili
+ *
+ * Sonuç: kullanıcı maile gelen linkle kendi şifresini belirler ve giriş yapar.
+ * (apply-org onay akışıyla aynı pattern.)
+ */
 usersRouter.post(
   '/users',
   requireAuth,
   requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
-      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      if (!req.authOrgId || !req.authUser) throw new HttpError(401, 'Yetki yok');
       const input = createUserSchema.parse(req.body);
-      const [user] = await getDb()
+
+      // owner sadece owner ekleyebilir
+      if (input.role === 'owner' && req.authUser.role !== 'owner') {
+        throw new HttpError(403, 'Sadece şirket sahibi başka owner ekleyebilir', 'OWNER_ONLY');
+      }
+
+      const db = getDb();
+
+      // Aynı email var mı?
+      const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, input.email.toLowerCase()));
+      if (existing) {
+        throw new HttpError(409, 'Bu e-posta zaten kayıtlı', 'EMAIL_EXISTS');
+      }
+
+      const supabase = getSupabaseAdmin();
+
+      // Supabase'de var mı? (başka org'da olabilir)
+      const { data: existingAuth } = await supabase.auth.admin.listUsers();
+      const matched = existingAuth?.users.find(
+        (u) => u.email?.toLowerCase() === input.email.toLowerCase(),
+      );
+
+      let authUserId: string;
+      if (matched) {
+        authUserId = matched.id;
+      } else {
+        const tmpPassword = Math.random().toString(36).slice(2) + 'A1!';
+        const { data: created, error: authErr } = await supabase.auth.admin.createUser({
+          email: input.email,
+          password: tmpPassword,
+          email_confirm: true,
+          user_metadata: { full_name: input.full_name },
+        });
+        if (authErr || !created.user) {
+          throw new HttpError(
+            502,
+            `Auth user oluşturulamadı: ${authErr?.message ?? 'unknown'}`,
+            'AUTH_CREATE_FAILED',
+          );
+        }
+        authUserId = created.user.id;
+      }
+
+      const [user] = await db
         .insert(users)
-        .values({ ...input, org_id: req.authOrgId })
+        .values({
+          org_id: req.authOrgId,
+          auth_user_id: authUserId,
+          email: input.email.toLowerCase(),
+          full_name: input.full_name,
+          role: input.role,
+          department: input.department ?? 'Diğer',
+          title: input.title ?? null,
+          hired_at: input.hired_at ?? null,
+          annual_leave_quota_days: input.annual_leave_quota_days,
+        })
         .returning();
-      res.status(201).json({ user });
+
+      // Şifre belirleme maili
+      let mailSent = false;
+      try {
+        await supabase.auth.resetPasswordForEmail(input.email, {
+          redirectTo: `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`,
+        });
+        mailSent = true;
+      } catch (e) {
+        logger.warn(
+          { err: e, email: input.email },
+          'Şifre belirleme maili gönderilemedi — admin manuel paylaşmalı',
+        );
+      }
+
+      logger.info(
+        { userId: user!.id, by: req.authUserId, orgId: req.authOrgId },
+        'Admin yeni çalışan ekledi',
+      );
+
+      res.status(201).json({ user, password_reset_sent: mailSent });
     } catch (err) {
       next(err);
     }

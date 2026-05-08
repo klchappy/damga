@@ -8,6 +8,8 @@ import {
   type EmployeePageKey,
 } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { MoodPromptAuto } from '@/components/mood-prompt';
+import { NotificationPermissionGate } from '@/components/notification-permission';
 
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
@@ -138,6 +140,11 @@ export function AppLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
+
+      {/* Bugünkü mood yoksa + cooldown geçtiyse otomatik açılır */}
+      <MoodPromptAuto />
+      {/* Browser bildirim izni — sessiz, tek seferlik chip */}
+      <NotificationPermissionGate />
 
       <footer className="border-t border-orange-100 bg-cream py-4 text-center text-xs text-muted">
         Damga v0.1.0 ·{' '}

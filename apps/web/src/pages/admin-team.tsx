@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Pencil, KeyRound, UserCheck, UserX } from 'lucide-react';
+import { Pencil, KeyRound, UserCheck, UserX, UserPlus, Loader2, X } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
 
@@ -45,6 +45,7 @@ export function AdminTeamPage() {
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const [editing, setEditing] = useState<User | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data: usersData, isLoading } = useQuery<{ items: User[] }>({
     queryKey: ['admin', 'users'],
@@ -78,9 +79,17 @@ export function AdminTeamPage() {
         <div>
           <h1 className="text-3xl">👥 Ekip Yönetimi</h1>
           <p className="text-sm text-muted">
-            Çalışanları düzenle, departman ata, izin kotası belirle, şifre sıfırla.
+            Çalışan ekle, düzenle, departman ata, izin kotası belirle, şifre sıfırla.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="btn-primary text-sm"
+        >
+          <UserPlus className="size-4" />
+          Yeni Çalışan Ekle
+        </button>
       </div>
 
       {isLoading ? (
@@ -185,6 +194,243 @@ export function AdminTeamPage() {
           }}
         />
       )}
+
+      {creating && (
+        <CreateUserModal
+          departments={deptsData?.items ?? []}
+          isOwner={me?.role === 'owner'}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+            setCreating(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateUserModal({
+  departments,
+  isOwner,
+  onClose,
+  onCreated,
+}: {
+  departments: Department[];
+  isOwner: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState({
+    full_name: '',
+    email: '',
+    role: 'employee' as User['role'],
+    department: departments[0]?.name ?? 'Diğer',
+    title: '',
+    hired_at: '',
+    annual_leave_quota_days: 14,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (form.full_name.trim().length < 2) e.full_name = 'Ad soyad gerekli (en az 2 karakter)';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Geçerli e-posta gir';
+    if (form.annual_leave_quota_days < 0 || form.annual_leave_quota_days > 60)
+      e.annual_leave_quota_days = '0-60 arası';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        full_name: form.full_name.trim(),
+        email: form.email.trim().toLowerCase(),
+        role: form.role,
+        department: form.department,
+        annual_leave_quota_days: form.annual_leave_quota_days,
+      };
+      if (form.title.trim()) payload.title = form.title.trim();
+      if (form.hired_at) payload.hired_at = form.hired_at;
+      const r = await api.post('/users', payload);
+      return r.data as { user: User; password_reset_sent: boolean };
+    },
+    onSuccess: (data) => {
+      if (data.password_reset_sent) {
+        toast.success(
+          `✅ ${data.user.full_name} eklendi · şifre belirleme maili ${data.user.email} adresine gönderildi`,
+        );
+      } else {
+        toast.success(`✅ ${data.user.full_name} eklendi (mail gönderilemedi — manuel paylaş)`);
+      }
+      onCreated();
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-orange-600 text-xs font-medium uppercase tracking-wider">
+              <UserPlus className="size-3.5" /> Yeni Çalışan
+            </div>
+            <h3 className="font-display text-xl mt-1">Şirketine yeni biri ekle</h3>
+            <p className="text-xs text-muted mt-1">
+              Hesap oluşturulup şifre belirleme maili gönderilir. Kullanıcı maille gelen
+              linkle kendi şifresini belirler.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost p-1.5 -mt-1 -mr-1"
+            disabled={mut.isPending}
+            aria-label="Kapat"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="label">Ad Soyad *</label>
+          <input
+            className="input mt-1"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            placeholder="Ayşe Yılmaz"
+            autoFocus
+          />
+          {errors.full_name && (
+            <p className="mt-1 text-xs text-danger">{errors.full_name}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Kurumsal E-posta *</label>
+          <input
+            type="email"
+            className="input mt-1"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="ayse@sirket.com"
+          />
+          {errors.email && <p className="mt-1 text-xs text-danger">{errors.email}</p>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Rol</label>
+            <select
+              className="input mt-1"
+              value={form.role}
+              onChange={(e) =>
+                setForm({ ...form, role: e.target.value as User['role'] })
+              }
+            >
+              <option value="employee">Çalışan</option>
+              <option value="manager">Yönetici</option>
+              <option value="admin">Admin</option>
+              {isOwner && <option value="owner">Şirket Sahibi</option>}
+            </select>
+          </div>
+          <div>
+            <label className="label">Departman</label>
+            <select
+              className="input mt-1"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            >
+              {departments.length === 0 ? (
+                <>
+                  <option value="Satış">Satış</option>
+                  <option value="Sevk">Sevk</option>
+                  <option value="Muhasebe">Muhasebe</option>
+                  <option value="Diğer">Diğer</option>
+                </>
+              ) : (
+                departments.map((d) => (
+                  <option key={d.id} value={d.name}>
+                    {d.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Pozisyon (opsiyonel)</label>
+          <input
+            className="input mt-1"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Yazılım Geliştirici"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">İşe Giriş</label>
+            <input
+              type="date"
+              className="input mt-1"
+              value={form.hired_at}
+              onChange={(e) => setForm({ ...form, hired_at: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">Yıllık İzin</label>
+            <input
+              type="number"
+              min={0}
+              max={60}
+              className="input mt-1"
+              value={form.annual_leave_quota_days}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  annual_leave_quota_days: Number(e.target.value),
+                })
+              }
+            />
+            {errors.annual_leave_quota_days && (
+              <p className="mt-1 text-xs text-danger">{errors.annual_leave_quota_days}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={mut.isPending}
+            className="btn-outline flex-1"
+          >
+            İptal
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!validate()) return;
+              mut.mutate();
+            }}
+            disabled={mut.isPending}
+            className="btn-primary flex-1"
+          >
+            {mut.isPending && <Loader2 className="size-4 animate-spin" />}
+            Ekle ve Mail Gönder
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

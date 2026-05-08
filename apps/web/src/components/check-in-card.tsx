@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   CheckCircle2,
@@ -16,6 +16,8 @@ import { generateDeviceId } from '@/lib/utils';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { useNfc } from '@/hooks/use-nfc';
 import { QrScanner } from './qr-scanner';
+import { MoodPrompt } from './mood-prompt';
+import { sendBrowserNotification } from '@/lib/notifications';
 
 interface Props {
   locationId?: string;
@@ -35,9 +37,18 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [lastResult, setLastResult] =
     useState<{ score: number; flags: string[]; methods: string[]; type: string } | null>(null);
+  const [showMoodPrompt, setShowMoodPrompt] = useState(false);
 
+  const qc = useQueryClient();
   const geo = useGeolocation();
   const nfc = useNfc();
+
+  // Bugünün mood'u var mı? Damga sonrası tekrar sormamak için bilelim.
+  const { data: todayMoodData } = useQuery<{ mood: { id: string } | null }>({
+    queryKey: ['mood', 'today'],
+    queryFn: async () => (await api.get('/moods/today')).data,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Bugünkü son event'i çek → "sıradaki aksiyon" hint'i için
   const { data: todayEvents, refetch: refetchToday } = useQuery({
@@ -95,6 +106,26 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       if (onSuccess) onSuccess(data);
       setMethod(null);
       void refetchToday();
+
+      // Damga sonrası: bugün mood logged mı? değilse modal aç + bildirim gönder.
+      const hasTodayMood = !!todayMoodData?.mood;
+      if (!hasTodayMood) {
+        // Sayfa odakta değilse browser notification → tıklayınca app açılır;
+        // odaktaysa zaten modal göstereceğiz.
+        if (document.visibilityState === 'hidden') {
+          sendBrowserNotification({
+            title: `${emoji} ${labelTr} kaydedildi`,
+            body: 'Bugün nasıl hissediyorsun? Tek tıkla bildir.',
+            tag: 'damga-mood-prompt',
+            url: '/',
+            autoClose: 12_000,
+          });
+        }
+        // Toast sonrası küçük gecikme ile modal aç (UX olarak akıcı)
+        window.setTimeout(() => setShowMoodPrompt(true), 700);
+      } else {
+        void qc.invalidateQueries({ queryKey: ['mood', 'today'] });
+      }
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
@@ -261,6 +292,13 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
           </div>
         </div>
       )}
+
+      {/* Damga sonrası ruh hali sorma modalı */}
+      <MoodPrompt
+        forceOpen={showMoodPrompt}
+        onClose={() => setShowMoodPrompt(false)}
+        cooldownKey="mood-prompt-stamp"
+      />
     </div>
   );
 }
