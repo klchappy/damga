@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 import { createUserSchema, adminUpdateUserSchema } from '@damga/shared';
 import { getDb, users } from '@damga/db';
 import { env, isConfigured } from '../config/env';
@@ -210,8 +211,10 @@ usersRouter.patch(
 );
 
 /**
- * POST /v1/users/:id/password-reset — admin tetikler.
- * Supabase Admin API ile recovery e-postası gönderir.
+ * POST /v1/users/:id/password-reset — admin şifre sıfırlama linki üretir.
+ *
+ * Mail GÖNDERMEZ (rate-limit'e takılmıyor); generateLink ile doğrudan kullanılabilir
+ * recovery URL döner; admin link'i manuel paylaşır.
  */
 usersRouter.post(
   '/users/:id/password-reset',
@@ -222,23 +225,148 @@ usersRouter.post(
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
       const [u] = await getDb()
-        .select({ email: users.email, auth_user_id: users.auth_user_id })
+        .select({
+          email: users.email,
+          full_name: users.full_name,
+          auth_user_id: users.auth_user_id,
+        })
         .from(users)
         .where(and(eq(users.id, id), eq(users.org_id, req.authOrgId)));
       if (!u) throw new HttpError(404, 'Çalışan bulunamadı');
 
-      // Supabase Admin API
-      const { createClient } = await import('@supabase/supabase-js');
-      const admin = createClient(
-        process.env.SUPABASE_URL ?? '',
-        process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-        { auth: { autoRefreshToken: false, persistSession: false } },
-      );
-      const { error } = await admin.auth.resetPasswordForEmail(u.email, {
-        redirectTo: `${process.env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`,
+      const supabase = getSupabaseAdmin();
+      const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email: u.email,
+        options: { redirectTo },
       });
-      if (error) throw new HttpError(502, `Mail gönderilemedi: ${error.message}`);
-      res.json({ ok: true, sent_to: u.email });
+      if (linkErr || !linkData?.properties?.action_link) {
+        throw new HttpError(502, `Link üretilemedi: ${linkErr?.message ?? 'unknown'}`);
+      }
+      res.json({
+        ok: true,
+        email: u.email,
+        full_name: u.full_name,
+        password_reset_link: linkData.properties.action_link,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /v1/users/:id/set-password — admin doğrudan yeni şifre belirler.
+ *
+ * Body: { password?: string }
+ *   - Verilmezse 14 karakterlik güçlü rastgele şifre üretilir
+ *   - Verilirse en az 8 karakter olmalı
+ *
+ * Supabase admin.updateUserById(authUserId, { password }) çağırılır.
+ * Yeni şifre **CLEAR TEXT olarak** response'da döner — admin kullanıcıya iletir.
+ *
+ * GÜVENLİK NOTU:
+ *  - Audit log'a "admin X kullanıcı Y'nin şifresini değiştirdi" düşer
+ *  - Mevcut şifre OKUNAMAZ (bcrypt hash, geri çevrilemez); sadece yenisi atanır
+ *  - Bu işlem non-repudiation kaybına yol açabilir → kullanıcı ilk girişte
+ *    şifre değiştirme yapması önerilir (bu UI tarafında not edilir)
+ */
+const setPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(8, 'En az 8 karakter')
+    .max(72)
+    .optional(),
+});
+
+function generateStrongPassword(length = 14): string {
+  // İnsan-okunabilir set: harf+rakam+sembol; karışan karakterler (0,O,l,1,I) çıkarıldı
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const digit = '23456789';
+  const sym = '!@#$%&*?';
+  const all = lower + upper + digit + sym;
+  // Her gruptan en az bir karakter garanti
+  const must = [
+    lower[Math.floor(Math.random() * lower.length)],
+    upper[Math.floor(Math.random() * upper.length)],
+    digit[Math.floor(Math.random() * digit.length)],
+    sym[Math.floor(Math.random() * sym.length)],
+  ];
+  const rest: string[] = [];
+  for (let i = must.length; i < length; i++) {
+    rest.push(all[Math.floor(Math.random() * all.length)]!);
+  }
+  // Karıştır
+  const arr = [...must, ...rest].filter(Boolean) as string[];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  return arr.join('');
+}
+
+usersRouter.post(
+  '/users/:id/set-password',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUser) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const body = setPasswordSchema.parse(req.body ?? {});
+
+      const [u] = await getDb()
+        .select({
+          email: users.email,
+          full_name: users.full_name,
+          auth_user_id: users.auth_user_id,
+          role: users.role,
+        })
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.org_id, req.authOrgId)));
+      if (!u) throw new HttpError(404, 'Çalışan bulunamadı');
+      if (!u.auth_user_id) {
+        throw new HttpError(
+          400,
+          'Bu kullanıcının auth hesabı yok',
+          'NO_AUTH_USER',
+        );
+      }
+
+      // Owner şifresini sadece owner değiştirebilir
+      if (u.role === 'owner' && req.authUser.role !== 'owner') {
+        throw new HttpError(
+          403,
+          'Owner şifresini sadece şirket sahibi değiştirebilir',
+          'OWNER_ONLY',
+        );
+      }
+
+      const newPassword = body.password ?? generateStrongPassword(14);
+      const generated = !body.password;
+
+      const supabase = getSupabaseAdmin();
+      const { error } = await supabase.auth.admin.updateUserById(u.auth_user_id, {
+        password: newPassword,
+      });
+      if (error) {
+        throw new HttpError(502, `Şifre güncellenemedi: ${error.message}`);
+      }
+
+      logger.info(
+        { userId: id, by: req.authUserId, generated },
+        'Admin kullanıcı şifresini değiştirdi',
+      );
+
+      res.json({
+        ok: true,
+        email: u.email,
+        full_name: u.full_name,
+        password: newPassword,
+        generated,
+      });
     } catch (err) {
       next(err);
     }

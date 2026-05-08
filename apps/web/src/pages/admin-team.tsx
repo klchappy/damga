@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Pencil, KeyRound, UserCheck, UserX, UserPlus, Loader2, X } from 'lucide-react';
+import { Pencil, KeyRound, UserCheck, UserX, UserPlus, Loader2, X, Shuffle, Send } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
 import { ShareLinkModal } from '@/components/share-link-modal';
+import { SharePasswordModal } from '@/components/share-password-modal';
 
 interface User {
   id: string;
@@ -47,6 +48,19 @@ export function AdminTeamPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
+  const [pwUser, setPwUser] = useState<User | null>(null);
+  const [pwShare, setPwShare] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    generated: boolean;
+  } | null>(null);
+  const [linkShare, setLinkShare] = useState<{
+    name: string;
+    email: string;
+    link: string | null;
+    error: string | null;
+  } | null>(null);
 
   const { data: usersData, isLoading } = useQuery<{ items: User[] }>({
     queryKey: ['admin', 'users'],
@@ -56,12 +70,6 @@ export function AdminTeamPage() {
   const { data: deptsData } = useQuery<{ items: Department[] }>({
     queryKey: ['departments'],
     queryFn: async () => (await api.get('/departments')).data,
-  });
-
-  const resetPwMut = useMutation({
-    mutationFn: async (id: string) => (await api.post(`/users/${id}/password-reset`)).data,
-    onSuccess: (d) => toast.success(`📧 Şifre sıfırlama maili: ${d.sent_to}`),
-    onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const toggleActiveMut = useMutation({
@@ -80,7 +88,7 @@ export function AdminTeamPage() {
         <div>
           <h1 className="text-3xl">👥 Ekip Yönetimi</h1>
           <p className="text-sm text-muted">
-            Çalışan ekle, düzenle, departman ata, izin kotası belirle, şifre sıfırla.
+            Çalışan ekle, düzenle, departman ata, izin kotası belirle, şifre belirle/sıfırla.
           </p>
         </div>
         <button
@@ -148,13 +156,9 @@ export function AdminTeamPage() {
                           <Pencil className="size-4" />
                         </button>
                         <button
-                          onClick={() =>
-                            confirm(`${u.email} için şifre sıfırlama maili gönderilsin mi?`) &&
-                            resetPwMut.mutate(u.id)
-                          }
-                          title="Şifre sıfırla"
+                          onClick={() => setPwUser(u)}
+                          title="Şifre yönet (yeni şifre belirle veya sıfırlama linki üret)"
                           className="btn-ghost p-1.5"
-                          disabled={resetPwMut.isPending}
                         >
                           <KeyRound className="size-4" />
                         </button>
@@ -206,6 +210,268 @@ export function AdminTeamPage() {
           }}
         />
       )}
+
+      {pwUser && (
+        <ManagePasswordModal
+          user={pwUser}
+          onClose={() => setPwUser(null)}
+          onPasswordSet={(payload) => {
+            setPwUser(null);
+            setPwShare(payload);
+          }}
+          onLinkGenerated={(payload) => {
+            setPwUser(null);
+            setLinkShare(payload);
+          }}
+        />
+      )}
+
+      {pwShare && (
+        <SharePasswordModal
+          recipientName={pwShare.name}
+          recipientEmail={pwShare.email}
+          password={pwShare.password}
+          generated={pwShare.generated}
+          onClose={() => setPwShare(null)}
+        />
+      )}
+
+      {linkShare && (
+        <ShareLinkModal
+          title="Şifre sıfırlama linki"
+          description="Kullanıcıya bu linki ulaştır — link tek kullanımlık ve süresi sınırlıdır."
+          recipientName={linkShare.name}
+          recipientEmail={linkShare.email}
+          link={linkShare.link}
+          error={linkShare.error}
+          onClose={() => setLinkShare(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ManagePasswordModal({
+  user,
+  onClose,
+  onPasswordSet,
+  onLinkGenerated,
+}: {
+  user: User;
+  onClose: () => void;
+  onPasswordSet: (p: {
+    name: string;
+    email: string;
+    password: string;
+    generated: boolean;
+  }) => void;
+  onLinkGenerated: (p: {
+    name: string;
+    email: string;
+    link: string | null;
+    error: string | null;
+  }) => void;
+}) {
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
+  const [manualPw, setManualPw] = useState('');
+  const [reveal, setReveal] = useState(false);
+
+  const setMut = useMutation({
+    mutationFn: async () => {
+      const body =
+        mode === 'manual' && manualPw.length >= 8 ? { password: manualPw } : {};
+      const r = await api.post(`/users/${user.id}/set-password`, body);
+      return r.data as {
+        ok: true;
+        email: string;
+        full_name: string;
+        password: string;
+        generated: boolean;
+      };
+    },
+    onSuccess: (d) => {
+      toast.success('🔑 Şifre belirlendi');
+      onPasswordSet({
+        name: d.full_name,
+        email: d.email,
+        password: d.password,
+        generated: d.generated,
+      });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const linkMut = useMutation({
+    mutationFn: async () => {
+      const r = await api.post(`/users/${user.id}/password-reset`);
+      return r.data as {
+        ok: true;
+        email: string;
+        full_name: string;
+        password_reset_link: string;
+      };
+    },
+    onSuccess: (d) => {
+      toast.success('🔗 Sıfırlama linki üretildi');
+      onLinkGenerated({
+        name: d.full_name,
+        email: d.email,
+        link: d.password_reset_link,
+        error: null,
+      });
+    },
+    onError: (e) => {
+      toast.error(getErrorMessage(e));
+      onLinkGenerated({
+        name: user.full_name,
+        email: user.email,
+        link: null,
+        error: getErrorMessage(e),
+      });
+    },
+  });
+
+  const canSubmit =
+    !setMut.isPending &&
+    !linkMut.isPending &&
+    (mode === 'auto' || manualPw.length >= 8);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-orange-600 text-xs font-medium uppercase tracking-wider">
+              <KeyRound className="size-3.5" /> Şifre Yönetimi
+            </div>
+            <h3 className="font-display text-xl mt-1">{user.full_name}</h3>
+            <p className="text-xs text-muted">{user.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={setMut.isPending || linkMut.isPending}
+            className="btn-ghost p-1.5 -mt-1 -mr-1"
+            aria-label="Kapat"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="rounded-md bg-warning/5 border border-warning/20 px-3 py-2 text-[11px] text-muted">
+          ⚠️ Mevcut şifre <strong className="text-ink">görüntülenemez</strong> (bcrypt hash —
+          geri çevrilemez). Aşağıdaki seçeneklerden biriyle yeni şifre atayabilir veya
+          sıfırlama linki üretebilirsin.
+        </div>
+
+        {/* Mod seçici */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setMode('auto')}
+            disabled={setMut.isPending}
+            className={`text-left rounded-lg border-2 p-3 transition ${
+              mode === 'auto'
+                ? 'border-orange-400 bg-orange-50/60'
+                : 'border-orange-100 bg-white hover:border-orange-200'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
+              <Shuffle className="size-4 text-orange-500" />
+              Otomatik üret
+            </div>
+            <div className="text-[11px] text-muted mt-0.5">
+              14 karakterlik güçlü şifre
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('manual')}
+            disabled={setMut.isPending}
+            className={`text-left rounded-lg border-2 p-3 transition ${
+              mode === 'manual'
+                ? 'border-orange-400 bg-orange-50/60'
+                : 'border-orange-100 bg-white hover:border-orange-200'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
+              <Pencil className="size-4 text-orange-500" />
+              Manuel gir
+            </div>
+            <div className="text-[11px] text-muted mt-0.5">Kendi şifreni belirle</div>
+          </button>
+        </div>
+
+        {mode === 'manual' && (
+          <div>
+            <label className="label text-xs">Yeni şifre (en az 8 karakter)</label>
+            <div className="mt-1 relative">
+              <input
+                type={reveal ? 'text' : 'password'}
+                className="input pr-10 font-mono"
+                value={manualPw}
+                onChange={(e) => setManualPw(e.target.value)}
+                placeholder="••••••••"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setReveal((r) => !r)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 btn-ghost p-1"
+                tabIndex={-1}
+              >
+                {reveal ? '🙈' : '👁'}
+              </button>
+            </div>
+            {manualPw.length > 0 && manualPw.length < 8 && (
+              <p className="mt-1 text-xs text-danger">En az 8 karakter olmalı</p>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setMut.mutate()}
+          disabled={!canSubmit}
+          className="btn-primary w-full"
+        >
+          {setMut.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <KeyRound className="size-4" />
+          )}
+          {mode === 'auto' ? 'Güçlü Şifre Üret ve Belirle' : 'Şifreyi Belirle'}
+        </button>
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-orange-100" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-white px-2 text-muted">veya alternatif</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => linkMut.mutate()}
+          disabled={setMut.isPending || linkMut.isPending}
+          className="btn-outline w-full text-sm"
+        >
+          {linkMut.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Send className="size-4" />
+          )}
+          Şifre Sıfırlama Linki Üret (kullanıcı kendi belirler)
+        </button>
+      </div>
     </div>
   );
 }
