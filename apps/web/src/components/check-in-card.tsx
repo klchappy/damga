@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, MapPin, Smartphone, QrCode, Loader2, AlertCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  MapPin,
+  Smartphone,
+  QrCode,
+  Loader2,
+  AlertCircle,
+  LogIn,
+  LogOut,
+} from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { generateDeviceId } from '@/lib/utils';
 import { useGeolocation } from '@/hooks/use-geolocation';
@@ -9,24 +18,50 @@ import { useNfc } from '@/hooks/use-nfc';
 import { QrScanner } from './qr-scanner';
 
 interface Props {
-  /** Hangi tipte aksiyon — varsayılan check_in. Çift "kapasite" tek butonda toggle */
-  defaultAction?: 'check_in' | 'check_out';
   locationId?: string;
   onSuccess?: (result: { event_id: string; verification_score: number; flags: string[] }) => void;
 }
 
 type Method = 'nfc' | 'qr' | 'gps';
 
-export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess }: Props) {
-  const [action, setAction] = useState<'check_in' | 'check_out'>(defaultAction);
+/**
+ * Damga kartı — kullanıcı giriş/çıkış SEÇMEZ.
+ * Backend bugünkü son event'e bakıp otomatik karar verir (`POST /v1/stamp`).
+ *
+ * UI'da sadece "sıradaki aksiyon" gösterilir (Giriş veya Çıkış).
+ */
+export function CheckInCard({ locationId, onSuccess }: Props) {
   const [method, setMethod] = useState<Method | null>(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
-  const [lastResult, setLastResult] = useState<{ score: number; flags: string[]; methods: string[] } | null>(null);
+  const [lastResult, setLastResult] =
+    useState<{ score: number; flags: string[]; methods: string[]; type: string } | null>(null);
 
   const geo = useGeolocation();
   const nfc = useNfc();
 
-  const checkInMutation = useMutation({
+  // Bugünkü son event'i çek → "sıradaki aksiyon" hint'i için
+  const { data: todayEvents, refetch: refetchToday } = useQuery({
+    queryKey: ['events', 'me', 'today'],
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      const r = await api.get<{ items: Array<{ type: string; server_time: string }> }>(
+        `/events?date_from=${start.toISOString()}&date_to=${end.toISOString()}&limit=20`,
+      );
+      return r.data;
+    },
+  });
+
+  const todaySorted = (todayEvents?.items ?? []).slice().sort(
+    (a, b) => new Date(b.server_time).getTime() - new Date(a.server_time).getTime(),
+  );
+  const lastTodayType = todaySorted[0]?.type;
+  const nextAction: 'check_in' | 'check_out' =
+    !lastTodayType || lastTodayType === 'check_out' ? 'check_in' : 'check_out';
+
+  const stampMutation = useMutation({
     mutationFn: async (payload: {
       latitude?: number;
       longitude?: number;
@@ -34,8 +69,7 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
       nfc_tag_id?: string;
       qr_code_payload?: string;
     }) => {
-      const path = action === 'check_in' ? '/check-in' : '/check-out';
-      const { data } = await api.post(path, {
+      const { data } = await api.post('/stamp', {
         location_id: locationId,
         client_time: new Date().toISOString(),
         device_id: generateDeviceId(),
@@ -52,12 +86,15 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
       const score = data.verification_score;
       const flags: string[] = data.flags ?? [];
       const methods: string[] = data.verification_methods ?? [];
-      setLastResult({ score, flags, methods });
+      // Backend hangi tipi seçtiyse — response'da event_id var ama type yok; nextAction'ı kullan
+      const type = nextAction;
+      setLastResult({ score, flags, methods, type });
       const emoji = score >= 80 ? '✅' : score >= 60 ? '⚠️' : '❌';
-      const labelTr = action === 'check_in' ? 'Giriş' : 'Çıkış';
+      const labelTr = type === 'check_in' ? 'Giriş' : 'Çıkış';
       toast.success(`${emoji} ${labelTr} kaydedildi · trust ${score}/100`);
       if (onSuccess) onSuccess(data);
       setMethod(null);
+      void refetchToday();
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
@@ -69,9 +106,8 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
     setMethod('nfc');
     try {
       const result = await nfc.read();
-      // NFC payload + isteğe bağlı GPS
       const gpsPos = await geo.getCurrent().catch(() => null);
-      checkInMutation.mutate({
+      stampMutation.mutate({
         nfc_tag_id: result.rawData,
         latitude: gpsPos?.latitude,
         longitude: gpsPos?.longitude,
@@ -88,7 +124,7 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
     setMethod('qr');
     try {
       const gpsPos = await geo.getCurrent().catch(() => null);
-      checkInMutation.mutate({
+      stampMutation.mutate({
         qr_code_payload: qrText,
         latitude: gpsPos?.latitude,
         longitude: gpsPos?.longitude,
@@ -104,7 +140,7 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
     setMethod('gps');
     try {
       const pos = await geo.getCurrent();
-      checkInMutation.mutate({
+      stampMutation.mutate({
         latitude: pos.latitude,
         longitude: pos.longitude,
         gps_accuracy_m: pos.accuracy,
@@ -115,34 +151,34 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
     }
   };
 
-  const isPending = checkInMutation.isPending || method !== null;
+  const isPending = stampMutation.isPending || method !== null;
 
   return (
     <div className="card space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="font-display text-2xl">Damga vur</h2>
           <p className="text-sm text-muted">
-            {action === 'check_in' ? 'Mesai başlangıcı' : 'Mesai bitişi'}
+            Sistem bugünkü hareketine göre otomatik karar verir.
           </p>
         </div>
-        <div className="flex gap-1 rounded-full bg-orange-50 p-1">
-          <button
-            onClick={() => setAction('check_in')}
-            className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-              action === 'check_in' ? 'bg-orange-500 text-white' : 'text-muted'
-            }`}
-          >
-            ⏱️ Giriş
-          </button>
-          <button
-            onClick={() => setAction('check_out')}
-            className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-              action === 'check_out' ? 'bg-orange-500 text-white' : 'text-muted'
-            }`}
-          >
-            🏃 Çıkış
-          </button>
+        {/* Sıradaki aksiyon — sadece bilgi (kullanıcı seçmez) */}
+        <div
+          className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
+            nextAction === 'check_in'
+              ? 'bg-success/10 text-success'
+              : 'bg-warning/10 text-warning'
+          }`}
+        >
+          {nextAction === 'check_in' ? (
+            <>
+              <LogIn className="size-4" /> Sıradaki: Giriş
+            </>
+          ) : (
+            <>
+              <LogOut className="size-4" /> Sıradaki: Çıkış
+            </>
+          )}
         </div>
       </div>
 
@@ -163,7 +199,7 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
             )}
             <div className="text-sm font-medium">📱 NFC</div>
             <div className="text-xs text-muted text-center">
-              {nfc.supported ? 'Telefonu tag\'a yaklaştır' : 'Bu cihazda NFC yok'}
+              {nfc.supported ? "Telefonu tag'a yaklaştır" : 'Bu cihazda NFC yok'}
             </div>
           </button>
 
@@ -188,7 +224,7 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
               <MapPin className="size-7 text-orange-500" />
             )}
             <div className="text-sm font-medium">📍 Sadece Konum</div>
-            <div className="text-xs text-muted text-center">Geofence kontrolü (düşük güven)</div>
+            <div className="text-xs text-muted text-center">Geofence (düşük güven)</div>
           </button>
         </div>
       )}
@@ -209,7 +245,10 @@ export function CheckInCard({ defaultAction = 'check_in', locationId, onSuccess 
             ) : (
               <AlertCircle className="size-5 text-warning" />
             )}
-            <span>Son damga: trust {lastResult.score}/100</span>
+            <span>
+              {lastResult.type === 'check_in' ? '⏱️ Giriş' : '🏃 Çıkış'} kaydedildi · trust{' '}
+              {lastResult.score}/100
+            </span>
           </div>
           <div className="mt-1.5 text-xs text-muted">
             Yöntemler: {lastResult.methods.join(', ') || '—'}

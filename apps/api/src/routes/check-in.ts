@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, gte } from 'drizzle-orm';
 import { checkInSchema } from '@damga/shared';
 import { computeTrustScore, computeEvidenceHash } from '@damga/verification';
 import { getDb, attendanceEvents, locations, users } from '@damga/db';
@@ -197,3 +197,48 @@ checkInRouter.post('/check-out', requireAuth, requireScope('events:write'), chec
     next(err);
   }
 });
+
+/**
+ * POST /v1/stamp — OTOMATIK damga (giriş/çıkış kullanıcı seçmez)
+ *
+ * Backend kullanıcının BUGÜNKÜ son event'ine bakar:
+ *   - Hiç event yok → check_in
+ *   - Son event check_in → check_out
+ *   - Son event check_out → check_in (yeni vardiya başlangıcı)
+ *
+ * Bu sayede çalışan unutamaz, yanlış seçemez.
+ */
+checkInRouter.post(
+  '/stamp',
+  requireAuth,
+  requireScope('events:write'),
+  checkInLimiter,
+  async (req, res, next) => {
+    try {
+      if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+
+      // Bugünün başlangıcı (UTC)
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+
+      const [last] = await getDb()
+        .select({ type: attendanceEvents.type })
+        .from(attendanceEvents)
+        .where(
+          and(
+            eq(attendanceEvents.user_id, req.authUserId),
+            gte(attendanceEvents.server_time, today),
+          ),
+        )
+        .orderBy(desc(attendanceEvents.server_time))
+        .limit(1);
+
+      const nextType: 'check_in' | 'check_out' =
+        !last || last.type === 'check_out' ? 'check_in' : 'check_out';
+
+      await performAttendance(nextType, req, res);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
