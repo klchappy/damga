@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { signInSchema, type SignInInput } from '@damga/shared';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
-import { signInWithEmail, sendMagicLink } from '@/hooks/use-auth';
+import { signInWithEmail, sendMagicLink, useAuthStore } from '@/hooks/use-auth';
 import { isSupabaseConfigured } from '@/lib/env';
 
 export function SignInPage() {
@@ -27,10 +27,13 @@ export function SignInPage() {
     try {
       await signInWithEmail(data.email, data.password);
       toast.success('Giriş başarılı 👋');
+      // Race condition: navigate hemen olursa user state henüz dolmamış olabilir.
+      // Splash göster → useAuthBoot/onAuthStateChange fetchProfile bitince user gelir
+      // → PrivateRoute children render eder.
+      useAuthStore.getState().setLoading(true);
       navigate('/', { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Giriş yapılamadı');
-    } finally {
       setSubmitting(false);
     }
   };

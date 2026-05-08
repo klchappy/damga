@@ -69,6 +69,18 @@ export function useAuthBoot() {
       return;
     }
 
+    // Splash en az 2.5 sn görünsün (damga animasyonu güzel görünsün)
+    const bootStart = Date.now();
+    const MIN_SPLASH_MS = 2500;
+    const finishLoading = () => {
+      if (cancelled) return;
+      const elapsed = Date.now() - bootStart;
+      const wait = Math.max(0, MIN_SPLASH_MS - elapsed);
+      window.setTimeout(() => {
+        if (!cancelled) setLoading(false);
+      }, wait);
+    };
+
     const fetchProfile = async () => {
       try {
         const { data } = await api.get<{ user: AuthUser }>('/auth/me');
@@ -77,17 +89,17 @@ export function useAuthBoot() {
         console.warn('[auth] /auth/me failed:', err);
         if (!cancelled) setUser(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        finishLoading();
       }
     };
 
-    // Hard timeout: 3 saniye — Supabase getSession bazen sessizce hang ediyor
+    // Hard timeout: 5 saniye — Supabase getSession bazen sessizce hang ediyor
     const timeoutId = window.setTimeout(() => {
       if (!cancelled) {
-        console.warn('[auth] boot timeout 3s, forcing loading=false');
+        console.warn('[auth] boot timeout 5s, forcing loading=false');
         setLoading(false);
       }
-    }, 3000);
+    }, 5000);
 
     supabase.auth
       .getSession()
@@ -97,13 +109,13 @@ export function useAuthBoot() {
         if (error) console.warn('[auth] getSession error:', error.message);
         setSession(data?.session ?? null);
         if (data?.session) void fetchProfile();
-        else setLoading(false);
+        else finishLoading();
       })
       .catch((err) => {
         console.error('[auth] getSession threw:', err);
         if (!cancelled) {
           window.clearTimeout(timeoutId);
-          setLoading(false);
+          finishLoading();
         }
       });
 
@@ -112,7 +124,7 @@ export function useAuthBoot() {
       if (session) void fetchProfile();
       else {
         setUser(null);
-        setLoading(false);
+        finishLoading();
       }
     });
 
