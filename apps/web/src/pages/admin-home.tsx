@@ -134,6 +134,12 @@ export function AdminHomePage() {
           title="Onay Bekleyen Damgalar"
           desc="Lokasyon dışı veya yeni cihazdan damga vurmuş çalışanların selfie'sini incele, onayla veya reddet."
         />
+        <AdminCard
+          to="/admin/live-feed"
+          icon={<Activity className="size-6" />}
+          title="Damga Akışı"
+          desc="Tüm çalışanların damgalarını canlı izle. Her damgada konum doğrulama durumu (yeşil/sarı/gri) gözükür."
+        />
       </div>
 
       {/* Sistem durumu */}

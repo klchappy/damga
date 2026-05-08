@@ -22,6 +22,7 @@ import { AdminApplicationsPage } from '@/pages/admin-applications';
 import { AdminSettingsPage } from '@/pages/admin-settings';
 import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
 import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
+import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -224,6 +225,14 @@ function AppInner() {
           element={
             <RoleGate roles={['manager', 'admin', 'owner']}>
               <AdminPendingReviewsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/live-feed"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <AdminLiveFeedPage />
             </RoleGate>
           }
         />

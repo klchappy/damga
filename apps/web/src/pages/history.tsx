@@ -1,6 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  ShieldCheck,
+  ShieldAlert,
+  Smartphone,
+  Camera,
+  Lock,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTr, formatTimeTr } from '@/lib/utils';
 
@@ -10,7 +19,76 @@ interface Event {
   server_time: string;
   verification_score: number;
   flags: string[];
+  // Lokasyon doğrulama
+  latitude?: number | null;
+  longitude?: number | null;
+  distance_from_office_m?: number | null;
+  verification_methods?: string[];
+  review_status?: 'approved' | 'pending_review' | 'rejected';
+  review_reasons?: string[];
+  selfie_url?: string | null;
 }
+
+/**
+ * Bir damga için "konum doğrulama rozeti" — yönetici/admin/owner için açıkça
+ * görünür şekilde anomali var mı yok mu, nasıl doğrulandı.
+ */
+function LocationBadge({ event }: { event: Event }) {
+  const methods = event.verification_methods ?? [];
+  const isNfc = methods.includes('nfc');
+  const reviewStatus = event.review_status ?? 'approved';
+  const isOutOfFence = (event.review_reasons ?? []).includes('out_of_geofence');
+
+  if (reviewStatus === 'rejected') {
+    return (
+      <span className="chip bg-danger/10 text-danger border border-danger/30 text-[10px]">
+        <ShieldAlert className="size-3" />
+        Reddedildi
+      </span>
+    );
+  }
+  if (reviewStatus === 'pending_review') {
+    return (
+      <span className="chip bg-warning/10 text-warning border border-warning/30 text-[10px]">
+        <Camera className="size-3" />
+        Onay bekliyor (selfie)
+      </span>
+    );
+  }
+  if (isNfc) {
+    return (
+      <span className="chip bg-orange-100 text-orange-700 border border-orange-200 text-[10px]">
+        <Lock className="size-3" />
+        NFC ile (fiziksel)
+      </span>
+    );
+  }
+  if (isOutOfFence) {
+    // Onaylı ama dışarıdan damga (admin esnemiş veya allow_outside=true)
+    return (
+      <span className="chip bg-warning/10 text-warning border border-warning/30 text-[10px]">
+        <MapPin className="size-3" />
+        Lokasyon dışı (onaylandı)
+      </span>
+    );
+  }
+  if (event.distance_from_office_m != null) {
+    return (
+      <span className="chip bg-success/10 text-success border border-success/30 text-[10px]">
+        <ShieldCheck className="size-3" />
+        Konum doğrulandı ({event.distance_from_office_m}m)
+      </span>
+    );
+  }
+  return (
+    <span className="chip bg-muted/10 text-muted border border-muted/20 text-[10px]">
+      <Smartphone className="size-3" />
+      Konum verisi yok
+    </span>
+  );
+}
+
+export { LocationBadge };
 
 export function HistoryPage() {
   const [month, setMonth] = useState(() => {
@@ -143,8 +221,8 @@ export function HistoryPage() {
         ) : (
           <ul className="divide-y divide-orange-100">
             {data!.items.map((e) => (
-              <li key={e.id} className="flex items-center justify-between py-2.5">
-                <div>
+              <li key={e.id} className="flex items-start justify-between py-3 gap-3 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-1">
                   <div className="font-medium">
                     {e.type === 'check_in' ? '⏱️ Giriş' : e.type === 'check_out' ? '🏃 Çıkış' : e.type}
                   </div>
@@ -154,18 +232,23 @@ export function HistoryPage() {
                       <span className="ml-2 text-warning">⚠ {e.flags.join(', ')}</span>
                     )}
                   </div>
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    <LocationBadge event={e} />
+                  </div>
                 </div>
-                <span
-                  className={`chip ${
-                    e.verification_score >= 80
-                      ? 'bg-success/10 text-success'
-                      : e.verification_score >= 60
-                        ? 'bg-warning/10 text-warning'
-                        : 'bg-danger/10 text-danger'
-                  }`}
-                >
-                  {e.verification_score}
-                </span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span
+                    className={`chip ${
+                      e.verification_score >= 80
+                        ? 'bg-success/10 text-success'
+                        : e.verification_score >= 60
+                          ? 'bg-warning/10 text-warning'
+                          : 'bg-danger/10 text-danger'
+                    }`}
+                  >
+                    Trust {e.verification_score}/100
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
