@@ -12,6 +12,7 @@ import {
   Tags,
   Building2,
   Settings as SettingsIcon,
+  UserPlus,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -120,6 +121,12 @@ export function AdminHomePage() {
           icon={<SettingsIcon className="size-6" />}
           title="Şirket Ayarları"
           desc="Çalışanların hangi sayfaları görebileceğini seç (Bugün, Menü, Duyuru sade preset)."
+        />
+        <AdminCard
+          to="/admin/pending-users"
+          icon={<UserPlus className="size-6" />}
+          title="Bekleyen Kullanıcılar"
+          desc="Self-signup yapmış kullanıcıları kendi şirketine ekle (rol + departman ata)."
         />
       </div>
 

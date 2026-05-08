@@ -20,6 +20,8 @@ import { AdminTeamPage } from '@/pages/admin-team';
 import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { AdminApplicationsPage } from '@/pages/admin-applications';
 import { AdminSettingsPage } from '@/pages/admin-settings';
+import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
+import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
@@ -79,11 +81,39 @@ function AppInner() {
         }
       >
         <Route index element={<EmployeeHomePage />} />
-        <Route path="history" element={<HistoryPage />} />
+        <Route
+          path="history"
+          element={
+            <EmployeePageGate page="history">
+              <HistoryPage />
+            </EmployeePageGate>
+          }
+        />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="leaves" element={<LeavesMinePage />} />
-        <Route path="menu" element={<MenuPage />} />
-        <Route path="announcements" element={<AnnouncementsPage />} />
+        <Route
+          path="leaves"
+          element={
+            <EmployeePageGate page="leaves">
+              <LeavesMinePage />
+            </EmployeePageGate>
+          }
+        />
+        <Route
+          path="menu"
+          element={
+            <EmployeePageGate page="menu">
+              <MenuPage />
+            </EmployeePageGate>
+          }
+        />
+        <Route
+          path="announcements"
+          element={
+            <EmployeePageGate page="announcements">
+              <AnnouncementsPage />
+            </EmployeePageGate>
+          }
+        />
 
         {/* Manager+ */}
         <Route
@@ -165,6 +195,14 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminSettingsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/pending-users"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminPendingUsersPage />
             </RoleGate>
           }
         />

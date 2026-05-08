@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase';
@@ -93,15 +93,17 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 }));
 
-/** App boot'ta çağrılır — Supabase session dinler, /v1/auth/me ile profil çeker. */
+/**
+ * App boot'ta çağrılır — Supabase session dinler, /v1/auth/me ile profil çeker.
+ *
+ * StrictMode (dev) iki kez mount eder. Daha önce useRef ile early-return ediyorduk;
+ * ama bu davranış unmount → cleanup → remount sonrası dinleyici BIRAKMADAN
+ * dönüyordu → sign-in sonrası onAuthStateChange asla işlenmiyordu (üretimde de
+ * remount olabiliyor). Şimdi her mount kendi scope'unu kuruyor; eski mount'ların
+ * `cancelled` bayrağı stale yazımları engelliyor.
+ */
 export function useAuthBoot() {
-  const bootedRef = useRef(false);
-
   useEffect(() => {
-    // StrictMode double-mount koruması: useRef ile tek seferlik koşum
-    if (bootedRef.current) return;
-    bootedRef.current = true;
-
     const { setUser, setOrg, setSession, setLoading } = useAuthStore.getState();
 
     if (!isSupabaseConfigured) {
@@ -193,9 +195,30 @@ export function useAuthBoot() {
   }, []);
 }
 
+/**
+ * Şifreli giriş.
+ *
+ * Listener'a güvenmek yerine sign-in sonrası profili DOĞRUDAN çekiyoruz —
+ * StrictMode/remount kaynaklı listener kayıplarına karşı bağışık.
+ * Sign-in page bu fonksiyon RESOLVE OLDUKTAN SONRA `startSignInTransition`
+ * çağırıyor → kullanıcı bilgisi store'da hazır + 5sn damga splash gösteriliyor.
+ */
 export async function signInWithEmail(email: string, password: string) {
-  const { error } = await getSupabase().auth.signInWithPassword({ email, password });
+  const { error, data } = await getSupabase().auth.signInWithPassword({ email, password });
   if (error) throw error;
+  const { setUser, setOrg, setSession } = useAuthStore.getState();
+  if (data?.session) setSession(data.session);
+  try {
+    const { data: profile } = await api.get<{ user: AuthUser; org: AuthOrg | null }>(
+      '/auth/me',
+    );
+    setUser(profile.user);
+    setOrg(profile.org);
+  } catch (err) {
+    // /auth/me başarısız → splash sonrası PrivateRoute redirect; listener
+    // ileride başarılı olursa kendisi setUser çağırır.
+    console.warn('[auth] post-signin /auth/me failed:', err);
+  }
 }
 
 export async function sendMagicLink(email: string) {

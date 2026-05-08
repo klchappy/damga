@@ -289,6 +289,10 @@ applicationsRouter.get(
 /**
  * POST /v1/admin/pending-users/:id/assign
  * Body: { org_id, role, department }
+ *
+ * Güvenlik: admin/owner SADECE kendi org'una atayabilir. body.org_id
+ * authOrgId ile eşleşmek zorunda — başka şirketin admin'i pending bir
+ * kullanıcıyı kendi org'una çekemez.
  */
 applicationsRouter.post(
   '/admin/pending-users/:id/assign',
@@ -296,10 +300,23 @@ applicationsRouter.post(
   requireRole('owner', 'admin'),
   async (req, res, next) => {
     try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
       const body = assignUserOrgSchema.parse(req.body);
-      const db = getDb();
 
+      if (body.org_id !== req.authOrgId) {
+        throw new HttpError(
+          403,
+          'Sadece kendi şirketine atama yapabilirsin',
+          'FORBIDDEN_ORG',
+        );
+      }
+      // Sadece owner başkasını owner yapabilir
+      if (body.role === 'owner' && req.authUser?.role !== 'owner') {
+        throw new HttpError(403, 'Sadece şirket sahibi başka owner ekleyebilir', 'OWNER_ONLY');
+      }
+
+      const db = getDb();
       const [u] = await db
         .update(users)
         .set({
