@@ -4,9 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { signInSchema, type SignInInput } from '@damga/shared';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
-import { signInWithEmail, sendMagicLink, useAuthStore } from '@/hooks/use-auth';
+import { Loader2, AtSign } from 'lucide-react';
+import { signInWithIdentifier, sendMagicLink, useAuthStore } from '@/hooks/use-auth';
 import { isSupabaseConfigured } from '@/lib/env';
+import { api } from '@/lib/api';
 
 export function SignInPage() {
   const navigate = useNavigate();
@@ -22,16 +23,14 @@ export function SignInPage() {
     formState: { errors },
   } = useForm<SignInInput>({
     resolver: zodResolver(signInSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { identifier: '', password: '' },
   });
 
   const onSubmit = async (data: SignInInput) => {
     setSubmitting(true);
     try {
-      await signInWithEmail(data.email, data.password);
+      await signInWithIdentifier(data.identifier, data.password);
       toast.success('Giriş başarılı 👋');
-      // 5 saniyelik damga splash → arka planda fetchProfile çalışıyor olacak.
-      // PrivateRoute (loading || signInTransition) ise DamgaSplash gösteriyor.
       useAuthStore.getState().startSignInTransition(5000);
       navigate(returnPath, { replace: true });
     } catch (err) {
@@ -41,13 +40,22 @@ export function SignInPage() {
   };
 
   const onMagicLink = async () => {
-    const email = getValues('email');
-    if (!email) {
-      toast.error('Önce e-posta gir');
+    const idValue = getValues('identifier');
+    if (!idValue) {
+      toast.error('Önce e-posta, kullanıcı adı veya telefon gir');
       return;
     }
     setMagicLoading(true);
     try {
+      // Magic link sadece email kabul eder → username/phone ise resolve et
+      let email = idValue;
+      if (!email.includes('@')) {
+        const r = await api.post<{ email: string | null }>('/auth/resolve-identifier', {
+          identifier: idValue,
+        });
+        if (!r.data.email) throw new Error('Bu bilgiyle kayıtlı kullanıcı bulunamadı');
+        email = r.data.email;
+      }
       await sendMagicLink(email);
       toast.success('📧 Sihirli link e-postana gönderildi');
     } catch (err) {
@@ -76,15 +84,20 @@ export function SignInPage() {
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div>
-            <label className="label">E-posta</label>
-            <input
-              type="email"
-              autoComplete="email"
-              className="input mt-1"
-              placeholder="ornek@damga.app"
-              {...register('email')}
-            />
-            {errors.email && <p className="mt-1 text-xs text-danger">{errors.email.message}</p>}
+            <label className="label">E-posta, kullanıcı adı veya telefon</label>
+            <div className="relative mt-1">
+              <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted/60" />
+              <input
+                type="text"
+                autoComplete="username"
+                className="input pl-9"
+                placeholder="ornek@sirket.com / kullaniciadi / +905xx..."
+                {...register('identifier')}
+              />
+            </div>
+            {errors.identifier && (
+              <p className="mt-1 text-xs text-danger">{errors.identifier.message}</p>
+            )}
           </div>
           <div>
             <label className="label">Şifre</label>

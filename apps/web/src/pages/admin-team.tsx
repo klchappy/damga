@@ -11,6 +11,8 @@ interface User {
   id: string;
   full_name: string;
   email: string;
+  username: string | null;
+  phone: string | null;
   role: 'employee' | 'manager' | 'admin' | 'owner';
   department: string | null;
   title: string | null;
@@ -251,6 +253,41 @@ export function AdminTeamPage() {
   );
 }
 
+function SendChannel({
+  label,
+  icon,
+  active,
+  disabled,
+  onClick,
+  hint,
+}: {
+  label: string;
+  icon: string;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-left rounded-lg border-2 p-2.5 transition disabled:opacity-50 disabled:cursor-not-allowed ${
+        active
+          ? 'border-orange-400 bg-orange-50/60'
+          : 'border-orange-100 bg-white hover:border-orange-200'
+      }`}
+    >
+      <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
+        <span>{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div className="text-[10px] text-muted mt-0.5">{hint}</div>
+    </button>
+  );
+}
+
 function ManagePasswordModal({
   user,
   onClose,
@@ -273,24 +310,39 @@ function ManagePasswordModal({
   }) => void;
 }) {
   const [mode, setMode] = useState<'auto' | 'manual'>('auto');
+  const [sendVia, setSendVia] = useState<'show' | 'whatsapp' | 'sms'>('show');
   const [manualPw, setManualPw] = useState('');
   const [reveal, setReveal] = useState(false);
 
+  // user.phone admin team listesinde fetch edilmiyor olabilir; basit kontrol
+  const userHasPhone = !!(user as User & { phone?: string | null }).phone;
+
   const setMut = useMutation({
     mutationFn: async () => {
-      const body =
-        mode === 'manual' && manualPw.length >= 8 ? { password: manualPw } : {};
+      const body: Record<string, unknown> = { send_via: sendVia };
+      if (mode === 'manual' && manualPw.length >= 8) body.password = manualPw;
       const r = await api.post(`/users/${user.id}/set-password`, body);
       return r.data as {
         ok: true;
         email: string;
+        phone: string | null;
         full_name: string;
         password: string;
         generated: boolean;
+        delivery: { method: string; sent: boolean; fallback_url: string | null };
       };
     },
     onSuccess: (d) => {
-      toast.success('🔑 Şifre belirlendi');
+      if (d.delivery.sent) {
+        toast.success(
+          `🔑 Şifre belirlendi · ${d.delivery.method === 'sms' ? 'SMS' : d.delivery.method === 'whatsapp' ? 'WhatsApp' : ''} gönderildi`,
+        );
+      } else if (d.delivery.fallback_url) {
+        // Gateway konfigsiz → admin elle paylaşacak (modal'da fallback URL ve şifre gösteriliyor)
+        toast.success('🔑 Şifre belirlendi · paylaşmak için aşağıdaki butonu kullan');
+      } else {
+        toast.success('🔑 Şifre belirlendi');
+      }
       onPasswordSet({
         name: d.full_name,
         email: d.email,
@@ -408,6 +460,37 @@ function ManagePasswordModal({
           </button>
         </div>
 
+        {/* İletim yöntemi seçici */}
+        <div>
+          <label className="label text-xs">İletim yöntemi</label>
+          <div className="mt-1 grid grid-cols-3 gap-2">
+            <SendChannel
+              label="Göster"
+              icon="👁"
+              active={sendVia === 'show'}
+              disabled={setMut.isPending}
+              onClick={() => setSendVia('show')}
+              hint="Modal'da bana"
+            />
+            <SendChannel
+              label="WhatsApp"
+              icon="💚"
+              active={sendVia === 'whatsapp'}
+              disabled={setMut.isPending || !userHasPhone}
+              onClick={() => setSendVia('whatsapp')}
+              hint={userHasPhone ? 'Otomatik gönder' : 'Önce telefon ekle'}
+            />
+            <SendChannel
+              label="SMS"
+              icon="📱"
+              active={sendVia === 'sms'}
+              disabled={setMut.isPending || !userHasPhone}
+              onClick={() => setSendVia('sms')}
+              hint={userHasPhone ? 'Otomatik gönder' : 'Önce telefon ekle'}
+            />
+          </div>
+        </div>
+
         {mode === 'manual' && (
           <div>
             <label className="label text-xs">Yeni şifre (en az 8 karakter)</label>
@@ -490,6 +573,8 @@ function CreateUserModal({
   const [form, setForm] = useState({
     full_name: '',
     email: '',
+    username: '',
+    phone: '',
     role: 'employee' as User['role'],
     department: departments[0]?.name ?? 'Diğer',
     title: '',
@@ -525,6 +610,8 @@ function CreateUserModal({
       };
       if (form.title.trim()) payload.title = form.title.trim();
       if (form.hired_at) payload.hired_at = form.hired_at;
+      if (form.username.trim()) payload.username = form.username.trim().toLowerCase();
+      if (form.phone.trim()) payload.phone = form.phone.trim();
       const r = await api.post('/users', payload);
       return r.data as {
         user: User;
@@ -619,6 +706,30 @@ function CreateUserModal({
             placeholder="ayse@sirket.com"
           />
           {errors.email && <p className="mt-1 text-xs text-danger">{errors.email}</p>}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Kullanıcı adı (opsiyonel)</label>
+            <input
+              className="input mt-1"
+              placeholder="ayse"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+            <p className="mt-1 text-[10px] text-muted">Email yerine sign-in için</p>
+          </div>
+          <div>
+            <label className="label">Telefon (opsiyonel)</label>
+            <input
+              type="tel"
+              className="input mt-1"
+              placeholder="+905xxxxxxxxx"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+            <p className="mt-1 text-[10px] text-muted">SMS/WhatsApp ile şifre için</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

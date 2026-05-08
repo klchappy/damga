@@ -43,6 +43,13 @@
       "when": 1778249032217,
       "tag": "0005_quiet_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778250097539,
+      "tag": "0006_careful_nuke",
+      "breakpoints": true
     }
   ]
 }

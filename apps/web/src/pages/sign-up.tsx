@@ -31,6 +31,8 @@ export function SignUpPage() {
       email: '',
       password: '',
       full_name: '',
+      username: '',
+      phone: '',
       department: 'Diğer',
       kvkk_consent: undefined as unknown as true,
     },
@@ -44,6 +46,8 @@ export function SignUpPage() {
         email: data.email,
         password: data.password,
         full_name: data.full_name,
+        username: data.username || undefined,
+        phone: data.phone || undefined,
         department: data.department,
         kvkk_consent: data.kvkk_consent,
       };
@@ -134,6 +138,35 @@ export function SignUpPage() {
             {errors.password && (
               <p className="mt-1 text-xs text-danger">{errors.password.message}</p>
             )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Kullanıcı adı (opsiyonel)</label>
+              <input
+                className="input mt-1"
+                placeholder="kaank"
+                autoComplete="username"
+                {...register('username')}
+              />
+              {errors.username && (
+                <p className="mt-1 text-xs text-danger">{errors.username.message}</p>
+              )}
+              <p className="mt-1 text-[10px] text-muted">Sign-in'de email yerine kullanılır</p>
+            </div>
+            <div>
+              <label className="label">Telefon (opsiyonel)</label>
+              <input
+                type="tel"
+                className="input mt-1"
+                placeholder="+905xxxxxxxxx"
+                autoComplete="tel"
+                {...register('phone')}
+              />
+              {errors.phone && (
+                <p className="mt-1 text-xs text-danger">{errors.phone.message}</p>
+              )}
+              <p className="mt-1 text-[10px] text-muted">SMS / WhatsApp ile şifre alabilirsin</p>
+            </div>
           </div>
           <div>
             <label className="label">Departmanın</label>

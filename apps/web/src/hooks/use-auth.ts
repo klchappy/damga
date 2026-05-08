@@ -44,6 +44,8 @@ export interface AuthOrg {
 export interface AuthUser {
   id: string;
   email: string;
+  username?: string | null;
+  phone?: string | null;
   full_name: string;
   role: 'employee' | 'manager' | 'admin' | 'owner';
   org_id: string | null;
@@ -196,18 +198,34 @@ export function useAuthBoot() {
 }
 
 /**
- * Şifreli giriş.
- *
- * Listener'a güvenmek yerine sign-in sonrası profili DOĞRUDAN çekiyoruz —
- * StrictMode/remount kaynaklı listener kayıplarına karşı bağışık.
- * Sign-in page bu fonksiyon RESOLVE OLDUKTAN SONRA `startSignInTransition`
- * çağırıyor → kullanıcı bilgisi store'da hazır + 5sn damga splash gösteriliyor.
+ * Identifier ile giriş — email VEYA username VEYA phone kabul eder.
+ * Önce backend'den identifier → email lookup yapılır, sonra Supabase login.
  */
-export async function signInWithEmail(email: string, password: string) {
-  const { error, data } = await getSupabase().auth.signInWithPassword({ email, password });
+export async function signInWithIdentifier(identifier: string, password: string) {
+  let email = identifier.trim();
+  if (!email.includes('@')) {
+    // username veya phone olabilir, backend'den email'i bul
+    try {
+      const { data } = await api.post<{ email: string | null }>('/auth/resolve-identifier', {
+        identifier: email,
+      });
+      if (!data.email) {
+        throw new Error('Bu bilgiyle kayıtlı kullanıcı bulunamadı');
+      }
+      email = data.email;
+    } catch (err) {
+      // Axios 4xx hatası ile gelir, Error olarak fırlat
+      if (err instanceof Error) throw err;
+      throw new Error('Kullanıcı arama başarısız');
+    }
+  }
+  const { error, data: authData } = await getSupabase().auth.signInWithPassword({
+    email,
+    password,
+  });
   if (error) throw error;
   const { setUser, setOrg, setSession } = useAuthStore.getState();
-  if (data?.session) setSession(data.session);
+  if (authData?.session) setSession(authData.session);
   try {
     const { data: profile } = await api.get<{ user: AuthUser; org: AuthOrg | null }>(
       '/auth/me',
@@ -215,11 +233,12 @@ export async function signInWithEmail(email: string, password: string) {
     setUser(profile.user);
     setOrg(profile.org);
   } catch (err) {
-    // /auth/me başarısız → splash sonrası PrivateRoute redirect; listener
-    // ileride başarılı olursa kendisi setUser çağırır.
     console.warn('[auth] post-signin /auth/me failed:', err);
   }
 }
+
+/** @deprecated geriye uyum için — yeni kod signInWithIdentifier kullansın */
+export const signInWithEmail = signInWithIdentifier;
 
 export async function sendMagicLink(email: string) {
   const { error } = await getSupabase().auth.signInWithOtp({

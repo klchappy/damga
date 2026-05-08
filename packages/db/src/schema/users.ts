@@ -24,6 +24,10 @@ export const users = pgTable(
     /** Supabase auth.users.id ile eşleşir */
     auth_user_id: uuid('auth_user_id').unique(),
     email: text('email').notNull().unique(),
+    /** Kullanıcı adı — sign-in'de email yerine kullanılabilir (case-insensitive lookup) */
+    username: text('username').unique(),
+    /** Telefon (E.164 formatı: +905xx...) — sign-in'de email yerine kullanılabilir, SMS/WhatsApp için adres */
+    phone: text('phone').unique(),
     full_name: text('full_name').notNull(),
     avatar_url: text('avatar_url'),
     role: userRoleEnum('role').notNull().default('employee'),

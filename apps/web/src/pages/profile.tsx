@@ -191,6 +191,8 @@ function EditProfileModal({
     full_name: user.full_name,
     title: user.title ?? '',
     avatar_url: user.avatar_url ?? '',
+    username: user.username ?? '',
+    phone: user.phone ?? '',
   });
 
   const mut = useMutation({
@@ -200,6 +202,10 @@ function EditProfileModal({
       if (form.title.trim() !== (user.title ?? '')) payload.title = form.title.trim() || null;
       if (form.avatar_url.trim() !== (user.avatar_url ?? ''))
         payload.avatar_url = form.avatar_url.trim() || null;
+      if (form.username.trim().toLowerCase() !== (user.username ?? '').toLowerCase())
+        payload.username = form.username.trim().toLowerCase() || null;
+      if (form.phone.trim() !== (user.phone ?? ''))
+        payload.phone = form.phone.trim() || null;
       const r = await api.patch('/users/me', payload);
       return r.data.user as AuthUser & {
         // ek alanlar (department/role gibi) auth user response'undan farklı olabilir
@@ -273,6 +279,32 @@ function EditProfileModal({
             onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
             disabled={mut.isPending}
           />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Kullanıcı adı</label>
+            <input
+              className="input mt-1"
+              placeholder="kaank"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              disabled={mut.isPending}
+            />
+            <p className="mt-1 text-[10px] text-muted">Email yerine sign-in'de kullanılır</p>
+          </div>
+          <div>
+            <label className="label">Telefon</label>
+            <input
+              type="tel"
+              className="input mt-1"
+              placeholder="+905xxxxxxxxx"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              disabled={mut.isPending}
+            />
+            <p className="mt-1 text-[10px] text-muted">SMS/WhatsApp ile şifre için</p>
+          </div>
         </div>
 
         <div className="flex gap-2 pt-2">

@@ -8,6 +8,8 @@ import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { logger } from '../config/logger';
+import { generateStrongPassword } from '../lib/password';
+import { buildPasswordMessage, sendSms, sendWhatsApp } from '../lib/notify';
 
 export const usersRouter = Router();
 
@@ -30,6 +32,18 @@ const updateSelfSchema = z.object({
   full_name: z.string().trim().min(2).max(100).optional(),
   title: z.string().trim().max(80).optional().nullable(),
   avatar_url: z.string().url().optional().nullable(),
+  username: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9._-]{3,32}$/i, 'Kullanıcı adı 3-32 karakter (harf/rakam/.-_)')
+    .optional()
+    .nullable(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+\d{10,15}$/, 'Telefon +905xx... (E.164) formatında olmalı')
+    .optional()
+    .nullable(),
 });
 
 usersRouter.patch('/users/me', requireAuth, async (req, res, next) => {
@@ -41,6 +55,9 @@ usersRouter.patch('/users/me', requireAuth, async (req, res, next) => {
     if (input.full_name !== undefined) updates.full_name = input.full_name;
     if (input.title !== undefined) updates.title = input.title;
     if (input.avatar_url !== undefined) updates.avatar_url = input.avatar_url;
+    if (input.username !== undefined)
+      updates.username = input.username ? input.username.toLowerCase() : null;
+    if (input.phone !== undefined) updates.phone = input.phone || null;
 
     const [user] = await getDb()
       .update(users)
@@ -146,6 +163,8 @@ usersRouter.post(
           org_id: req.authOrgId,
           auth_user_id: authUserId,
           email: input.email.toLowerCase(),
+          username: input.username?.toLowerCase() || null,
+          phone: input.phone || null,
           full_name: input.full_name,
           role: input.role,
           department: input.department ?? 'Diğer',
@@ -314,34 +333,9 @@ const setPasswordSchema = z.object({
     .min(8, 'En az 8 karakter')
     .max(72)
     .optional(),
+  /** Şifreyi otomatik gönder: 'show' (default, admin'e modal'da göster), 'sms', 'whatsapp' */
+  send_via: z.enum(['show', 'sms', 'whatsapp']).optional(),
 });
-
-function generateStrongPassword(length = 14): string {
-  // İnsan-okunabilir set: harf+rakam+sembol; karışan karakterler (0,O,l,1,I) çıkarıldı
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
-  const digit = '23456789';
-  const sym = '!@#$%&*?';
-  const all = lower + upper + digit + sym;
-  // Her gruptan en az bir karakter garanti
-  const must = [
-    lower[Math.floor(Math.random() * lower.length)],
-    upper[Math.floor(Math.random() * upper.length)],
-    digit[Math.floor(Math.random() * digit.length)],
-    sym[Math.floor(Math.random() * sym.length)],
-  ];
-  const rest: string[] = [];
-  for (let i = must.length; i < length; i++) {
-    rest.push(all[Math.floor(Math.random() * all.length)]!);
-  }
-  // Karıştır
-  const arr = [...must, ...rest].filter(Boolean) as string[];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
-  }
-  return arr.join('');
-}
 
 usersRouter.post(
   '/users/:id/set-password',
@@ -356,6 +350,7 @@ usersRouter.post(
       const [u] = await getDb()
         .select({
           email: users.email,
+          phone: users.phone,
           full_name: users.full_name,
           auth_user_id: users.auth_user_id,
           role: users.role,
@@ -380,6 +375,15 @@ usersRouter.post(
         );
       }
 
+      const sendVia = body.send_via ?? 'show';
+      if ((sendVia === 'sms' || sendVia === 'whatsapp') && !u.phone) {
+        throw new HttpError(
+          400,
+          'Bu kullanıcının kayıtlı telefonu yok. Profil bilgilerine telefon ekle veya "Göster" yöntemini kullan.',
+          'NO_PHONE_ON_RECORD',
+        );
+      }
+
       const newPassword = body.password ?? generateStrongPassword(14);
       const generated = !body.password;
 
@@ -391,17 +395,43 @@ usersRouter.post(
         throw new HttpError(502, `Şifre güncellenemedi: ${error.message}`);
       }
 
+      // Şifreyi seçili kanaldan ilet — show: admin'e modal'da, sms/whatsapp: gateway veya fallback URL
+      let delivery: { method: string; sent: boolean; fallback_url: string | null } = {
+        method: sendVia,
+        sent: false,
+        fallback_url: null,
+      };
+      if (sendVia !== 'show' && u.phone) {
+        const signInUrl = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/sign-in`;
+        const message = buildPasswordMessage({
+          recipientName: u.full_name,
+          password: newPassword,
+          signInUrl,
+        });
+        const result =
+          sendVia === 'sms'
+            ? await sendSms({ to: u.phone, message })
+            : await sendWhatsApp({ to: u.phone, message });
+        delivery = {
+          method: sendVia,
+          sent: result.sent,
+          fallback_url: result.fallback_url ?? null,
+        };
+      }
+
       logger.info(
-        { userId: id, by: req.authUserId, generated },
+        { userId: id, by: req.authUserId, generated, send_via: sendVia, sent: delivery.sent },
         'Admin kullanıcı şifresini değiştirdi',
       );
 
       res.json({
         ok: true,
         email: u.email,
+        phone: u.phone,
         full_name: u.full_name,
         password: newPassword,
         generated,
+        delivery,
       });
     } catch (err) {
       next(err);
