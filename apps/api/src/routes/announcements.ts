@@ -64,7 +64,7 @@ announcementsRouter.get('/announcements', requireAuth, async (req, res, next) =>
 announcementsRouter.post(
   '/announcements',
   requireAuth,
-  requireRole('manager', 'admin', 'owner'),
+  requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');

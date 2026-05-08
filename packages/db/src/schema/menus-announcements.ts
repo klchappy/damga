@@ -49,7 +49,11 @@ export type Menu = typeof menus.$inferSelect;
 export type NewMenu = typeof menus.$inferInsert;
 
 /**
- * menu_rsvps — çalışanların menüye RSVP'si + yıldız puanı.
+ * menu_rsvps — çalışanların menüye RSVP'si + yıldız puanı + yorum.
+ *
+ * Mutfaktaki QR kodu ile gelen kullanıcı buradaki rating + comment'i doldurur.
+ * Composite PK (menu_id + user_id) — kişi başına menü başına 1 kayıt; yeni
+ * yorum veya puan upsert eder.
  */
 export const menuRsvps = pgTable(
   'menu_rsvps',
@@ -62,6 +66,10 @@ export const menuRsvps = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     will_eat: boolean('will_eat').notNull().default(true),
     rating: integer('rating'), // 1-5 yıldız (yedikten sonra)
+    /** Çalışanın yemek yorumu — mutfak QR'ından girilir, max 500 char */
+    comment: text('comment'),
+    /** Yorum/puan ne zaman güncellendi (rsvp ilk eklenmesinden ayrı) */
+    feedback_at: timestamp('feedback_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({

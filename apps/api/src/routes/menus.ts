@@ -1,12 +1,28 @@
 import { Router } from 'express';
-import { and, between, eq, sql } from 'drizzle-orm';
+import { and, between, desc, eq, sql, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { createMenuSchema, rsvpSchema, rateMenuSchema } from '@damga/shared';
-import { getDb, menus, menuRsvps } from '@damga/db';
+import { getDb, menus, menuRsvps, users } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
 
 export const menusRouter = Router();
+
+/** Bugünün menüsü (mutfak QR'ı için kısa endpoint) */
+menusRouter.get('/menus/today', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await getDb()
+      .select()
+      .from(menus)
+      .where(and(eq(menus.org_id, req.authOrgId), eq(menus.date, today)))
+      .orderBy(menus.created_at);
+    res.json({ items: rows, date: today });
+  } catch (err) {
+    next(err);
+  }
+});
 
 const listQuery = z.object({
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -58,10 +74,14 @@ menusRouter.get('/menus', requireAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /v1/menus — yeni menü yayınla.
+ * Sadece admin/owner — manager dahil değil (yetki politikası).
+ */
 menusRouter.post(
   '/menus',
   requireAuth,
-  requireRole('manager', 'admin', 'owner'),
+  requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
@@ -95,25 +115,118 @@ menusRouter.post('/menus/:id/rsvp', requireAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /v1/menus/:id/rate — yıldız + yorum.
+ *
+ * Mutfaktaki QR'ı okutan çalışan buradan rating ve/veya comment gönderir.
+ * En az biri zorunlu. Aynı menü+kullanıcı çiftinde upsert.
+ */
 menusRouter.post('/menus/:id/rate', requireAuth, async (req, res, next) => {
   try {
-    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
     const id = String(req.params.id ?? '').trim();
     const body = rateMenuSchema.parse(req.body);
+
+    if (body.rating === undefined && !body.comment) {
+      throw new HttpError(400, 'Yıldız veya yorum girmelisin', 'EMPTY_FEEDBACK');
+    }
+
+    // Menü gerçekten bu org'a ait mi?
+    const [menu] = await getDb()
+      .select({ id: menus.id, org_id: menus.org_id })
+      .from(menus)
+      .where(eq(menus.id, id));
+    if (!menu) throw new HttpError(404, 'Menü bulunamadı');
+    if (menu.org_id !== req.authOrgId) throw new HttpError(403, 'Bu menüye erişim yok');
+
+    const setPatch: Record<string, unknown> = { feedback_at: new Date() };
+    if (body.rating !== undefined) setPatch.rating = body.rating;
+    if (body.comment !== undefined) setPatch.comment = body.comment.trim() || null;
+
     await getDb()
       .insert(menuRsvps)
       .values({
         menu_id: id,
         user_id: req.authUserId,
         will_eat: true,
-        rating: body.rating,
+        rating: body.rating ?? null,
+        comment: body.comment?.trim() || null,
+        feedback_at: new Date(),
       })
       .onConflictDoUpdate({
         target: [menuRsvps.menu_id, menuRsvps.user_id],
-        set: { rating: body.rating },
+        set: setPatch,
       });
     res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
+
+/**
+ * GET /v1/menus/:id/feedback — admin/manager: bu menüye gelen yorumlar + puanlar.
+ */
+menusRouter.get(
+  '/menus/:id/feedback',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+
+      const [menu] = await getDb()
+        .select()
+        .from(menus)
+        .where(and(eq(menus.id, id), eq(menus.org_id, req.authOrgId)));
+      if (!menu) throw new HttpError(404, 'Menü bulunamadı');
+
+      const rows = await getDb()
+        .select({
+          rsvp: menuRsvps,
+          user_name: users.full_name,
+          department: users.department,
+        })
+        .from(menuRsvps)
+        .leftJoin(users, eq(users.id, menuRsvps.user_id))
+        .where(
+          and(
+            eq(menuRsvps.menu_id, id),
+            // Yorum veya puan vermiş olanları getir (sadece will_eat=true olanları değil)
+          ),
+        )
+        .orderBy(desc(menuRsvps.feedback_at));
+
+      const items = rows
+        .filter((r) => r.rsvp.rating !== null || r.rsvp.comment !== null)
+        .map((r) => ({
+          user_name: r.user_name,
+          department: r.department,
+          rating: r.rsvp.rating,
+          comment: r.rsvp.comment,
+          feedback_at: r.rsvp.feedback_at,
+        }));
+
+      const [stats] = await getDb()
+        .select({
+          avg_rating: sql<number>`avg(${menuRsvps.rating})::numeric(10,2)`,
+          rating_count: sql<number>`count(${menuRsvps.rating})::int`,
+          comment_count: sql<number>`count(${menuRsvps.comment})::int`,
+        })
+        .from(menuRsvps)
+        .where(and(eq(menuRsvps.menu_id, id), isNotNull(menuRsvps.feedback_at)));
+
+      res.json({
+        menu,
+        items,
+        stats: {
+          avg_rating: stats?.avg_rating ? Number(stats.avg_rating) : null,
+          rating_count: stats?.rating_count ?? 0,
+          comment_count: stats?.comment_count ?? 0,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);

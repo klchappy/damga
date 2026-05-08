@@ -17,9 +17,15 @@ export const rsvpSchema = z.object({
   will_eat: z.boolean(),
 });
 
+/**
+ * Mutfak QR'ından çalışanın puanladığı + yorum yazdığı şema.
+ * Hem rating hem comment opsiyonel ama en az biri olmalı (server validate eder).
+ */
 export const rateMenuSchema = z.object({
-  rating: z.number().int().min(1).max(5),
+  rating: z.number().int().min(1).max(5).optional(),
+  comment: z.string().trim().max(500).optional(),
 });
+export type RateMenuInput = z.infer<typeof rateMenuSchema>;
 
 export const createAnnouncementSchema = z.object({
   category: z.enum(['info', 'celebration', 'warning', 'urgent']).default('info'),

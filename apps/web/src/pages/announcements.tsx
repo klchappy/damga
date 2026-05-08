@@ -83,7 +83,8 @@ const CATEGORY_OPTIONS: Array<{
 export function AnnouncementsPage() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.user);
-  const canCreate = !!me && ['manager', 'admin', 'owner'].includes(me.role);
+  // Sadece admin/owner duyuru yayınlayabilir (manager dahil değil)
+  const canCreate = !!me && ['admin', 'owner'].includes(me.role);
   const [showCreate, setShowCreate] = useState(false);
 
   const { data } = useQuery<{ items: Announcement[] }>({

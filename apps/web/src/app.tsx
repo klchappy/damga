@@ -26,6 +26,7 @@ import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
 import { MenuPage } from '@/pages/menu';
+import { MenuFeedbackPage } from '@/pages/menu-feedback';
 import { AnnouncementsPage } from '@/pages/announcements';
 import { KvkkPage, TermsPage } from '@/pages/legal';
 
@@ -103,6 +104,14 @@ function AppInner() {
           element={
             <EmployeePageGate page="menu">
               <MenuPage />
+            </EmployeePageGate>
+          }
+        />
+        <Route
+          path="menu/feedback"
+          element={
+            <EmployeePageGate page="menu">
+              <MenuFeedbackPage />
             </EmployeePageGate>
           }
         />
