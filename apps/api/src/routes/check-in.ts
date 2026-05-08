@@ -96,11 +96,13 @@ async function performAttendance(
   }
 
   // 2) Org settings — allow_outside_geofence true ise lokasyon kontrolü yumuşak
+  // auto_selfie_every_stamp true ise her damga'da selfie istenir (kanıt amaçlı)
   const [orgRow] = await db
     .select({ settings: orgs.settings })
     .from(orgs)
     .where(eq(orgs.id, req.authOrgId));
   const allowOutside = !!orgRow?.settings?.allow_outside_geofence;
+  const autoSelfieEveryStamp = !!orgRow?.settings?.auto_selfie_every_stamp;
 
   // 3) Anomali tespiti — NFC fiziksel temas hariç tüm damga'lar için lokasyon ZORUNLU
   // Anomali bulunursa "selfie + yönetici onayı" akışına geçilir (eski hard reject yerine).
@@ -149,9 +151,26 @@ async function performAttendance(
   // (input.selfie_url frontend'in selfie upload'tan sonra gönderdiği URL)
   const selfieUrl: string | null = (input as { selfie_url?: string }).selfie_url ?? null;
 
+  // Org "her damgada otomatik selfie iste" diyorsa → anomali olmasa bile selfie iste,
+  // ama sadece KANIT amaçlı (event approved kalır, pending_review olmaz).
+  // Bu mod KVKK uyumlu: kullanıcı modal'da fotoğraf çekildiğinin BİLGİSİNE sahip.
+  const autoSelfieRequired = autoSelfieEveryStamp && !usingNfc && !selfieUrl;
+  if (autoSelfieRequired) {
+    res.status(200).json({
+      needs_selfie: true,
+      auto: true, // frontend autoCapture mode'da modal açar
+      reasons: ['org_required_selfie'],
+      reason_messages: ['Şirket politikası: her damgada otomatik selfie alınır'],
+      message:
+        'Şirket politikası gereği her damgada bir selfie kaydedilir. Birkaç saniye sürer.',
+    });
+    return;
+  }
+
   if (reviewReasons.length > 0 && !selfieUrl) {
     res.status(200).json({
       needs_selfie: true,
+      auto: false, // anomali var, kullanıcı manuel çekecek
       reasons: reviewReasons,
       reason_messages: reviewReasons.map((r) => REVIEW_REASON_MESSAGES[r] ?? r),
       message:

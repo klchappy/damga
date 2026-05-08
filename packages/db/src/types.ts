@@ -78,6 +78,13 @@ export interface OrgSettings {
   allow_manual_entry?: boolean;
   /** Employee rolünün görebileceği sayfa anahtarları. undefined → DEFAULT_EMPLOYEE_PAGES */
   employee_visible_pages?: EmployeePageKey[];
+  /**
+   * true ise her damgada (anomali olmasa bile) otomatik selfie çekilir ve event'e
+   * eklenir. Bu durumda event 'approved' kalabilir; selfie sadece kanıt olarak saklanır.
+   * KVKK gereği: kullanıcıya açık rıza alınmış olması (KVKK aydınlatma metninde
+   * belirtilmiş) ve fotoğraf çekildiğinin EKRANDA bilgilendirildiği şarttır.
+   */
+  auto_selfie_every_stamp?: boolean;
 }
 
 export interface DeviceInfo {

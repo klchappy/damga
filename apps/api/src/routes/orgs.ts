@@ -32,6 +32,7 @@ const updateSettingsSchema = z.object({
   allow_outside_geofence: z.boolean().optional(),
   require_nfc: z.boolean().optional(),
   allow_manual_entry: z.boolean().optional(),
+  auto_selfie_every_stamp: z.boolean().optional(),
   logo_url: z.string().url().optional(),
   primary_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   default_timezone: z.string().min(2).max(40).optional(),

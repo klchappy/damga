@@ -8,6 +8,15 @@ interface Props {
   reasonMessages?: string[];
   distanceMeters?: number | null;
   geofenceRadiusM?: number | null;
+  /**
+   * autoCapture true ise modal açılınca 3..2..1 geri sayımla otomatik snap +
+   * otomatik upload yapılır. Kullanıcı tek tıklama yapmasa da fotoğraf çekildiği
+   * EKRANDA görünür (KVKK md.6 — açık rıza için bilgilendirme).
+   *
+   * Kullanıcı isterse "X" ile iptal edebilir veya "Manuel çek" seçeneği ile
+   * countdown'u durdurabilir.
+   */
+  autoCapture?: boolean;
   onUploaded: (selfieUrl: string) => void;
   onClose: () => void;
 }
@@ -32,6 +41,7 @@ export function SelfieCaptureModal({
   reasonMessages,
   distanceMeters,
   geofenceRadiusM,
+  autoCapture = false,
   onUploaded,
   onClose,
 }: Props) {
@@ -44,6 +54,9 @@ export function SelfieCaptureModal({
   const [snapshotBlob, setSnapshotBlob] = useState<Blob | null>(null);
   const [snapshotPreview, setSnapshotPreview] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Auto-capture countdown
+  const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
+  const [autoMode, setAutoMode] = useState<boolean>(autoCapture);
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -153,6 +166,37 @@ export function SelfieCaptureModal({
     };
     // facing veya reloadKey değiştiğinde stream'i yeniden başlat
   }, [facing, reloadKey]);
+
+  // Auto-capture: stream hazır olunca 3..2..1 geri sayım, sonra otomatik snap
+  useEffect(() => {
+    if (!autoMode || phase !== 'streaming') {
+      setAutoCountdown(null);
+      return;
+    }
+    setAutoCountdown(3);
+    const interval = window.setInterval(() => {
+      setAutoCountdown((c) => {
+        if (c == null) return null;
+        if (c <= 1) {
+          window.clearInterval(interval);
+          // Bir tick sonra snap (state güncellemesinin tamamlanması için)
+          window.setTimeout(() => takeSnapshot(), 100);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, phase]);
+
+  // Auto-mode preview hazır olunca auto upload tetikle
+  useEffect(() => {
+    if (autoMode && phase === 'preview' && snapshotBlob) {
+      window.setTimeout(() => upload(), 600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, phase, snapshotBlob]);
 
   const takeSnapshot = () => {
     const video = videoRef.current;
@@ -267,22 +311,47 @@ export function SelfieCaptureModal({
 
         <div className="rounded-md bg-warning/5 border border-warning/20 px-3 py-2 text-xs flex items-start gap-1.5">
           <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
-          <div>
-            <strong className="text-ink">Doğrulama yetersiz:</strong>
-            <ul className="text-muted mt-1 list-disc list-inside">
-              {(reasonMessages ?? reasons).map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-            {distanceMeters != null && geofenceRadiusM != null && (
-              <p className="text-muted mt-1">
-                {distanceMeters}m uzakta · sınır {geofenceRadiusM}m
-              </p>
+          <div className="flex-1">
+            {autoMode ? (
+              <>
+                <strong className="text-ink">Otomatik selfie alınıyor</strong>
+                <p className="text-muted mt-0.5">
+                  KVKK gereği fotoğraf çekildiği bilgisi sana gösterilmek zorunda.
+                  3 saniye sonra otomatik çekilir ve yöneticinle paylaşılır.
+                </p>
+              </>
+            ) : (
+              <>
+                <strong className="text-ink">Doğrulama yetersiz:</strong>
+                <ul className="text-muted mt-1 list-disc list-inside">
+                  {(reasonMessages ?? reasons).map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+                {distanceMeters != null && geofenceRadiusM != null && (
+                  <p className="text-muted mt-1">
+                    {distanceMeters}m uzakta · sınır {geofenceRadiusM}m
+                  </p>
+                )}
+                <p className="text-muted mt-1">
+                  Selfie çek + gönder → yöneticin onayına gider; uygunsa damgan kaydolur.
+                </p>
+              </>
             )}
-            <p className="text-muted mt-1">
-              Selfie çek + gönder → yöneticin onayına gider; uygunsa damgan kaydolur.
-            </p>
           </div>
+          {autoMode && (
+            <button
+              type="button"
+              onClick={() => {
+                setAutoMode(false);
+                setAutoCountdown(null);
+              }}
+              className="text-[10px] text-orange-600 hover:underline shrink-0"
+              title="Otomatik mod yerine manuel çekime geç"
+            >
+              Manuel
+            </button>
+          )}
         </div>
 
         <div className="relative w-full aspect-square overflow-hidden rounded-xl bg-black border-2 border-orange-500">
@@ -332,6 +401,26 @@ export function SelfieCaptureModal({
               <FlipHorizontal2 className="size-4" />
             </button>
           )}
+
+          {/* Auto-capture countdown overlay */}
+          {phase === 'streaming' && autoMode && autoCountdown != null && autoCountdown > 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div className="size-32 rounded-full bg-orange-500/90 flex items-center justify-center font-display text-7xl font-bold text-white shadow-2xl animate-pulse">
+                {autoCountdown}
+              </div>
+              <span className="mt-3 text-white text-sm bg-black/60 px-3 py-1 rounded-full">
+                Otomatik çekiliyor…
+              </span>
+            </div>
+          )}
+          {phase === 'streaming' && autoMode && autoCountdown === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-white/20">
+              <div className="size-32 rounded-full bg-success flex items-center justify-center font-display text-2xl font-bold text-white shadow-2xl">
+                ✓
+              </div>
+            </div>
+          )}
+
           <canvas ref={canvasRef} className="hidden" />
         </div>
 

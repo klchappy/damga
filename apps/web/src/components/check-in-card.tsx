@@ -52,6 +52,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
     reason_messages?: string[];
     distance_m?: number | null;
     geofence_radius_m?: number | null;
+    auto?: boolean;
     pendingPayload: Record<string, unknown>;
   } | null>(null);
 
@@ -112,7 +113,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       return { data, payload: fullPayload };
     },
     onSuccess: ({ data, payload }) => {
-      // 1) Backend selfie istiyor → modal aç
+      // 1) Backend selfie istiyor → modal aç (auto:true ise countdown ile otomatik)
       if (data?.needs_selfie) {
         setMethod(null);
         setSelfiePrompt({
@@ -120,6 +121,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
           reason_messages: data.reason_messages,
           distance_m: data.distance_m,
           geofence_radius_m: data.geofence_radius_m,
+          auto: !!data.auto,
           pendingPayload: payload,
         });
         return;
@@ -378,16 +380,16 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
         cooldownKey="mood-prompt-stamp"
       />
 
-      {/* Anomali tespit edildiğinde selfie iste */}
+      {/* Anomali tespit edildiğinde selfie iste — auto:true ise otomatik countdown */}
       {selfiePrompt && (
         <SelfieCaptureModal
           reasons={selfiePrompt.reasons}
           reasonMessages={selfiePrompt.reason_messages}
           distanceMeters={selfiePrompt.distance_m ?? null}
           geofenceRadiusM={selfiePrompt.geofence_radius_m ?? null}
+          autoCapture={selfiePrompt.auto}
           onClose={() => setSelfiePrompt(null)}
           onUploaded={(selfieUrl) => {
-            // İlk request'in payload'ı + selfie_url ile tekrar dene
             const payload = { ...selfiePrompt.pendingPayload, selfie_url: selfieUrl } as Record<
               string,
               unknown

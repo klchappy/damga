@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, Eye, EyeOff, Loader2, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import {
+  Save,
+  Eye,
+  EyeOff,
+  Loader2,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Camera,
+  MapPin,
+} from 'lucide-react';
 import {
   useAuthStore,
   DEFAULT_EMPLOYEE_PAGES,
@@ -15,6 +24,56 @@ interface PageOption {
   label: string;
   desc: string;
   alwaysOn?: boolean;
+}
+
+function ToggleRow({
+  checked,
+  onChange,
+  icon,
+  label,
+  desc,
+  warn,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  icon: React.ReactNode;
+  label: string;
+  desc: string;
+  warn?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`w-full text-left rounded-lg border-2 p-3 transition ${
+        checked
+          ? 'border-orange-400 bg-orange-50/60'
+          : 'border-orange-100 bg-white hover:border-orange-200'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 mt-0.5">{icon}</div>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-ink">{label}</div>
+          <div className="text-[11px] text-muted mt-0.5">{desc}</div>
+          {checked && warn && (
+            <div className="text-[10px] text-warning mt-1 font-medium">⚠ {warn}</div>
+          )}
+        </div>
+        <div
+          className={`shrink-0 inline-flex h-5 w-9 items-center rounded-full transition ${
+            checked ? 'bg-orange-500' : 'bg-slate-300'
+          }`}
+        >
+          <span
+            className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
+              checked ? 'translate-x-4' : 'translate-x-0.5'
+            }`}
+          />
+        </div>
+      </div>
+    </button>
+  );
 }
 
 const PAGE_OPTIONS: PageOption[] = [
@@ -80,6 +139,12 @@ export function AdminSettingsPage() {
   );
 
   const [selected, setSelected] = useState<Set<EmployeePageKey>>(initialVisible);
+  const [autoSelfie, setAutoSelfie] = useState<boolean>(
+    !!org?.settings?.auto_selfie_every_stamp,
+  );
+  const [allowOutside, setAllowOutside] = useState<boolean>(
+    !!org?.settings?.allow_outside_geofence,
+  );
   const [dirty, setDirty] = useState(false);
 
   // org store değişirse formu sync et (örn. başka tab güncellemiş)
@@ -90,8 +155,10 @@ export function AdminSettingsPage() {
         : DEFAULT_EMPLOYEE_PAGES,
     );
     setSelected(next);
+    setAutoSelfie(!!org?.settings?.auto_selfie_every_stamp);
+    setAllowOutside(!!org?.settings?.allow_outside_geofence);
     setDirty(false);
-  }, [org?.settings?.employee_visible_pages]);
+  }, [org?.settings]);
 
   const toggle = (key: EmployeePageKey, alwaysOn?: boolean) => {
     if (alwaysOn) return;
@@ -115,6 +182,8 @@ export function AdminSettingsPage() {
       );
       const r = await api.patch('/orgs/me/settings', {
         employee_visible_pages: pages,
+        auto_selfie_every_stamp: autoSelfie,
+        allow_outside_geofence: allowOutside,
       });
       return r.data.org as AuthOrg;
     },
@@ -194,6 +263,39 @@ export function AdminSettingsPage() {
               </button>
             );
           })}
+        </div>
+
+        <hr className="border-orange-100" />
+
+        {/* Güvenlik & doğrulama */}
+        <div className="space-y-2">
+          <div className="text-xs font-medium uppercase tracking-wider text-orange-600">
+            Güvenlik & Doğrulama
+          </div>
+
+          <ToggleRow
+            checked={autoSelfie}
+            onChange={(v) => {
+              setAutoSelfie(v);
+              setDirty(true);
+            }}
+            icon={<Camera className="size-4 text-orange-500" />}
+            label="Her damgada otomatik selfie"
+            desc="Çalışan damga vurduğunda 3 saniye geri sayım sonra otomatik selfie çekilir ve kayda eklenir. KVKK gereği ekranda bilgilendirilir."
+            warn="KVKK aydınlatma metnine bu maddeyi eklemen önerilir."
+          />
+
+          <ToggleRow
+            checked={allowOutside}
+            onChange={(v) => {
+              setAllowOutside(v);
+              setDirty(true);
+            }}
+            icon={<MapPin className="size-4 text-orange-500" />}
+            label="Geofence dışı damgaya izin"
+            desc="Açık olursa: lokasyon dışı GPS damgası selfie istemeden kabul edilir. Saha çalışanları, dış ekip için."
+            warn="Sahtekarlık riskini artırır. Sadece güvendiğin org'lar için aç."
+          />
         </div>
 
         <hr className="border-orange-100" />

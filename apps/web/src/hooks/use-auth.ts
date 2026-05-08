@@ -32,6 +32,8 @@ export interface OrgSettings {
   allow_manual_entry?: boolean;
   /** undefined ise DEFAULT_EMPLOYEE_PAGES kullan */
   employee_visible_pages?: EmployeePageKey[];
+  /** Her damgada otomatik selfie zorla (KVKK uyumlu, ekranda bilgilendirilir) */
+  auto_selfie_every_stamp?: boolean;
 }
 
 export interface AuthOrg {
