@@ -20,6 +20,42 @@ function getSupabaseAdmin() {
   });
 }
 
+/**
+ * PATCH /v1/users/me — kullanıcı kendi profilini günceller.
+ *
+ * İzin verilen alanlar: full_name, title, avatar_url.
+ * Email/role/department/org_id BU endpoint'ten DEĞİŞTİRİLEMEZ (sadece admin).
+ */
+const updateSelfSchema = z.object({
+  full_name: z.string().trim().min(2).max(100).optional(),
+  title: z.string().trim().max(80).optional().nullable(),
+  avatar_url: z.string().url().optional().nullable(),
+});
+
+usersRouter.patch('/users/me', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const input = updateSelfSchema.parse(req.body);
+
+    const updates: Record<string, unknown> = { updated_at: new Date() };
+    if (input.full_name !== undefined) updates.full_name = input.full_name;
+    if (input.title !== undefined) updates.title = input.title;
+    if (input.avatar_url !== undefined) updates.avatar_url = input.avatar_url;
+
+    const [user] = await getDb()
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, req.authUserId))
+      .returning();
+    if (!user) throw new HttpError(404, 'Kullanıcı bulunamadı');
+
+    logger.info({ userId: req.authUserId }, 'Kullanıcı kendi profilini güncelledi');
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
 usersRouter.get(
   '/users',
   requireAuth,
