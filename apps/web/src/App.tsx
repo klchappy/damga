@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useAuthBoot, useAuthStore } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout';
+import { DamgaSplash } from '@/components/splash';
 import { SignInPage } from '@/pages/sign-in';
 import { SignUpPage } from '@/pages/sign-up';
 import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
@@ -10,6 +11,7 @@ import { EmployeeHomePage } from '@/pages/employee-home';
 import { ManagerHomePage } from '@/pages/manager-home';
 import { ManagerTeamPage } from '@/pages/manager-team';
 import { ManagerReportsPage } from '@/pages/manager-reports';
+import { AdminHomePage } from '@/pages/admin-home';
 import { AdminLocationsPage } from '@/pages/admin-locations';
 import { AdminApiKeysPage } from '@/pages/admin-api-keys';
 import { LeavesMinePage } from '@/pages/leaves-mine';
@@ -27,13 +29,7 @@ const queryClient = new QueryClient({
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted">
-        Yükleniyor...
-      </div>
-    );
-  }
+  if (loading) return <DamgaSplash />;
   if (!user) return <Navigate to="/auth/sign-in" replace />;
   return <>{children}</>;
 }
@@ -106,6 +102,14 @@ function AppInner() {
         />
 
         {/* Admin+ */}
+        <Route
+          path="admin"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminHomePage />
+            </RoleGate>
+          }
+        />
         <Route
           path="admin/locations"
           element={

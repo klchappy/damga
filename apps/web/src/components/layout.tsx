@@ -36,6 +36,7 @@ export function AppLayout() {
             <NavItem to="/announcements">Duyuru</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
             {isManager && <NavItem to="/manager/reports">Rapor</NavItem>}
+            {isAdmin && <NavItem to="/admin">Admin</NavItem>}
             {isAdmin && <NavItem to="/admin/locations">Lokasyon</NavItem>}
             {isAdmin && <NavItem to="/admin/api-keys">API</NavItem>}
             <NavItem to="/profile">Profil</NavItem>

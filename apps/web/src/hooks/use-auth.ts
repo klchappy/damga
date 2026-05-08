@@ -55,26 +55,52 @@ export function useAuthBoot() {
       return;
     }
 
-    const supabase = getSupabase();
     let cancelled = false;
+    let supabase: ReturnType<typeof getSupabase>;
+    try {
+      supabase = getSupabase();
+    } catch (err) {
+      console.error('[auth] getSupabase init failed:', err);
+      setLoading(false);
+      return;
+    }
 
     const fetchProfile = async () => {
       try {
         const { data } = await api.get<{ user: AuthUser }>('/auth/me');
         if (!cancelled) setUser(data.user);
-      } catch {
+      } catch (err) {
+        console.warn('[auth] /auth/me failed:', err);
         if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
-    void supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      setSession(data.session);
-      if (data.session) void fetchProfile();
-      else setLoading(false);
-    });
+    // Boot'a 8 saniye max — sonsuz "yükleniyor" loop'unu önle
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        console.warn('[auth] boot timeout 8s, forcing loading=false');
+        setLoading(false);
+      }
+    }, 8000);
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) console.warn('[auth] getSession error:', error.message);
+        setSession(data?.session ?? null);
+        if (data?.session) void fetchProfile();
+        else setLoading(false);
+      })
+      .catch((err) => {
+        console.error('[auth] getSession threw:', err);
+        if (!cancelled) setLoading(false);
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+      });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -84,6 +110,7 @@ export function useAuthBoot() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
       sub.subscription.unsubscribe();
     };
   }, [booted, setUser, setSession, setLoading]);
