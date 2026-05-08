@@ -1,6 +1,7 @@
 export * from './enums';
 export * from './orgs';
 export * from './users';
+export * from './departments';
 export * from './locations';
 export * from './attendance-events';
 export * from './leaves';

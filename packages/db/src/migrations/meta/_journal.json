@@ -8,6 +8,13 @@
       "when": 1778168323451,
       "tag": "0000_late_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778238147484,
+      "tag": "0001_tricky_texas_twister",
+      "breakpoints": true
     }
   ]
 }

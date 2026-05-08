@@ -14,6 +14,8 @@ import { ManagerReportsPage } from '@/pages/manager-reports';
 import { AdminHomePage } from '@/pages/admin-home';
 import { AdminLocationsPage } from '@/pages/admin-locations';
 import { AdminApiKeysPage } from '@/pages/admin-api-keys';
+import { AdminTeamPage } from '@/pages/admin-team';
+import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
@@ -123,6 +125,22 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminApiKeysPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/team"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminTeamPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/departments"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminDepartmentsPage />
             </RoleGate>
           }
         />

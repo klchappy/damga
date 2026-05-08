@@ -6,5 +6,6 @@ export * from './schemas/location';
 export * from './schemas/mood-status';
 export * from './schemas/menu-announcement';
 export * from './schemas/api-key';
+export * from './schemas/department';
 export * from './constants';
 export * from './types';

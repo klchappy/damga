@@ -13,6 +13,8 @@ export const signUpSchema = z.object({
   invite_code: z.string().min(6).max(60).optional(),
   /** Yeni org açma — invite_code yoksa şirket adı zorunlu */
   org_name: z.string().min(2).max(100).optional(),
+  /** Departman adı (sign-up sırasında seçilir; yeni org açılıyorsa default 'Diğer') */
+  department: z.string().max(60).optional(),
   kvkk_consent: z.literal(true, { errorMap: () => ({ message: 'KVKK aydınlatma metnini onaylamalısın' }) }),
 });
 export type SignUpInput = z.infer<typeof signUpSchema>;

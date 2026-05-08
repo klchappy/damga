@@ -22,6 +22,7 @@ export function SignUpPage() {
       password: '',
       full_name: '',
       org_name: '',
+      department: 'Diğer',
       kvkk_consent: undefined as unknown as true,
     },
   });
@@ -64,6 +65,18 @@ export function SignUpPage() {
             {errors.org_name && (
               <p className="mt-1 text-xs text-danger">{errors.org_name.message}</p>
             )}
+          </div>
+          <div>
+            <label className="label">Departmanın</label>
+            <select className="input mt-1" {...register('department')}>
+              <option value="Satış">Satış</option>
+              <option value="Sevk">Sevk</option>
+              <option value="Muhasebe">Muhasebe</option>
+              <option value="Diğer">Diğer</option>
+            </select>
+            <p className="mt-1 text-xs text-muted">
+              Yönetici sonra değiştirebilir veya yeni departman ekleyebilir.
+            </p>
           </div>
           <div>
             <label className="label">Kurumsal E-posta</label>

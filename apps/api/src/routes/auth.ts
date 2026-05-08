@@ -5,7 +5,7 @@ import {
   signUpSchema,
   magicLinkSchema,
 } from '@damga/shared';
-import { getDb, users, orgs } from '@damga/db';
+import { getDb, users, orgs, departments } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth } from '../middleware/auth';
@@ -86,6 +86,17 @@ authRouter.post('/sign-up', async (req, res, next) => {
         .returning();
       orgId = newOrg!.id;
       role = 'owner';
+
+      // Yeni org için 4 default departman seed
+      await db
+        .insert(departments)
+        .values([
+          { org_id: orgId, name: 'Satış', slug: 'satis', color: '#10B981', is_default: true },
+          { org_id: orgId, name: 'Sevk', slug: 'sevk', color: '#3B82F6', is_default: true },
+          { org_id: orgId, name: 'Muhasebe', slug: 'muhasebe', color: '#8B5CF6', is_default: true },
+          { org_id: orgId, name: 'Diğer', slug: 'diger', color: '#9CA3AF', is_default: true },
+        ])
+        .onConflictDoNothing();
     } else {
       throw new HttpError(400, 'Şirket adı veya davet kodu gerekli', 'ORG_REQUIRED');
     }
@@ -111,6 +122,7 @@ authRouter.post('/sign-up', async (req, res, next) => {
         email: input.email,
         full_name: input.full_name,
         role,
+        department: input.department ?? 'Diğer',
       })
       .returning();
 

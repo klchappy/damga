@@ -9,6 +9,7 @@ import {
   Database,
   Webhook,
   ChevronRight,
+  Tags,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -83,10 +84,16 @@ export function AdminHomePage() {
           desc="Ofis, şantiye veya mağaza ekle. NFC tag + QR kod + WiFi BSSID + geofence."
         />
         <AdminCard
-          to="/manager/team"
+          to="/admin/team"
           icon={<Users className="size-6" />}
           title="Çalışanlar"
-          desc="Yeni çalışan ekle, rol ata, izin kotası belirle."
+          desc="Çalışan listesi, rol değiştir, departman ata, izin kotası, şifre sıfırla, pasifleştir."
+        />
+        <AdminCard
+          to="/admin/departments"
+          icon={<Tags className="size-6" />}
+          title="Departmanlar"
+          desc="Satış, Sevk, Muhasebe, Diğer + yeni departman ekle (renk + slug)."
         />
         <AdminCard
           to="/admin/api-keys"
