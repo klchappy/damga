@@ -8,6 +8,8 @@ import {
   Camera,
   Activity,
   ChevronRight,
+  BarChart3,
+  CalendarDays,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTimeTr } from '@/lib/utils';
@@ -67,6 +69,12 @@ export function ManagerHomePage() {
           <p className="text-muted">Bugünkü tablo</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Link to="/manager/analytics" className="btn-outline text-sm">
+            <BarChart3 className="size-4" /> Analitik
+          </Link>
+          <Link to="/manager/schedule" className="btn-outline text-sm">
+            <CalendarDays className="size-4" /> Vardiya Plan
+          </Link>
           <Link to="/admin/live-feed" className="btn-outline text-sm">
             <Activity className="size-4" /> Damga Akışı
           </Link>

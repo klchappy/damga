@@ -16,6 +16,7 @@ import {
   Gift,
   Clock,
   CalendarDays,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -186,6 +187,12 @@ export function AdminHomePage() {
           title="Fazla Mesai"
           desc="Vardiya bitiminden sonra çalışanların kayıtları. Onayla, opsiyonel XP bonusu ver."
           badge={pendingOvertime > 0 ? pendingOvertime : undefined}
+        />
+        <AdminCard
+          to="/manager/analytics"
+          icon={<BarChart3 className="size-6" />}
+          title="Analitik"
+          desc="Geç gelme heatmap'i, departman karşılaştırması, günlük trend, en çok geç kalanlar."
         />
       </div>
 

@@ -12,6 +12,7 @@ import {
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { awardXp } from '../lib/xp';
+import { createNotification } from '../lib/notifications';
 import { logger } from '../config/logger';
 
 export const shiftsRouter = Router();
@@ -270,6 +271,31 @@ shiftsRouter.post(
         '📅 Vardiya ataması oluşturuldu',
       );
 
+      // Notification: her insert için kullanıcıya bildir
+      // Şablon ismini lookup için map kur
+      const tplNames = new Map<string, string>();
+      for (const t of tpls) tplNames.set(t.id, '');
+      const tplFull = await getDb()
+        .select({ id: shiftTemplates.id, name: shiftTemplates.name })
+        .from(shiftTemplates)
+        .where(inArray(shiftTemplates.id, Array.from(tplNames.keys())));
+      for (const t of tplFull) tplNames.set(t.id, t.name);
+      for (const ins of inserts) {
+        void createNotification({
+          orgId: req.authOrgId!,
+          userId: ins.user_id,
+          type: 'shift_assigned',
+          title: '📅 Yeni vardiya atandı',
+          body: `${tplNames.get(ins.shift_template_id) ?? 'Vardiya'} · ${ins.shift_date}`,
+          url: '/me/shifts',
+          metadata: {
+            assignment_id: ins.id,
+            shift_template_id: ins.shift_template_id,
+            shift_date: ins.shift_date,
+          },
+        });
+      }
+
       res.status(201).json({ items: inserts, count: inserts.length });
     } catch (err) {
       next(err);
@@ -493,6 +519,23 @@ shiftsRouter.post(
         '✅ Fazla mesai onaylandı',
       );
 
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: rec.user_id,
+        type: 'overtime_approved',
+        title: '✅ Fazla mesai onaylandı',
+        body:
+          (body.xp_bonus ?? 0) > 0
+            ? `+${body.xp_bonus} bonus XP hesabına eklendi`
+            : `${rec.overtime_minutes} dakika onaylandı`,
+        url: '/profile',
+        metadata: {
+          overtime_id: rec.id,
+          minutes: rec.overtime_minutes,
+          xp_bonus: body.xp_bonus ?? 0,
+        },
+      });
+
       res.json({ ok: true, record: updated });
     } catch (err) {
       next(err);
@@ -537,6 +580,15 @@ shiftsRouter.post(
         .returning();
 
       logger.info({ id, by: req.authUserId }, '❌ Fazla mesai reddedildi');
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: rec.user_id,
+        type: 'overtime_rejected',
+        title: '❌ Fazla mesai reddedildi',
+        body: body.rejection_reason,
+        url: '/profile',
+        metadata: { overtime_id: rec.id, reason: body.rejection_reason },
+      });
       res.json({ ok: true, record: updated });
     } catch (err) {
       next(err);

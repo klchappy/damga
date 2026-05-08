@@ -11,3 +11,4 @@ export * from './menus-announcements';
 export * from './integrations';
 export * from './gamification';
 export * from './shifts';
+export * from './notifications';

@@ -10,6 +10,9 @@ import {
   Camera,
   Lock,
   Plane,
+  X,
+  Calendar,
+  Clock as ClockIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTr, formatTimeTr } from '@/lib/utils';
@@ -114,6 +117,9 @@ export function HistoryPage() {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
+  const [leaveDetail, setLeaveDetail] = useState<{ leave: Leave; date: string } | null>(
+    null,
+  );
 
   const startISO = useMemo(
     () => new Date(Date.UTC(month.year, month.month, 1)).toISOString(),
@@ -230,13 +236,21 @@ export function HistoryPage() {
                 : hasEvents
                   ? 'border-success/40 bg-success/5'
                   : 'border-orange-100 bg-cream';
+            const dateStr = c.day
+              ? `${month.year}-${String(month.month + 1).padStart(2, '0')}-${String(c.day).padStart(2, '0')}`
+              : '';
             return (
               <div
                 key={i}
-                className={`aspect-square rounded-md border ${cellClass} p-1.5 text-xs relative`}
+                onClick={() => {
+                  if (onLeave && c.leave) setLeaveDetail({ leave: c.leave, date: dateStr });
+                }}
+                className={`aspect-square rounded-md border ${cellClass} p-1.5 text-xs relative ${
+                  onLeave ? 'cursor-pointer hover:ring-2 hover:ring-sky-300 transition' : ''
+                }`}
                 title={
                   onLeave
-                    ? `İzin: ${LEAVE_TYPE_TR[c.leave!.type] ?? c.leave!.type}`
+                    ? `İzin detayı için tıkla: ${LEAVE_TYPE_TR[c.leave!.type] ?? c.leave!.type}`
                     : undefined
                 }
               >
@@ -345,6 +359,87 @@ export function HistoryPage() {
           </ul>
         )}
       </div>
+
+      {leaveDetail && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-3 py-4 sm:p-4"
+          onClick={() => setLeaveDetail(null)}
+        >
+          <div
+            className="w-full max-w-sm card space-y-3"
+            onClick={(e) => e.stopPropagation()}
+            style={{ borderTop: '4px solid #38bdf8' }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex size-9 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+                  <Plane className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-sky-700 font-medium">
+                    Onaylı İzin
+                  </div>
+                  <h3 className="font-display text-lg leading-tight">
+                    {LEAVE_TYPE_TR[leaveDetail.leave.type] ?? leaveDetail.leave.type}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setLeaveDetail(null)}
+                className="btn-ghost p-1.5"
+                aria-label="Kapat"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2 text-muted">
+                <Calendar className="size-3.5" />
+                <span>
+                  {new Date(leaveDetail.leave.start_date).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}{' '}
+                  →{' '}
+                  {new Date(leaveDetail.leave.end_date).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-muted">
+                <ClockIcon className="size-3.5" />
+                <span>
+                  Bugün:{' '}
+                  {new Date(leaveDetail.date).toLocaleDateString('tr-TR', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </span>
+              </div>
+              {leaveDetail.leave.reason && (
+                <div className="rounded-md bg-sky-50/60 p-2.5 text-sm border border-sky-100">
+                  <div className="text-[10px] text-sky-700 uppercase tracking-wider mb-1">
+                    Açıklama
+                  </div>
+                  <div className="text-ink">{leaveDetail.leave.reason}</div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setLeaveDetail(null)}
+              className="btn-outline w-full text-sm"
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

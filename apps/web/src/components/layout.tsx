@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils';
 import { MoodPromptAuto } from '@/components/mood-prompt';
 import { NotificationPermissionGate } from '@/components/notification-permission';
+import { NotificationBell } from '@/components/notification-bell';
 
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
@@ -76,7 +77,7 @@ export function AppLayout() {
             {can('profile') && <NavItem to="/profile">Profil</NavItem>}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {user && (
               <div className="hidden sm:flex flex-col items-end text-right">
                 <span className="text-sm font-medium">{user.full_name}</span>
@@ -85,6 +86,7 @@ export function AppLayout() {
                 </span>
               </div>
             )}
+            <NotificationBell />
             <button onClick={handleLogout} className="btn-ghost p-2" title="Çıkış">
               <LogOut className="size-4" />
             </button>

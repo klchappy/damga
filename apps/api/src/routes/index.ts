@@ -19,6 +19,8 @@ import { reportsRouter } from './reports';
 import { leaderboardRouter } from './leaderboard';
 import { rewardsRouter } from './rewards';
 import { shiftsRouter } from './shifts';
+import { notificationsRouter } from './notifications';
+import { analyticsRouter } from './analytics';
 
 export const apiRouter = Router();
 
@@ -42,6 +44,8 @@ apiRouter.use(reportsRouter);
 apiRouter.use(leaderboardRouter);
 apiRouter.use(rewardsRouter);
 apiRouter.use(shiftsRouter);
+apiRouter.use(notificationsRouter);
+apiRouter.use(analyticsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({
@@ -107,6 +111,16 @@ apiRouter.get('/', (_req, res) => {
         'GET  /me/shifts?date_from&date_to (employee)',
         'GET  /overtime?status&user_id, POST /overtime/:id/approve|reject',
         'GET  /overtime/pending-count (badge), PATCH /overtime/:id/reason',
+      ],
+      notifications: [
+        'GET  /me/notifications?unread=1&limit=30',
+        'POST /me/notifications/:id/read, /me/notifications/mark-all-read',
+      ],
+      analytics: [
+        'GET /analytics/heatmap (manager+) — 7×24 grid, late_cells overlay',
+        'GET /analytics/dept-compare — departman bazında check_in/late/overtime',
+        'GET /analytics/trend — günlük seri',
+        'GET /analytics/top-late?limit — en çok geç kalanlar',
       ],
     },
   });

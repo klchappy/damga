@@ -11,6 +11,7 @@ import {
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { awardXp } from '../lib/xp';
+import { createNotification } from '../lib/notifications';
 import { logger } from '../config/logger';
 
 export const rewardsRouter = Router();
@@ -352,6 +353,30 @@ rewardsRouter.post(
           notes: body.notes ?? null,
         })
         .where(eq(userRedemptions.id, id));
+
+      // Reward adı için ek query
+      const [rewardRow] = await db
+        .select({ name: rewards.name, icon: rewards.icon })
+        .from(rewards)
+        .where(eq(rewards.id, r.reward_id));
+
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: r.user_id,
+        type:
+          body.status === 'fulfilled' ? 'redemption_fulfilled' : 'redemption_cancelled',
+        title:
+          body.status === 'fulfilled'
+            ? `${rewardRow?.icon ?? '🎁'} Ödülün teslim edildi`
+            : `↩️ Ödül iptal edildi (${r.cost_xp} XP iade)`,
+        body: rewardRow?.name ?? null,
+        url: '/rewards',
+        metadata: {
+          redemption_id: r.id,
+          reward_id: r.reward_id,
+          status: body.status,
+        },
+      });
 
       res.json({ ok: true, status: body.status });
     } catch (err) {

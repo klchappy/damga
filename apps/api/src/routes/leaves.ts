@@ -6,6 +6,7 @@ import { getDb, leaves, users } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole, requireScope } from '../middleware/auth';
 import { dispatchWebhook } from '../modules/webhook-delivery';
+import { createNotification } from '../lib/notifications';
 
 export const leavesRouter = Router();
 
@@ -112,6 +113,15 @@ leavesRouter.patch(
         eventType: 'leave.approved',
         payload: leave,
       });
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: leave.user_id,
+        type: 'leave_approved',
+        title: '✅ İzin talebin onaylandı',
+        body: `${leave.start_date} → ${leave.end_date}${leave.business_days ? ` (${leave.business_days} iş günü)` : ''}`,
+        url: '/leaves',
+        metadata: { leave_id: leave.id, type: leave.type },
+      });
       res.json({ leave });
     } catch (err) {
       next(err);
@@ -144,6 +154,15 @@ leavesRouter.patch(
         orgId: req.authOrgId,
         eventType: 'leave.rejected',
         payload: leave,
+      });
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: leave.user_id,
+        type: 'leave_rejected',
+        title: '❌ İzin talebin reddedildi',
+        body: body.rejection_reason ?? `${leave.start_date} → ${leave.end_date}`,
+        url: '/leaves',
+        metadata: { leave_id: leave.id, reason: body.rejection_reason },
       });
       res.json({ leave });
     } catch (err) {
