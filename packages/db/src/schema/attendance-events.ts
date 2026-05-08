@@ -90,6 +90,27 @@ export const attendanceEvents = pgTable(
     /** Anomali bayrakları: ['late_sync', 'duplicate', 'low_trust', 'time_drift', ...] */
     flags: text('flags').array().notNull().default(sql`'{}'::text[]`),
 
+    // ===== Manuel inceleme (anomali → selfie + yönetici onayı) =====
+    /**
+     * 'approved'         → otomatik kabul edildi (varsayılan, geriye uyumlu)
+     * 'pending_review'   → anomali tespit edildi + selfie yüklendi, yönetici onayı bekleniyor
+     * 'rejected'         → yönetici reddetti (event tutulur ama "geçersiz")
+     */
+    review_status: text('review_status', {
+      enum: ['approved', 'pending_review', 'rejected'],
+    })
+      .notNull()
+      .default('approved'),
+    /** Selfie fotoğraf URL (Supabase Storage public URL) */
+    selfie_url: text('selfie_url'),
+    /** Anomali sebepleri: ['no_gps', 'out_of_geofence', 'unknown_device', 'low_gps_accuracy', 'no_wifi'] */
+    review_reasons: text('review_reasons').array().notNull().default(sql`'{}'::text[]`),
+    /** İncelemeyi yapan yönetici (manager/admin/owner) */
+    reviewed_by_user_id: uuid('reviewed_by_user_id').references(() => users.id),
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
+    /** Yöneticinin onay/red gerekçesi (opsiyonel) */
+    review_notes: text('review_notes'),
+
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
@@ -101,6 +122,10 @@ export const attendanceEvents = pgTable(
     hashChainIdx: index('idx_events_hash').on(table.this_event_hash),
     typeIdx: index('idx_events_type').on(table.type),
     locationIdx: index('idx_events_location').on(table.location_id),
+    reviewStatusIdx: index('idx_events_review_status').on(
+      table.org_id,
+      table.review_status,
+    ),
   }),
 );
 

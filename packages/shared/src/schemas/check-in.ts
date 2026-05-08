@@ -39,6 +39,12 @@ export const checkInSchema = z
         model: z.string().optional(),
       })
       .optional(),
+
+    /**
+     * Anomali tespit edilen damgalarda yönetici onayı için yüklenen selfie URL'si
+     * (önce POST /v1/stamp/selfie-upload ile yüklenir, sonra dönen URL bu alana konur).
+     */
+    selfie_url: z.string().url().max(2000).optional(),
   })
   .refine(
     (data) => {

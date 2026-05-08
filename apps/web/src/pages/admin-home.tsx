@@ -128,6 +128,12 @@ export function AdminHomePage() {
           title="Bekleyen Kullanıcılar"
           desc="Self-signup yapmış kullanıcıları kendi şirketine ekle (rol + departman ata)."
         />
+        <AdminCard
+          to="/admin/pending-reviews"
+          icon={<ShieldCheck className="size-6" />}
+          title="Onay Bekleyen Damgalar"
+          desc="Lokasyon dışı veya yeni cihazdan damga vurmuş çalışanların selfie'sini incele, onayla veya reddet."
+        />
       </div>
 
       {/* Sistem durumu */}

@@ -1,19 +1,30 @@
 import { Router } from 'express';
-import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, sql, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 import { checkInSchema } from '@damga/shared';
 import { computeTrustScore, computeEvidenceHash } from '@damga/verification';
 import { getDb, attendanceEvents, locations, users, orgs } from '@damga/db';
 import { env } from '../config/env';
 import { HttpError } from '../middleware/error';
-import { requireAuth, requireScope } from '../middleware/auth';
+import { requireAuth, requireRole, requireScope } from '../middleware/auth';
 import { checkInLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
 import { dispatchWebhook } from '../modules/webhook-delivery';
+import { uploadSelfie } from '../lib/storage';
 
 export const checkInRouter = Router();
 
 /** Aynı kullanıcının çift damga atmasını engelle (proxy/replay attack) */
 const VELOCITY_WINDOW_MS = 30 * 1000; // 30 saniye
+
+/** Anomali sebep kodları → kullanıcıya gösterilecek TR mesaj */
+const REVIEW_REASON_MESSAGES: Record<string, string> = {
+  no_gps: 'Konum (GPS) bilgin alınamadı',
+  out_of_geofence: 'Ofis konumunun dışındasın',
+  low_gps_accuracy: 'GPS doğruluğu düşük',
+  unknown_device: 'Tanınmayan cihaz',
+  wrong_wifi: 'Şirket Wi-Fi ağında değilsin',
+};
 
 /** İki nokta arası metre cinsinden mesafe (Haversine formülü) */
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -60,7 +71,7 @@ async function performAttendance(
   }
 
   // ============================================================
-  //  PROXY-ATTACK SAVUNMA KATMANLARI (QR fotoğraflanması saldırısı)
+  //  ANOMALI TESPİTİ + SELFIE FALLBACK (proxy + lokasyon doğrulama)
   // ============================================================
 
   // 1) Velocity check: aynı kullanıcı 30sn içinde tekrar damga atıyorsa reject
@@ -84,53 +95,81 @@ async function performAttendance(
     );
   }
 
-  // 2) GPS + Geofence ZORUNLU (org settings izin vermiyorsa)
-  // Org settings'te allow_outside_geofence === true ise atlanır (özel durumlar için)
+  // 2) Org settings — allow_outside_geofence true ise lokasyon kontrolü yumuşak
   const [orgRow] = await db
     .select({ settings: orgs.settings })
     .from(orgs)
     .where(eq(orgs.id, req.authOrgId));
   const allowOutside = !!orgRow?.settings?.allow_outside_geofence;
 
-  // QR ile damga vuruyorsa GPS+Geofence zorunlu (proxy attack savunması)
-  // NFC ile damgada fiziksel temas zaten sağlanıyor → bu kontrol opsiyonel
-  const usingQrOnly = !!input.qr_code_payload && !input.nfc_tag_id;
+  // 3) Anomali tespiti — NFC fiziksel temas hariç tüm damga'lar için lokasyon ZORUNLU
+  // Anomali bulunursa "selfie + yönetici onayı" akışına geçilir (eski hard reject yerine).
+  const usingNfc = !!input.nfc_tag_id;
+  const reviewReasons: string[] = [];
 
-  if (usingQrOnly && !allowOutside) {
-    if (
-      input.latitude == null ||
-      input.longitude == null ||
-      input.gps_accuracy_m == null
-    ) {
-      throw new HttpError(
-        400,
-        'QR ile damga vurmak için GPS izni vermelisin (proxy saldırılarını önler).',
-        'GPS_REQUIRED',
+  if (!usingNfc && !allowOutside) {
+    if (input.latitude == null || input.longitude == null) {
+      reviewReasons.push('no_gps');
+    } else {
+      const distM = haversineMeters(
+        input.latitude,
+        input.longitude,
+        location.latitude,
+        location.longitude,
       );
+      if (distM > location.geofence_radius_m) {
+        reviewReasons.push('out_of_geofence');
+      }
+      if (input.gps_accuracy_m != null && input.gps_accuracy_m > 200) {
+        reviewReasons.push('low_gps_accuracy');
+      }
     }
-    // Mesafe hesaplama trust-score içinde de yapılıyor, ama burada hard reject için tekrar kontrol et
-    const distM = haversineMeters(
-      input.latitude,
-      input.longitude,
-      location.latitude,
-      location.longitude,
-    );
-    if (distM > location.geofence_radius_m) {
-      throw new HttpError(
-        400,
-        `Lokasyon dışındasın — ${Math.round(distM)}m uzakta (sınır: ${location.geofence_radius_m}m). Ofise gel ve tekrar dene.`,
-        'OUT_OF_GEOFENCE',
-        { distance_m: Math.round(distM), geofence_radius_m: location.geofence_radius_m },
-      );
-    }
-    // GPS doğruluğu çok düşükse (örn 500m) reject — fake GPS belirtisi olabilir
-    if (input.gps_accuracy_m > 200) {
-      throw new HttpError(
-        400,
-        `GPS doğruluğu çok düşük (±${Math.round(input.gps_accuracy_m)}m). Açık alana çıkıp tekrar dene.`,
-        'GPS_LOW_ACCURACY',
-      );
-    }
+  }
+
+  // Yeni cihaz mı? (kayıtlı device_ids'te yoksa anomali)
+  if (
+    input.device_id &&
+    req.authUser?.device_ids &&
+    req.authUser.device_ids.length > 0 &&
+    !req.authUser.device_ids.includes(input.device_id)
+  ) {
+    reviewReasons.push('unknown_device');
+  }
+
+  // WiFi BSSID whitelist'te mi? (web'de çoğu zaman gelmez, sadece flag)
+  if (
+    input.wifi_bssid &&
+    location.wifi_bssids.length > 0 &&
+    !location.wifi_bssids.includes(input.wifi_bssid)
+  ) {
+    reviewReasons.push('wrong_wifi');
+  }
+
+  // Eğer anomali var ve kullanıcı henüz selfie yüklemediyse → selfie iste
+  // (input.selfie_url frontend'in selfie upload'tan sonra gönderdiği URL)
+  const selfieUrl: string | null = (input as { selfie_url?: string }).selfie_url ?? null;
+
+  if (reviewReasons.length > 0 && !selfieUrl) {
+    res.status(200).json({
+      needs_selfie: true,
+      reasons: reviewReasons,
+      reason_messages: reviewReasons.map((r) => REVIEW_REASON_MESSAGES[r] ?? r),
+      message:
+        'Lokasyon/cihaz doğrulaması yetersiz. Yönetici onayı için selfie çekip yüklemen gerekir.',
+      distance_m:
+        input.latitude != null && input.longitude != null
+          ? Math.round(
+              haversineMeters(
+                input.latitude,
+                input.longitude,
+                location.latitude,
+                location.longitude,
+              ),
+            )
+          : null,
+      geofence_radius_m: location.geofence_radius_m,
+    });
+    return;
   }
 
   // Trust score
@@ -155,7 +194,27 @@ async function performAttendance(
     signingSecret: env.NFC_SIGNING_SECRET,
   });
 
-  if (trust.decision === 'reject') {
+  // Trust score düşük → eğer selfie yoksa selfie iste, varsa pending_review
+  if (trust.decision === 'reject' && !selfieUrl) {
+    res.status(200).json({
+      needs_selfie: true,
+      reasons: trust.flags.length > 0 ? trust.flags : ['low_trust'],
+      reason_messages: (trust.flags.length > 0 ? trust.flags : ['low_trust']).map(
+        (r) => REVIEW_REASON_MESSAGES[r] ?? r,
+      ),
+      message:
+        'Doğrulama yetersiz. Yönetici onayı için selfie çekip yüklemen gerekir.',
+      trust_score: trust.score,
+    });
+    return;
+  }
+  if (trust.decision === 'reject' && selfieUrl) {
+    // Selfie var → pending_review olarak akış devam ediyor (aşağıdaki insert)
+    if (!reviewReasons.includes('low_trust')) reviewReasons.push('low_trust');
+  }
+
+  // Bu blok artık asla çalışmıyor (yukarıda return ediliyor); ama TS happiness için tutuyoruz
+  if (false as boolean) {
     throw new HttpError(
       400,
       'Doğrulama yetersiz, check-in reddedildi',
@@ -213,6 +272,10 @@ async function performAttendance(
       app_version: input.app_version,
       device_info: input.device_info as never,
       flags: trust.flags,
+      // Anomali tespit edildiyse → pending_review + selfie + sebepler
+      review_status: reviewReasons.length > 0 ? 'pending_review' : 'approved',
+      selfie_url: selfieUrl,
+      review_reasons: reviewReasons,
     })
     .returning();
 
@@ -268,6 +331,9 @@ async function performAttendance(
     this_event_hash: event.this_event_hash,
     xp_gained: 10, // basit MVP — gamification daha sonra detaylandırılır
     new_streak: req.authUser?.current_streak ?? 0,
+    review_status: event.review_status,
+    review_reasons: event.review_reasons,
+    selfie_url: event.selfie_url,
   });
 }
 
@@ -331,3 +397,155 @@ checkInRouter.post(
     }
   },
 );
+
+/**
+ * POST /v1/stamp/selfie-upload — selfie yükle, public URL döner.
+ *
+ * Body: JSON { contentType, base64 } — image/jpeg|png|webp + base64 encoded.
+ * (Multipart yerine basit JSON; mobil/web kolayca FileReader.readAsDataURL kullanır.)
+ *
+ * Response: { url, path }
+ */
+const selfieUploadSchema = z.object({
+  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  base64: z.string().min(100).max(8_000_000), // ~6MB base64 → ~4.5MB binary
+});
+
+checkInRouter.post('/stamp/selfie-upload', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
+    const input = selfieUploadSchema.parse(req.body);
+    const buffer = Buffer.from(input.base64, 'base64');
+    if (buffer.length > 5 * 1024 * 1024) {
+      throw new HttpError(400, 'Selfie 5MB üstü kabul edilmiyor', 'TOO_LARGE');
+    }
+    const result = await uploadSelfie({
+      orgId: req.authOrgId,
+      userId: req.authUserId,
+      buffer,
+      contentType: input.contentType,
+    });
+    res.json({ url: result.url, path: result.path });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /v1/admin/pending-reviews — onay bekleyen damgaları listele
+ * Sadece manager / admin / owner görebilir.
+ */
+checkInRouter.get(
+  '/admin/pending-reviews',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const rows = await getDb()
+        .select({
+          event: attendanceEvents,
+          user_name: users.full_name,
+          user_email: users.email,
+          user_phone: users.phone,
+          user_department: users.department,
+          location_name: locations.name,
+        })
+        .from(attendanceEvents)
+        .leftJoin(users, eq(users.id, attendanceEvents.user_id))
+        .leftJoin(locations, eq(locations.id, attendanceEvents.location_id))
+        .where(
+          and(
+            eq(attendanceEvents.org_id, req.authOrgId),
+            eq(attendanceEvents.review_status, 'pending_review'),
+          ),
+        )
+        .orderBy(desc(attendanceEvents.server_time))
+        .limit(100);
+
+      const items = rows.map((r) => ({
+        id: r.event.id,
+        type: r.event.type,
+        server_time: r.event.server_time,
+        client_time: r.event.client_time,
+        user_name: r.user_name,
+        user_email: r.user_email,
+        user_phone: r.user_phone,
+        user_department: r.user_department,
+        location_name: r.location_name,
+        latitude: r.event.latitude,
+        longitude: r.event.longitude,
+        gps_accuracy_m: r.event.gps_accuracy_m,
+        distance_from_office_m: r.event.distance_from_office_m,
+        verification_score: r.event.verification_score,
+        verification_methods: r.event.verification_methods,
+        review_reasons: r.event.review_reasons,
+        selfie_url: r.event.selfie_url,
+        flags: r.event.flags,
+      }));
+      res.json({ items });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /v1/admin/events/:id/review — yöneticinin onay/red kararı
+ * Body: { decision: 'approve' | 'reject', notes?: string }
+ */
+const reviewDecisionSchema = z.object({
+  decision: z.enum(['approve', 'reject']),
+  notes: z.string().max(500).optional(),
+});
+
+checkInRouter.post(
+  '/admin/events/:id/review',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const body = reviewDecisionSchema.parse(req.body);
+
+      const [event] = await getDb()
+        .select()
+        .from(attendanceEvents)
+        .where(
+          and(
+            eq(attendanceEvents.id, id),
+            eq(attendanceEvents.org_id, req.authOrgId),
+          ),
+        );
+      if (!event) throw new HttpError(404, 'Damga bulunamadı');
+      if (event.review_status !== 'pending_review') {
+        throw new HttpError(400, `Bu damga zaten ${event.review_status} durumunda`, 'ALREADY_REVIEWED');
+      }
+
+      const newStatus = body.decision === 'approve' ? 'approved' : 'rejected';
+      await getDb()
+        .update(attendanceEvents)
+        .set({
+          review_status: newStatus,
+          reviewed_by_user_id: req.authUserId,
+          reviewed_at: new Date(),
+          review_notes: body.notes ?? null,
+        })
+        .where(eq(attendanceEvents.id, id));
+
+      logger.info(
+        { eventId: id, by: req.authUserId, decision: body.decision },
+        'Pending damga incelendi',
+      );
+
+      res.json({ ok: true, review_status: newStatus });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** unused-import suppressors */
+const _suppress = { sql, inArray };
+void _suppress;

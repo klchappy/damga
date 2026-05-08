@@ -46,13 +46,49 @@ CREATE TRIGGER tr_event_hash
   FOR EACH ROW
   EXECUTE FUNCTION compute_event_hash();
 
--- 3) Append-only enforcement: UPDATE ve DELETE'i tetikleyici ile reddet
+-- 3) Append-only enforcement: kanıt alanları değişemez, review alanları değişebilir
+--
+-- Hash chain bütünlüğü kanıt alanları (user_id, type, server_time, evidence_hash,
+-- this_event_hash, previous_event_hash, koordinatlar, doğrulama metodları) ile
+-- sağlanır — UPDATE'te değişemezler. AMA "review_status / selfie_url /
+-- reviewed_by_user_id / reviewed_at / review_notes" alanları post-hoc yönetici
+-- onayı için kullanıldığı için hash hesabına dahil DEĞİL — değiştirilebilir.
 CREATE OR REPLACE FUNCTION reject_event_modification()
 RETURNS TRIGGER AS $$
 BEGIN
-  RAISE EXCEPTION
-    'attendance_events tablosu append-only — UPDATE/DELETE kabul edilmez. Düzeltme için yeni event ekleyin (type=admin_correction, supersedes_event_id=...).'
-    USING ERRCODE = 'check_violation';
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION
+      'attendance_events DELETE edilemez (append-only). Düzeltme için yeni event ekleyin.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- UPDATE: kanıt alanlarına dokunulmuş mu kontrol et
+  IF (NEW.user_id IS DISTINCT FROM OLD.user_id) OR
+     (NEW.org_id IS DISTINCT FROM OLD.org_id) OR
+     (NEW.type IS DISTINCT FROM OLD.type) OR
+     (NEW.client_time IS DISTINCT FROM OLD.client_time) OR
+     (NEW.server_time IS DISTINCT FROM OLD.server_time) OR
+     (NEW.effective_time IS DISTINCT FROM OLD.effective_time) OR
+     (NEW.latitude IS DISTINCT FROM OLD.latitude) OR
+     (NEW.longitude IS DISTINCT FROM OLD.longitude) OR
+     (NEW.gps_accuracy_m IS DISTINCT FROM OLD.gps_accuracy_m) OR
+     (NEW.location_id IS DISTINCT FROM OLD.location_id) OR
+     (NEW.distance_from_office_m IS DISTINCT FROM OLD.distance_from_office_m) OR
+     (NEW.nfc_tag_id IS DISTINCT FROM OLD.nfc_tag_id) OR
+     (NEW.nfc_signature IS DISTINCT FROM OLD.nfc_signature) OR
+     (NEW.qr_code_payload IS DISTINCT FROM OLD.qr_code_payload) OR
+     (NEW.wifi_bssid IS DISTINCT FROM OLD.wifi_bssid) OR
+     (NEW.device_id IS DISTINCT FROM OLD.device_id) OR
+     (NEW.verification_score IS DISTINCT FROM OLD.verification_score) OR
+     (NEW.evidence_hash IS DISTINCT FROM OLD.evidence_hash) OR
+     (NEW.this_event_hash IS DISTINCT FROM OLD.this_event_hash) OR
+     (NEW.previous_event_hash IS DISTINCT FROM OLD.previous_event_hash) THEN
+    RAISE EXCEPTION
+      'attendance_events kanıt alanları değişemez (append-only hash chain). Sadece review alanları post-hoc güncellenebilir.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -17,6 +17,7 @@ import { useGeolocation } from '@/hooks/use-geolocation';
 import { useNfc } from '@/hooks/use-nfc';
 import { QrScanner } from './qr-scanner';
 import { MoodPrompt } from './mood-prompt';
+import { SelfieCaptureModal } from './selfie-capture';
 import { sendBrowserNotification } from '@/lib/notifications';
 
 interface Props {
@@ -38,6 +39,13 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
   const [lastResult, setLastResult] =
     useState<{ score: number; flags: string[]; methods: string[]; type: string } | null>(null);
   const [showMoodPrompt, setShowMoodPrompt] = useState(false);
+  const [selfiePrompt, setSelfiePrompt] = useState<{
+    reasons: string[];
+    reason_messages?: string[];
+    distance_m?: number | null;
+    geofence_radius_m?: number | null;
+    pendingPayload: Record<string, unknown>;
+  } | null>(null);
 
   const qc = useQueryClient();
   const geo = useGeolocation();
@@ -79,8 +87,9 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       gps_accuracy_m?: number;
       nfc_tag_id?: string;
       qr_code_payload?: string;
+      selfie_url?: string;
     }) => {
-      const { data } = await api.post('/stamp', {
+      const fullPayload = {
         location_id: locationId,
         client_time: new Date().toISOString(),
         device_id: generateDeviceId(),
@@ -90,19 +99,38 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
           user_agent: navigator.userAgent,
         },
         ...payload,
-      });
-      return data;
+      };
+      const { data } = await api.post('/stamp', fullPayload);
+      return { data, payload: fullPayload };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ data, payload }) => {
+      // 1) Backend selfie istiyor → modal aç
+      if (data?.needs_selfie) {
+        setMethod(null);
+        setSelfiePrompt({
+          reasons: data.reasons ?? [],
+          reason_messages: data.reason_messages,
+          distance_m: data.distance_m,
+          geofence_radius_m: data.geofence_radius_m,
+          pendingPayload: payload,
+        });
+        return;
+      }
+      // 2) Normal kayıt
       const score = data.verification_score;
       const flags: string[] = data.flags ?? [];
       const methods: string[] = data.verification_methods ?? [];
-      // Backend hangi tipi seçtiyse — response'da event_id var ama type yok; nextAction'ı kullan
       const type = nextAction;
       setLastResult({ score, flags, methods, type });
       const emoji = score >= 80 ? '✅' : score >= 60 ? '⚠️' : '❌';
       const labelTr = type === 'check_in' ? 'Giriş' : 'Çıkış';
-      toast.success(`${emoji} ${labelTr} kaydedildi · trust ${score}/100`);
+      if (data.review_status === 'pending_review') {
+        toast.success(
+          `📸 ${labelTr} kaydedildi · yönetici onayı bekleniyor (selfie eklendi)`,
+        );
+      } else {
+        toast.success(`${emoji} ${labelTr} kaydedildi · trust ${score}/100`);
+      }
       if (onSuccess) onSuccess(data);
       setMethod(null);
       void refetchToday();
@@ -299,6 +327,26 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
         onClose={() => setShowMoodPrompt(false)}
         cooldownKey="mood-prompt-stamp"
       />
+
+      {/* Anomali tespit edildiğinde selfie iste */}
+      {selfiePrompt && (
+        <SelfieCaptureModal
+          reasons={selfiePrompt.reasons}
+          reasonMessages={selfiePrompt.reason_messages}
+          distanceMeters={selfiePrompt.distance_m ?? null}
+          geofenceRadiusM={selfiePrompt.geofence_radius_m ?? null}
+          onClose={() => setSelfiePrompt(null)}
+          onUploaded={(selfieUrl) => {
+            // İlk request'in payload'ı + selfie_url ile tekrar dene
+            const payload = { ...selfiePrompt.pendingPayload, selfie_url: selfieUrl } as Record<
+              string,
+              unknown
+            >;
+            setSelfiePrompt(null);
+            stampMutation.mutate(payload as Parameters<typeof stampMutation.mutate>[0]);
+          }}
+        />
+      )}
     </div>
   );
 }

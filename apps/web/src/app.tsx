@@ -21,6 +21,7 @@ import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { AdminApplicationsPage } from '@/pages/admin-applications';
 import { AdminSettingsPage } from '@/pages/admin-settings';
 import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
+import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -215,6 +216,14 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminPendingUsersPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/pending-reviews"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <AdminPendingReviewsPage />
             </RoleGate>
           }
         />
