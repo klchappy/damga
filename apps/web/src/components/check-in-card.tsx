@@ -37,7 +37,15 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
   const [method, setMethod] = useState<Method | null>(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [lastResult, setLastResult] =
-    useState<{ score: number; flags: string[]; methods: string[]; type: string } | null>(null);
+    useState<{
+      score: number;
+      flags: string[];
+      methods: string[];
+      type: string;
+      review_status?: 'approved' | 'pending_review' | 'rejected';
+      distance_m?: number | null;
+      review_reasons?: string[];
+    } | null>(null);
   const [showMoodPrompt, setShowMoodPrompt] = useState(false);
   const [selfiePrompt, setSelfiePrompt] = useState<{
     reasons: string[];
@@ -121,7 +129,15 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       const flags: string[] = data.flags ?? [];
       const methods: string[] = data.verification_methods ?? [];
       const type = nextAction;
-      setLastResult({ score, flags, methods, type });
+      setLastResult({
+        score,
+        flags,
+        methods,
+        type,
+        review_status: data.review_status,
+        distance_m: data.distance_from_office_m ?? null,
+        review_reasons: data.review_reasons ?? [],
+      });
       const emoji = score >= 80 ? '✅' : score >= 60 ? '⚠️' : '❌';
       const labelTr = type === 'check_in' ? 'Giriş' : 'Çıkış';
       if (data.review_status === 'pending_review') {
@@ -288,38 +304,72 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
         </div>
       )}
 
-      {lastResult && (
-        <div
-          className={`rounded-md border p-3 text-sm ${
-            lastResult.score >= 80
-              ? 'border-success/30 bg-success/5'
-              : lastResult.score >= 60
+      {lastResult && (() => {
+        const isPending = lastResult.review_status === 'pending_review';
+        const isOutOfFence = (lastResult.review_reasons ?? []).includes('out_of_geofence');
+        const isNfc = lastResult.methods.includes('nfc');
+        return (
+          <div
+            className={`rounded-md border p-3 text-sm space-y-2 ${
+              isPending
                 ? 'border-warning/30 bg-warning/5'
-                : 'border-danger/30 bg-danger/5'
-          }`}
-        >
-          <div className="flex items-center gap-2 font-medium">
-            {lastResult.score >= 80 ? (
-              <CheckCircle2 className="size-5 text-success" />
-            ) : (
-              <AlertCircle className="size-5 text-warning" />
-            )}
-            <span>
-              {lastResult.type === 'check_in' ? '⏱️ Giriş' : '🏃 Çıkış'} kaydedildi · trust{' '}
-              {lastResult.score}/100
-            </span>
-          </div>
-          <div className="mt-1.5 text-xs text-muted">
-            Yöntemler: {lastResult.methods.join(', ') || '—'}
+                : lastResult.score >= 60
+                  ? 'border-success/30 bg-success/5'
+                  : 'border-warning/30 bg-warning/5'
+            }`}
+          >
+            <div className="flex items-center gap-2 font-medium">
+              {isPending ? (
+                <AlertCircle className="size-5 text-warning" />
+              ) : (
+                <CheckCircle2 className="size-5 text-success" />
+              )}
+              <span>
+                {lastResult.type === 'check_in' ? '⏱️ Giriş' : '🏃 Çıkış'}{' '}
+                {isPending ? 'onaya gönderildi' : 'kaydedildi'} · trust{' '}
+                {lastResult.score}/100
+              </span>
+            </div>
+
+            {/* Konum doğrulama durumu net göster */}
+            <div className="flex flex-wrap gap-1 text-[10px]">
+              {isPending ? (
+                <span className="chip bg-warning/10 text-warning border border-warning/30">
+                  📸 Yönetici onayı bekliyor
+                </span>
+              ) : isNfc ? (
+                <span className="chip bg-orange-100 text-orange-700 border border-orange-200">
+                  🔒 NFC ile (fiziksel temas)
+                </span>
+              ) : isOutOfFence ? (
+                <span className="chip bg-warning/10 text-warning border border-warning/30">
+                  ⚠️ Lokasyon dışı (onaylandı)
+                </span>
+              ) : lastResult.distance_m != null ? (
+                <span className="chip bg-success/10 text-success border border-success/30">
+                  ✅ Konum doğrulandı ({lastResult.distance_m}m)
+                </span>
+              ) : (
+                <span className="chip bg-muted/10 text-muted border border-muted/20">
+                  Konum verisi yok
+                </span>
+              )}
+              {lastResult.methods.length > 0 && (
+                <span className="chip bg-orange-50 text-orange-700 border border-orange-100">
+                  {lastResult.methods.join(' · ')}
+                </span>
+              )}
+            </div>
+
             {lastResult.flags.length > 0 && (
-              <>
-                <br />
-                Bayraklar: <span className="font-mono text-warning">{lastResult.flags.join(', ')}</span>
-              </>
+              <div className="text-[10px] text-muted">
+                Bayraklar:{' '}
+                <span className="font-mono text-warning">{lastResult.flags.join(', ')}</span>
+              </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Damga sonrası ruh hali sorma modalı */}
       <MoodPrompt

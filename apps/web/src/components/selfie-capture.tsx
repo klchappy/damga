@@ -1,33 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, X, RefreshCcw, Send, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Camera, X, RefreshCcw, Send, Loader2, AlertTriangle, ShieldCheck, FlipHorizontal2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
 
 interface Props {
-  /** Sebepler — backend'in döndürdüğü reasons array */
   reasons: string[];
-  /** TR mesajları */
   reasonMessages?: string[];
-  /** Mesafe bilgisi (varsa) */
   distanceMeters?: number | null;
   geofenceRadiusM?: number | null;
-  /**
-   * Selfie başarıyla yüklenince çağrılır — caller bu URL'yi /v1/stamp request'ine
-   * ikinci kez gönderir (`selfie_url` field'ı), event pending_review olarak kaydedilir.
-   */
   onUploaded: (selfieUrl: string) => void;
   onClose: () => void;
 }
 
+type Phase = 'starting' | 'streaming' | 'preview' | 'uploading' | 'error';
+type Facing = 'user' | 'environment';
+
 /**
  * Anomali tespit edildiğinde açılan selfie çekme modalı.
  *
- * Akış:
- *  1) Ön kamera açılır (getUserMedia facingMode: 'user')
- *  2) Kullanıcı "Çek" → canvas'a snapshot alınır
- *  3) "Yeniden çek" veya "Gönder"
- *  4) Gönder → POST /v1/stamp/selfie-upload → URL döner
- *  5) onUploaded(url) çağrılır (caller stamp request'ini selfie_url ile yeniler)
+ * Kritik düzeltmeler (önceki versiyondaki kara ekran bug'ı için):
+ *  - getUserMedia + video.play()'i iki ayrı state'e bağlamadık;
+ *    onloadedmetadata bekle, srcObject set'le, sonra play().
+ *  - Snapshot ALMADAN önce videoWidth > 0 kontrol et — yoksa "kameranı tanıyamadık" hatası.
+ *  - "Yeniden çek" eskiden window.location.reload() yapıyordu (modal kapanıyordu);
+ *    şimdi sadece state reset + stream'i yeniden başlatır.
+ *  - Ön kamera (front/user) açılamayan cihazda "Arkaya çevir" butonu fallback.
+ *  - Phase 'error' iken net mesaj + "Tekrar dene" butonu (reload yok).
  */
 export function SelfieCaptureModal({
   reasons,
@@ -39,82 +37,161 @@ export function SelfieCaptureModal({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [phase, setPhase] = useState<'init' | 'streaming' | 'preview' | 'uploading' | 'error'>(
-    'init',
-  );
+  const streamRef = useRef<MediaStream | null>(null);
+  const [phase, setPhase] = useState<Phase>('starting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [facing, setFacing] = useState<Facing>('user');
   const [snapshotBlob, setSnapshotBlob] = useState<Blob | null>(null);
   const [snapshotPreview, setSnapshotPreview] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
-    let stream: MediaStream | null = null;
+    setPhase('starting');
+    setErrorMsg(null);
+    stopStream();
 
-    const startCamera = async () => {
+    const start = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error('Tarayıcın kamera API desteklemiyor.');
+          throw new Error('Tarayıcın kamera API desteklemiyor — Chrome/Safari güncel olmalı.');
         }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'user' },
-            width: { ideal: 720 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
+
+        let stream: MediaStream;
+        // 1. ideal facing ile dene
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facing },
+              width: { ideal: 720 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          });
+        } catch {
+          // 2. exact facing ile zorla (bazı cihazlarda ideal sessiz fail)
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { exact: facing } },
+              audio: false,
+            });
+          } catch {
+            // 3. herhangi bir kamera ile devam et (selfie için arka kamera kabul, kullanıcı ayna gibi tutar)
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
+
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+        streamRef.current = stream;
+
+        const video = videoRef.current;
+        if (!video) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
+        video.srcObject = stream;
+        // metadata yüklendiğinde play et — autoplay policy ihlali olmaz
+        await new Promise<void>((resolve) => {
+          if (video.readyState >= 2) {
+            resolve();
+            return;
+          }
+          const onMeta = () => {
+            video.removeEventListener('loadedmetadata', onMeta);
+            resolve();
+          };
+          video.addEventListener('loadedmetadata', onMeta);
+          // 5 saniyede gelmezse zorla devam et
+          window.setTimeout(resolve, 5000);
+        });
+        if (cancelled) return;
+        try {
+          await video.play();
+        } catch (playErr) {
+          // Bazı browser'lar muted olmadan play'i reddeder
+          video.muted = true;
+          await video.play().catch(() => {});
+        }
+        if (cancelled) return;
         setPhase('streaming');
       } catch (err) {
+        if (cancelled) return;
         const msg = err instanceof Error ? err.message : 'Kamera açılamadı';
         const tr = /Permission|NotAllowed/i.test(msg)
-          ? 'Kamera izni verilmedi. Tarayıcı ayarlarından izin ver.'
-          : /NotFound/i.test(msg)
-            ? 'Kamera bulunamadı.'
-            : msg;
+          ? 'Kamera izni verilmedi. Tarayıcı ayarlarından izin verip tekrar dene.'
+          : /NotFound|DevicesNotFound/i.test(msg)
+            ? 'Cihazda kamera bulunamadı.'
+            : /NotReadable/i.test(msg)
+              ? 'Kamera başka bir uygulama tarafından kullanılıyor — kapat ve tekrar dene.'
+              : msg;
         setErrorMsg(tr);
         setPhase('error');
       }
     };
 
-    void startCamera();
+    void start();
 
     return () => {
       cancelled = true;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      stopStream();
     };
-  }, []);
+    // facing veya reloadKey değiştiğinde stream'i yeniden başlat
+  }, [facing, reloadKey]);
 
   const takeSnapshot = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-    const w = video.videoWidth || 720;
-    const h = video.videoHeight || 720;
+    if (!video || !canvas) {
+      toast.error('Kamera henüz hazır değil');
+      return;
+    }
+    const w = video.videoWidth || 0;
+    const h = video.videoHeight || 0;
+    if (w === 0 || h === 0) {
+      toast.error('Kamera görüntü vermiyor — "Tekrar dene" ile yeniden başlat');
+      return;
+    }
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    // Ön kamera mirror — kullanıcının "doğal" görüntüsü için tekrar flip et
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
+    if (!ctx) {
+      toast.error('Canvas context açılamadı');
+      return;
+    }
+    if (facing === 'user') {
+      // Ön kamera mirror — kullanıcının "doğal" görüntüsü için flip et
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(video, 0, 0, w, h);
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!blob || blob.size < 1000) {
+          toast.error('Boş fotoğraf — kamera görüntüsü alamadık, tekrar dene');
+          return;
+        }
+        if (snapshotPreview) URL.revokeObjectURL(snapshotPreview);
         setSnapshotBlob(blob);
         setSnapshotPreview(URL.createObjectURL(blob));
         setPhase('preview');
-        // Stream'i kapat (preview sırasında kamera görüntüsü gerekmez)
-        const stream = video.srcObject as MediaStream | null;
-        stream?.getTracks().forEach((t) => t.stop());
+        // Stream'i kapat (preview sırasında batarya tasarrufu)
+        stopStream();
       },
       'image/jpeg',
       0.85,
@@ -125,16 +202,18 @@ export function SelfieCaptureModal({
     if (snapshotPreview) URL.revokeObjectURL(snapshotPreview);
     setSnapshotBlob(null);
     setSnapshotPreview(null);
-    setPhase('init');
-    // useEffect tekrar çalışmaz; manuel re-init için pencereyi yeniden aç
-    window.location.reload();
+    setPhase('starting');
+    setReloadKey((k) => k + 1);
+  };
+
+  const flipFacing = () => {
+    setFacing((f) => (f === 'user' ? 'environment' : 'user'));
   };
 
   const upload = async () => {
     if (!snapshotBlob) return;
     setPhase('uploading');
     try {
-      // Blob → base64
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve, reject) => {
         reader.onloadend = () => {
@@ -144,6 +223,9 @@ export function SelfieCaptureModal({
         reader.onerror = () => reject(new Error('Dosya okunamadı'));
         reader.readAsDataURL(snapshotBlob);
       });
+      if (!base64 || base64.length < 1000) {
+        throw new Error('Fotoğraf çok küçük / boş — tekrar çek');
+      }
       const r = await api.post<{ url: string; path: string }>('/stamp/selfie-upload', {
         contentType: 'image/jpeg',
         base64,
@@ -198,21 +280,22 @@ export function SelfieCaptureModal({
               </p>
             )}
             <p className="text-muted mt-1">
-              Selfie çekip yüklersen yöneticin onayına gider; uygunsa damgan kayıt edilir.
+              Selfie çek + gönder → yöneticin onayına gider; uygunsa damgan kaydolur.
             </p>
           </div>
         </div>
 
         <div className="relative w-full aspect-square overflow-hidden rounded-xl bg-black border-2 border-orange-500">
-          {phase === 'streaming' && (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-            />
-          )}
+          {/* Video her zaman render edilir — phase 'streaming' olunca görünür */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`absolute inset-0 w-full h-full object-cover ${
+              facing === 'user' ? 'scale-x-[-1]' : ''
+            } ${phase !== 'streaming' ? 'invisible' : ''}`}
+          />
           {phase === 'preview' && snapshotPreview && (
             <img
               src={snapshotPreview}
@@ -220,23 +303,34 @@ export function SelfieCaptureModal({
               className="absolute inset-0 w-full h-full object-cover"
             />
           )}
-          {phase === 'init' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2">
-              <Camera className="size-10 opacity-80" />
+          {phase === 'starting' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2 bg-black/80">
+              <Loader2 className="size-10 animate-spin opacity-80" />
               <span className="text-sm">Kamera başlatılıyor…</span>
             </div>
           )}
-          {phase === 'error' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2 px-4 text-center">
-              <AlertTriangle className="size-10 opacity-80" />
+          {phase === 'error' && errorMsg && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2 px-4 text-center bg-black/80">
+              <AlertTriangle className="size-10 opacity-80 text-warning" />
               <span className="text-sm">{errorMsg}</span>
             </div>
           )}
           {phase === 'uploading' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2 bg-black/40">
-              <Loader2 className="size-8 animate-spin" />
+              <Loader2 className="size-10 animate-spin" />
               <span className="text-sm">Yükleniyor…</span>
             </div>
+          )}
+          {phase === 'streaming' && (
+            <button
+              type="button"
+              onClick={flipFacing}
+              className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/90 hover:bg-white text-ink flex items-center justify-center shadow-md transition"
+              title={facing === 'user' ? 'Arka kameraya geç' : 'Ön kameraya geç'}
+              aria-label="Kamera çevir"
+            >
+              <FlipHorizontal2 className="size-4" />
+            </button>
           )}
           <canvas ref={canvasRef} className="hidden" />
         </div>
@@ -260,13 +354,23 @@ export function SelfieCaptureModal({
             </>
           )}
           {phase === 'error' && (
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="btn-primary flex-1"
-            >
-              <RefreshCcw className="size-4" /> Yeniden dene
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={flipFacing}
+                className="btn-outline flex-1"
+              >
+                <FlipHorizontal2 className="size-4" />
+                {facing === 'user' ? 'Arka' : 'Ön'} kamera
+              </button>
+              <button
+                type="button"
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="btn-primary flex-1"
+              >
+                <RefreshCcw className="size-4" /> Tekrar dene
+              </button>
+            </>
           )}
         </div>
 

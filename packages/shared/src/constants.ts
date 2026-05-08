@@ -24,10 +24,16 @@ export const PLAN_PRICES_TRY = {
 } as const;
 
 // Trust score eşikleri
+//
+// GPS-only damga için tipik puanlama:
+//   GPS (geofence içi) 25 + Time 15 + Known device 10 = 50
+//   GPS-only ile içerden damga vurmak ÇALIŞSIN diye eşikleri düşürdük.
+//   Anomali (lokasyon dışı / yeni cihaz / fake gps) ZATEN selfie isteyen
+//   ayrı bir katmanda yakalanıyor (check-in.ts), trust score'a bağımsız.
 export const TRUST_THRESHOLDS = {
-  AUTO_APPROVE: 80, // ≥80 → otomatik onay
-  FLAG_FOR_REVIEW: 60, // 60–79 → onay ama bayrak
-  REJECT: 0, // <60 → reddet (admin'e yönlendir)
+  AUTO_APPROVE: 50, // ≥50 → otomatik onay (GPS+time+device yeterli)
+  FLAG_FOR_REVIEW: 35, // 35–49 → kabul ama bayrak (sadece bir kanıt)
+  REJECT: 0, // <35 → trust reddet → selfie iste
 } as const;
 
 // Trust score puanları (toplam 100)
