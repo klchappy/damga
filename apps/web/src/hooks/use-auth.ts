@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase';
@@ -35,6 +35,8 @@ interface AuthStore {
 export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
   session: null,
+  // İlk render: bootlanmamış, splash gerekir.
+  // useAuthBoot session/profile akışını bitirince false'a çeker.
   loading: true,
   setUser: (user) => set({ user }),
   setSession: (session) => set({ session }),
@@ -43,12 +45,14 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
 /** App boot'ta çağrılır — Supabase session dinler, /v1/auth/me ile profil çeker. */
 export function useAuthBoot() {
-  const { setUser, setSession, setLoading } = useAuthStore();
-  const [booted, setBooted] = useState(false);
+  const bootedRef = useRef(false);
 
   useEffect(() => {
-    if (booted) return;
-    setBooted(true);
+    // StrictMode double-mount koruması: useRef ile tek seferlik koşum
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+
+    const { setUser, setSession, setLoading } = useAuthStore.getState();
 
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -77,18 +81,19 @@ export function useAuthBoot() {
       }
     };
 
-    // Boot'a 8 saniye max — sonsuz "yükleniyor" loop'unu önle
+    // Hard timeout: 3 saniye — Supabase getSession bazen sessizce hang ediyor
     const timeoutId = window.setTimeout(() => {
       if (!cancelled) {
-        console.warn('[auth] boot timeout 8s, forcing loading=false');
+        console.warn('[auth] boot timeout 3s, forcing loading=false');
         setLoading(false);
       }
-    }, 8000);
+    }, 3000);
 
     supabase.auth
       .getSession()
       .then(({ data, error }) => {
         if (cancelled) return;
+        window.clearTimeout(timeoutId);
         if (error) console.warn('[auth] getSession error:', error.message);
         setSession(data?.session ?? null);
         if (data?.session) void fetchProfile();
@@ -96,16 +101,19 @@ export function useAuthBoot() {
       })
       .catch((err) => {
         console.error('[auth] getSession threw:', err);
-        if (!cancelled) setLoading(false);
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId);
+        if (!cancelled) {
+          window.clearTimeout(timeoutId);
+          setLoading(false);
+        }
       });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) void fetchProfile();
-      else setUser(null);
+      else {
+        setUser(null);
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -113,7 +121,7 @@ export function useAuthBoot() {
       window.clearTimeout(timeoutId);
       sub.subscription.unsubscribe();
     };
-  }, [booted, setUser, setSession, setLoading]);
+  }, []);
 }
 
 export async function signInWithEmail(email: string, password: string) {
