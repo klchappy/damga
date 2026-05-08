@@ -128,3 +128,32 @@ export const announcementReads = pgTable(
 );
 
 export type AnnouncementRead = typeof announcementReads.$inferSelect;
+
+/**
+ * announcement_comments — duyuruya yorum.
+ *
+ * GÖRÜNÜRLÜK: çalışan rolündeki kullanıcı sadece KENDİ yorumunu görür ve yeni
+ * yorum ekleyebilir; manager/admin/owner ROLLERİ TÜM yorumları görür.
+ */
+export const announcementComments = pgTable(
+  'announcement_comments',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    announcement_id: uuid('announcement_id')
+      .notNull()
+      .references(() => announcements.id, { onDelete: 'cascade' }),
+    org_id: uuid('org_id').notNull(),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    comment: text('comment').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    announcementIdx: index('idx_announcement_comments_announcement').on(table.announcement_id),
+    userIdx: index('idx_announcement_comments_user').on(table.user_id),
+  }),
+);
+
+export type AnnouncementComment = typeof announcementComments.$inferSelect;
+export type NewAnnouncementComment = typeof announcementComments.$inferInsert;

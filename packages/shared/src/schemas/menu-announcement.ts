@@ -36,3 +36,33 @@ export const createAnnouncementSchema = z.object({
   expires_at: z.string().datetime().optional(),
 });
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;
+
+export const updateAnnouncementSchema = z.object({
+  category: z.enum(['info', 'celebration', 'warning', 'urgent']).optional(),
+  title: z.string().min(2).max(150).optional(),
+  body: z.string().min(2).max(2000).optional(),
+  pinned: z.boolean().optional(),
+  expires_at: z.string().datetime().nullable().optional(),
+});
+export type UpdateAnnouncementInput = z.infer<typeof updateAnnouncementSchema>;
+
+/** Çalışan duyuruya yorum yazar */
+export const createAnnouncementCommentSchema = z.object({
+  comment: z.string().trim().min(1, 'Yorum boş olamaz').max(1000),
+});
+export type CreateAnnouncementCommentInput = z.infer<typeof createAnnouncementCommentSchema>;
+
+export const updateMenuSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  main_dish: z.string().min(2).max(150).optional(),
+  description: z.string().max(500).optional().nullable(),
+  photo_url: z.string().url().optional().nullable(),
+  calories: z.number().int().nonnegative().max(5000).optional().nullable(),
+  allergens: z.array(z.string()).optional(),
+  is_vegetarian: z.boolean().optional(),
+  is_vegan: z.boolean().optional(),
+});
+export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;

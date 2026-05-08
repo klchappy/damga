@@ -12,8 +12,15 @@ import {
   QrCode,
   Star,
   MessageSquare,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
-import { createMenuSchema, type CreateMenuInput } from '@damga/shared';
+import {
+  createMenuSchema,
+  updateMenuSchema,
+  type CreateMenuInput,
+  type UpdateMenuInput,
+} from '@damga/shared';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/hooks/use-auth';
 
@@ -43,6 +50,7 @@ export function MenuPage() {
   const end = sevenDaysLater.toISOString().slice(0, 10);
 
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Menu | null>(null);
   const [showQrFor, setShowQrFor] = useState(false);
   const [feedbackFor, setFeedbackFor] = useState<Menu | null>(null);
 
@@ -66,6 +74,15 @@ export function MenuPage() {
       api.post(`/menus/${id}/rate`, { rating }),
     onSuccess: () => {
       toast.success('Yıldız verildi');
+      qc.invalidateQueries({ queryKey: ['menus'] });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const deleteMenuMut = useMutation({
+    mutationFn: async (id: string) => api.delete(`/menus/${id}`),
+    onSuccess: () => {
+      toast.success('Menü silindi');
       qc.invalidateQueries({ queryKey: ['menus'] });
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -136,11 +153,41 @@ export function MenuPage() {
                     </p>
                   )}
                 </div>
-                {m.calories && (
-                  <span className="chip bg-orange-100 text-orange-700">
-                    {m.calories} kcal
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {m.calories && (
+                    <span className="chip bg-orange-100 text-orange-700">
+                      {m.calories} kcal
+                    </span>
+                  )}
+                  {canCreate && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(m)}
+                        className="btn-ghost p-1.5"
+                        title="Düzenle"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `"${m.main_dish}" menüsü silinecek (yorumlar dahil). Onaylıyor musun?`,
+                            )
+                          ) {
+                            deleteMenuMut.mutate(m.id);
+                          }
+                        }}
+                        className="btn-ghost p-1.5 text-danger hover:bg-danger/10"
+                        title="Sil"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {m.is_vegetarian && (
@@ -192,8 +239,9 @@ export function MenuPage() {
                     <button
                       onClick={() => setFeedbackFor(m)}
                       className="btn-ghost text-xs py-1 px-2 text-orange-600"
-                      title="Yorumları gör (yönetici)"
+                      title="Yorumları gör (yalnızca admin/yönetici)"
                     >
+                      <MessageSquare className="size-3.5" />
                       Yorumları gör
                     </button>
                   )}
@@ -217,6 +265,174 @@ export function MenuPage() {
       {feedbackFor && (
         <FeedbackListModal menu={feedbackFor} onClose={() => setFeedbackFor(null)} />
       )}
+      {editing && (
+        <EditMenuModal
+          menu={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['menus'] });
+            setEditing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditMenuModal({
+  menu,
+  onClose,
+  onSaved,
+}: {
+  menu: Menu;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<UpdateMenuInput>({
+    resolver: zodResolver(updateMenuSchema),
+    defaultValues: {
+      date: menu.date,
+      main_dish: menu.main_dish,
+      description: menu.description ?? '',
+      calories: menu.calories ?? undefined,
+      allergens: menu.allergens ?? [],
+      is_vegetarian: menu.is_vegetarian,
+      is_vegan: menu.is_vegan,
+    },
+  });
+
+  const allergens = watch('allergens') || [];
+  const ALL_ALLERGENS = ['gluten', 'laktoz', 'fıstık', 'kuruyemiş', 'kabuklu', 'yumurta', 'soya'];
+
+  const toggleAllergen = (a: string) => {
+    const next = allergens.includes(a) ? allergens.filter((x) => x !== a) : [...allergens, a];
+    setValue('allergens', next, { shouldDirty: true });
+  };
+
+  const updateMut = useMutation({
+    mutationFn: async (input: UpdateMenuInput) => {
+      const r = await api.patch(`/menus/${menu.id}`, {
+        ...input,
+        description: input.description || null,
+        photo_url: input.photo_url || null,
+      });
+      return r.data.menu;
+    },
+    onSuccess: () => {
+      toast.success('Menü güncellendi');
+      onSaved();
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-3 py-4 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl rounded-2xl bg-white shadow-2xl p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-orange-600 text-xs font-medium uppercase tracking-wider">
+              <Pencil className="size-3.5" /> Düzenle
+            </div>
+            <h2 className="font-display text-xl mt-1">{menu.main_dish}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={updateMut.isPending}
+            className="btn-ghost p-1.5 -mt-1 -mr-1"
+            aria-label="Kapat"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit((d) => updateMut.mutate(d))} className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Tarih</label>
+              <input type="date" className="input mt-1" {...register('date')} />
+            </div>
+            <div>
+              <label className="label">Kalori</label>
+              <input
+                type="number"
+                min={0}
+                max={5000}
+                className="input mt-1"
+                {...register('calories', { valueAsNumber: true })}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">Ana yemek</label>
+            <input className="input mt-1" {...register('main_dish')} />
+            {errors.main_dish && (
+              <p className="mt-1 text-xs text-danger">{errors.main_dish.message}</p>
+            )}
+          </div>
+          <div>
+            <label className="label">Açıklama</label>
+            <textarea rows={3} className="input mt-1 resize-none" {...register('description')} />
+          </div>
+          <div>
+            <label className="label">Alerjenler</label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {ALL_ALLERGENS.map((a) => {
+                const on = allergens.includes(a);
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => toggleAllergen(a)}
+                    className={`chip border ${
+                      on
+                        ? 'bg-warning/15 text-warning border-warning/40'
+                        : 'bg-white text-muted border-orange-100 hover:bg-orange-50'
+                    }`}
+                  >
+                    {on && '✓ '}
+                    {a}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" {...register('is_vegetarian')} />🌱 Vejetaryen
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" {...register('is_vegan')} />🌿 Vegan
+            </label>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={updateMut.isPending}
+              className="btn-outline flex-1"
+            >
+              İptal
+            </button>
+            <button type="submit" disabled={updateMut.isPending} className="btn-primary flex-1">
+              {updateMut.isPending && <Loader2 className="size-4 animate-spin" />}
+              Kaydet
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

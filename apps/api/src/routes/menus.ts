@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { and, between, desc, eq, sql, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { createMenuSchema, rsvpSchema, rateMenuSchema } from '@damga/shared';
+import {
+  createMenuSchema,
+  updateMenuSchema,
+  rsvpSchema,
+  rateMenuSchema,
+} from '@damga/shared';
 import { getDb, menus, menuRsvps, users } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -91,6 +96,66 @@ menusRouter.post(
         .values({ ...input, org_id: req.authOrgId, created_by: req.authUserId })
         .returning();
       res.status(201).json({ menu: m });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * PATCH /v1/menus/:id — admin/owner menüyü düzenler.
+ */
+menusRouter.patch(
+  '/menus/:id',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const input = updateMenuSchema.parse(req.body);
+
+      const updates: Record<string, unknown> = {};
+      if (input.date !== undefined) updates.date = input.date;
+      if (input.main_dish !== undefined) updates.main_dish = input.main_dish;
+      if (input.description !== undefined) updates.description = input.description;
+      if (input.photo_url !== undefined) updates.photo_url = input.photo_url;
+      if (input.calories !== undefined) updates.calories = input.calories;
+      if (input.allergens !== undefined) updates.allergens = input.allergens;
+      if (input.is_vegetarian !== undefined) updates.is_vegetarian = input.is_vegetarian;
+      if (input.is_vegan !== undefined) updates.is_vegan = input.is_vegan;
+
+      const [updated] = await getDb()
+        .update(menus)
+        .set(updates)
+        .where(and(eq(menus.id, id), eq(menus.org_id, req.authOrgId)))
+        .returning();
+      if (!updated) throw new HttpError(404, 'Menü bulunamadı');
+      res.json({ menu: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * DELETE /v1/menus/:id — admin/owner menüyü siler.
+ * menu_rsvps cascade olarak silinir.
+ */
+menusRouter.delete(
+  '/menus/:id',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const [deleted] = await getDb()
+        .delete(menus)
+        .where(and(eq(menus.id, id), eq(menus.org_id, req.authOrgId)))
+        .returning({ id: menus.id });
+      if (!deleted) throw new HttpError(404, 'Menü bulunamadı');
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }
