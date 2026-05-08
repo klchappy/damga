@@ -38,6 +38,32 @@ export type StatusType =
 
 export type AnnouncementCategory = 'info' | 'celebration' | 'warning' | 'urgent';
 
+export type EmployeePageKey =
+  | 'home'
+  | 'history'
+  | 'leaves'
+  | 'menu'
+  | 'announcements'
+  | 'profile'
+  | 'mood'
+  | 'status';
+
+/**
+ * Çalışan rolü için varsayılan açık sayfalar — sade kalsın diye ASGARI küme:
+ * - home (giriş/çıkış damgası)
+ * - menu (yemek menüsü)
+ * - announcements (duyurular)
+ * - profile (kendi bilgisi + çıkış)
+ *
+ * Geçmiş, izin, mood vb. opsiyonel — admin panelinden açılır.
+ */
+export const DEFAULT_EMPLOYEE_PAGES: EmployeePageKey[] = [
+  'home',
+  'menu',
+  'announcements',
+  'profile',
+];
+
 export interface OrgSettings {
   logo_url?: string;
   primary_color?: string;
@@ -50,6 +76,8 @@ export interface OrgSettings {
   require_nfc?: boolean;
   /** Manuel giriş izinli mi (manager onayıyla) */
   allow_manual_entry?: boolean;
+  /** Employee rolünün görebileceği sayfa anahtarları. undefined → DEFAULT_EMPLOYEE_PAGES */
+  employee_visible_pages?: EmployeePageKey[];
 }
 
 export interface DeviceInfo {

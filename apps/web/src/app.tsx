@@ -19,6 +19,7 @@ import { AdminApiKeysPage } from '@/pages/admin-api-keys';
 import { AdminTeamPage } from '@/pages/admin-team';
 import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { AdminApplicationsPage } from '@/pages/admin-applications';
+import { AdminSettingsPage } from '@/pages/admin-settings';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
@@ -33,8 +34,9 @@ const queryClient = new QueryClient({
 });
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuthStore();
-  if (loading) return <DamgaSplash />;
+  const { user, loading, signInTransition } = useAuthStore();
+  // Sign-in geçişi sırasında 5 sn damga animasyonu göstereceğiz
+  if (loading || signInTransition) return <DamgaSplash />;
   if (!user) return <Navigate to="/auth/sign-in" replace />;
   // Atanmamış kullanıcı → bekleme ekranı
   if (user.is_pending || !user.org_id) return <PendingPage />;
@@ -155,6 +157,14 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminApplicationsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/settings"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminSettingsPage />
             </RoleGate>
           }
         />

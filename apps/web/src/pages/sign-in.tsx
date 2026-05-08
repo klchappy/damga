@@ -27,10 +27,9 @@ export function SignInPage() {
     try {
       await signInWithEmail(data.email, data.password);
       toast.success('Giriş başarılı 👋');
-      // Race condition: navigate hemen olursa user state henüz dolmamış olabilir.
-      // Splash göster → useAuthBoot/onAuthStateChange fetchProfile bitince user gelir
-      // → PrivateRoute children render eder.
-      useAuthStore.getState().setLoading(true);
+      // 5 saniyelik damga splash → arka planda fetchProfile çalışıyor olacak.
+      // PrivateRoute (loading || signInTransition) ise DamgaSplash gösteriyor.
+      useAuthStore.getState().startSignInTransition(5000);
       navigate('/', { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Giriş yapılamadı');

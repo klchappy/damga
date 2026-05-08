@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from './auth';
 import { applicationsRouter } from './applications';
+import { orgsRouter } from './orgs';
 import { checkInRouter } from './check-in';
 import { eventsRouter } from './events';
 import { leavesRouter } from './leaves';
@@ -21,6 +22,7 @@ export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use(applicationsRouter);
+apiRouter.use(orgsRouter);
 apiRouter.use(checkInRouter);
 apiRouter.use(eventsRouter);
 apiRouter.use(leavesRouter);
@@ -42,8 +44,11 @@ apiRouter.get('/', (_req, res) => {
     docs: 'https://damga.deploi.net/docs',
     routes: [
       'GET  /health',
-      'POST /auth/magic-link, /sign-up',
+      'POST /auth/magic-link, /sign-up, /auth/apply-org',
       'GET  /auth/me',
+      'GET  /admin/applications, /admin/pending-users',
+      'POST /admin/applications/:id/review, /admin/pending-users/:id/assign',
+      'GET  /orgs/me, PATCH /orgs/me/settings',
       'POST /check-in, /check-out',
       'GET  /events, /events/:id, /events/verify-chain',
       'POST /events/:id/dispute',

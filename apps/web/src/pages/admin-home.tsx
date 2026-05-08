@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Tags,
   Building2,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -113,6 +114,12 @@ export function AdminHomePage() {
           icon={<Building2 className="size-6" />}
           title="Şirket Başvuruları"
           desc="Damga'ya başvuran şirketleri incele, onayla → owner hesabı + departmanlar otomatik kurulur."
+        />
+        <AdminCard
+          to="/admin/settings"
+          icon={<SettingsIcon className="size-6" />}
+          title="Şirket Ayarları"
+          desc="Çalışanların hangi sayfaları görebileceğini seç (Bugün, Menü, Duyuru sade preset)."
         />
       </div>
 

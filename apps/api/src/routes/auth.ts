@@ -5,7 +5,7 @@ import {
   signUpSchema,
   magicLinkSchema,
 } from '@damga/shared';
-import { getDb, users } from '@damga/db';
+import { getDb, users, orgs } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth } from '../middleware/auth';
@@ -142,30 +142,51 @@ authRouter.post('/sign-up', async (req, res, next) => {
   }
 });
 
-/** Mevcut kullanıcı (JWT ile) */
-authRouter.get('/me', requireAuth, (req, res) => {
-  if (!req.authUser) {
-    throw new HttpError(401, 'Yetki yok');
+/** Mevcut kullanıcı (JWT ile) — org settings dahil */
+authRouter.get('/me', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUser) {
+      throw new HttpError(401, 'Yetki yok');
+    }
+    const u = req.authUser;
+
+    // Org settings — frontend page filter için gerekli
+    let org: { id: string; name: string; slug: string; settings: unknown } | null = null;
+    if (u.org_id) {
+      const [row] = await getDb()
+        .select({
+          id: orgs.id,
+          name: orgs.name,
+          slug: orgs.slug,
+          settings: orgs.settings,
+        })
+        .from(orgs)
+        .where(eq(orgs.id, u.org_id));
+      if (row) org = row;
+    }
+
+    res.json({
+      user: {
+        id: u.id,
+        email: u.email,
+        full_name: u.full_name,
+        role: u.role,
+        org_id: u.org_id,
+        is_pending: u.is_pending,
+        department: u.department,
+        title: u.title,
+        avatar_url: u.avatar_url,
+        current_streak: u.current_streak,
+        longest_streak: u.longest_streak,
+        total_xp: u.total_xp,
+        level: u.level,
+        shields: u.shields,
+        annual_leave_quota_days: u.annual_leave_quota_days,
+        annual_leave_used_days: u.annual_leave_used_days,
+      },
+      org,
+    });
+  } catch (err) {
+    next(err);
   }
-  const u = req.authUser;
-  res.json({
-    user: {
-      id: u.id,
-      email: u.email,
-      full_name: u.full_name,
-      role: u.role,
-      org_id: u.org_id,
-      is_pending: u.is_pending,
-      department: u.department,
-      title: u.title,
-      avatar_url: u.avatar_url,
-      current_streak: u.current_streak,
-      longest_streak: u.longest_streak,
-      total_xp: u.total_xp,
-      level: u.level,
-      shields: u.shields,
-      annual_leave_quota_days: u.annual_leave_quota_days,
-      annual_leave_used_days: u.annual_leave_used_days,
-    },
-  });
 });

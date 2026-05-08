@@ -1,19 +1,51 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { LogOut, Menu as MenuIcon } from 'lucide-react';
-import { useState } from 'react';
-import { useAuthStore, signOut } from '@/hooks/use-auth';
+import { useState, useMemo } from 'react';
+import {
+  useAuthStore,
+  signOut,
+  DEFAULT_EMPLOYEE_PAGES,
+  type EmployeePageKey,
+} from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
+  const org = useAuthStore((s) => s.org);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
   const isManager = user && ['manager', 'admin', 'owner'].includes(user.role);
   const isAdmin = user && ['admin', 'owner'].includes(user.role);
 
+  // Çalışan görünür sayfa kümesi — admin/manager hepsini görür.
+  // Admin /admin/settings'ten bunu açıp kapatabilir.
+  const visibleSet = useMemo(() => {
+    if (!user) return new Set<EmployeePageKey>();
+    if (user.role !== 'employee') {
+      // Manager+ tüm temel sayfaları görür
+      return new Set<EmployeePageKey>([
+        'home',
+        'history',
+        'leaves',
+        'menu',
+        'announcements',
+        'profile',
+        'mood',
+        'status',
+      ]);
+    }
+    const cfg = org?.settings?.employee_visible_pages;
+    return new Set<EmployeePageKey>(cfg && cfg.length > 0 ? cfg : DEFAULT_EMPLOYEE_PAGES);
+  }, [user, org]);
+
+  const can = (key: EmployeePageKey) => visibleSet.has(key);
+
   const handleLogout = async () => {
     await signOut();
+    useAuthStore.getState().setUser(null);
+    useAuthStore.getState().setOrg(null);
+    useAuthStore.getState().setSession(null);
     navigate('/auth/sign-in', { replace: true });
   };
 
@@ -29,15 +61,15 @@ export function AppLayout() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1 flex-wrap">
-            <NavItem to="/">Bugün</NavItem>
-            <NavItem to="/history">Geçmiş</NavItem>
-            <NavItem to="/leaves">İzin</NavItem>
-            <NavItem to="/menu">Menü</NavItem>
-            <NavItem to="/announcements">Duyuru</NavItem>
+            {can('home') && <NavItem to="/">Bugün</NavItem>}
+            {can('history') && <NavItem to="/history">Geçmiş</NavItem>}
+            {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
+            {can('menu') && <NavItem to="/menu">Menü</NavItem>}
+            {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
             {isManager && <NavItem to="/manager/reports">Rapor</NavItem>}
             {isAdmin && <NavItem to="/admin">Admin</NavItem>}
-            <NavItem to="/profile">Profil</NavItem>
+            {can('profile') && <NavItem to="/profile">Profil</NavItem>}
           </nav>
 
           <div className="flex items-center gap-3">
@@ -49,40 +81,54 @@ export function AppLayout() {
                 </span>
               </div>
             )}
-            <button
-              onClick={handleLogout}
-              className="btn-ghost p-2"
-              title="Çıkış"
-            >
+            <button onClick={handleLogout} className="btn-ghost p-2" title="Çıkış">
               <LogOut className="size-4" />
             </button>
-            <button
-              className="md:hidden btn-ghost p-2"
-              onClick={() => setOpen((o) => !o)}
-            >
+            <button className="md:hidden btn-ghost p-2" onClick={() => setOpen((o) => !o)}>
               <MenuIcon className="size-5" />
             </button>
           </div>
         </div>
         {open && (
           <nav className="md:hidden border-t border-orange-100 px-4 py-2 flex flex-col gap-1">
-            <NavItem to="/" onClick={() => setOpen(false)}>
-              Bugün
-            </NavItem>
-            <NavItem to="/history" onClick={() => setOpen(false)}>
-              Geçmişim
-            </NavItem>
-            <NavItem to="/leaves" onClick={() => setOpen(false)}>
-              İzinlerim
-            </NavItem>
+            {can('home') && (
+              <NavItem to="/" onClick={() => setOpen(false)}>
+                Bugün
+              </NavItem>
+            )}
+            {can('history') && (
+              <NavItem to="/history" onClick={() => setOpen(false)}>
+                Geçmişim
+              </NavItem>
+            )}
+            {can('leaves') && (
+              <NavItem to="/leaves" onClick={() => setOpen(false)}>
+                İzinlerim
+              </NavItem>
+            )}
+            {can('menu') && (
+              <NavItem to="/menu" onClick={() => setOpen(false)}>
+                Menü
+              </NavItem>
+            )}
+            {can('announcements') && (
+              <NavItem to="/announcements" onClick={() => setOpen(false)}>
+                Duyurular
+              </NavItem>
+            )}
             {isManager && (
               <NavItem to="/manager" onClick={() => setOpen(false)}>
                 Ekip
               </NavItem>
             )}
             {isAdmin && (
-              <NavItem to="/admin/locations" onClick={() => setOpen(false)}>
-                Lokasyonlar
+              <NavItem to="/admin" onClick={() => setOpen(false)}>
+                Admin
+              </NavItem>
+            )}
+            {can('profile') && (
+              <NavItem to="/profile" onClick={() => setOpen(false)}>
+                Profil
               </NavItem>
             )}
           </nav>
@@ -94,8 +140,14 @@ export function AppLayout() {
       </main>
 
       <footer className="border-t border-orange-100 bg-cream py-4 text-center text-xs text-muted">
-        Damga v0.1.0 · <Link to="/legal/kvkk" className="hover:text-orange-600 underline">KVKK</Link>{' '}
-        · <Link to="/legal/terms" className="hover:text-orange-600 underline">Kullanım Şartları</Link>
+        Damga v0.1.0 ·{' '}
+        <Link to="/legal/kvkk" className="hover:text-orange-600 underline">
+          KVKK
+        </Link>{' '}
+        ·{' '}
+        <Link to="/legal/terms" className="hover:text-orange-600 underline">
+          Kullanım Şartları
+        </Link>
       </footer>
     </div>
   );

@@ -5,6 +5,42 @@ import { getSupabase } from '@/lib/supabase';
 import { isSupabaseConfigured } from '@/lib/env';
 import { api } from '@/lib/api';
 
+export type EmployeePageKey =
+  | 'home'
+  | 'history'
+  | 'leaves'
+  | 'menu'
+  | 'announcements'
+  | 'profile'
+  | 'mood'
+  | 'status';
+
+export const DEFAULT_EMPLOYEE_PAGES: EmployeePageKey[] = [
+  'home',
+  'menu',
+  'announcements',
+  'profile',
+];
+
+export interface OrgSettings {
+  logo_url?: string;
+  primary_color?: string;
+  default_timezone?: string;
+  allow_self_edit_request?: boolean;
+  allow_outside_geofence?: boolean;
+  require_nfc?: boolean;
+  allow_manual_entry?: boolean;
+  /** undefined ise DEFAULT_EMPLOYEE_PAGES kullan */
+  employee_visible_pages?: EmployeePageKey[];
+}
+
+export interface AuthOrg {
+  id: string;
+  name: string;
+  slug: string;
+  settings: OrgSettings;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -26,22 +62,35 @@ export interface AuthUser {
 
 interface AuthStore {
   user: AuthUser | null;
+  org: AuthOrg | null;
   session: Session | null;
   loading: boolean;
+  /** Sign-in başarılı olduktan sonra 5 saniye boyunca damga splash'ı tutmak için */
+  signInTransition: boolean;
   setUser: (u: AuthUser | null) => void;
+  setOrg: (o: AuthOrg | null) => void;
   setSession: (s: Session | null) => void;
   setLoading: (b: boolean) => void;
+  /** Sign-in başarılı olduğunda çağrılır — 5 sn damga animasyonu gösterilir */
+  startSignInTransition: (durationMs?: number) => void;
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
+  org: null,
   session: null,
   // İlk render: bootlanmamış, splash gerekir.
   // useAuthBoot session/profile akışını bitirince false'a çeker.
   loading: true,
+  signInTransition: false,
   setUser: (user) => set({ user }),
+  setOrg: (org) => set({ org }),
   setSession: (session) => set({ session }),
   setLoading: (loading) => set({ loading }),
+  startSignInTransition: (durationMs = 5000) => {
+    set({ signInTransition: true });
+    window.setTimeout(() => set({ signInTransition: false }), durationMs);
+  },
 }));
 
 /** App boot'ta çağrılır — Supabase session dinler, /v1/auth/me ile profil çeker. */
@@ -53,7 +102,7 @@ export function useAuthBoot() {
     if (bootedRef.current) return;
     bootedRef.current = true;
 
-    const { setUser, setSession, setLoading } = useAuthStore.getState();
+    const { setUser, setOrg, setSession, setLoading } = useAuthStore.getState();
 
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -84,11 +133,17 @@ export function useAuthBoot() {
 
     const fetchProfile = async () => {
       try {
-        const { data } = await api.get<{ user: AuthUser }>('/auth/me');
-        if (!cancelled) setUser(data.user);
+        const { data } = await api.get<{ user: AuthUser; org: AuthOrg | null }>('/auth/me');
+        if (!cancelled) {
+          setUser(data.user);
+          setOrg(data.org);
+        }
       } catch (err) {
         console.warn('[auth] /auth/me failed:', err);
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          setUser(null);
+          setOrg(null);
+        }
       } finally {
         finishLoading();
       }
@@ -125,6 +180,7 @@ export function useAuthBoot() {
       if (session) void fetchProfile();
       else {
         setUser(null);
+        setOrg(null);
         finishLoading();
       }
     });
