@@ -5,7 +5,7 @@ import {
   signUpSchema,
   magicLinkSchema,
 } from '@damga/shared';
-import { getDb, users, orgs, departments } from '@damga/db';
+import { getDb, users } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth } from '../middleware/auth';
@@ -46,8 +46,17 @@ authRouter.post('/magic-link', async (req, res, next) => {
 });
 
 /**
- * Sign-up: kullanıcı + (yeni org veya invite ile mevcut org'a) katılır.
- * Supabase Auth'ta kullanıcı oluşturulur, sonra Damga DB'sine profile yazılır.
+ * Sign-up — sadece "Hesap Oluştur" akışı (çalışan).
+ *
+ * 3 mod:
+ *  1. invite_code   → ileride: davetli olarak mevcut org'a katılır.
+ *  2. org_name      → eski "şirket aç" akışı; ARTIK KAPALI. Org açmak için /v1/auth/apply-org
+ *                     üzerinden başvuru yapılır → admin onayı sonrası owner kullanıcı oluşturulur.
+ *  3. (ikisi de yok) → kullanıcı pending olarak oluşturulur (org_id=null, is_pending=true).
+ *                      Admin sonradan /admin/pending-users üzerinden bir org'a atar.
+ *
+ * Supabase email_confirm: TRUE → onay maili gönderilmez (rate limit fix).
+ * Kullanıcı şifresiyle direkt giriş yapar; yöneticiyle eşleşene kadar /pending sayfası görür.
  */
 authRouter.post('/sign-up', async (req, res, next) => {
   try {
@@ -55,82 +64,64 @@ authRouter.post('/sign-up', async (req, res, next) => {
     const db = getDb();
 
     // Email kullanılıyor mu?
-    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email));
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.email.toLowerCase()));
     if (existing) {
       throw new HttpError(409, 'Bu e-posta zaten kayıtlı', 'EMAIL_EXISTS');
     }
 
-    // Org belirle (invite veya yeni)
+    // Org belirle
     let orgId: string | null = null;
     let role: 'owner' | 'employee' = 'employee';
+    let isPending = false;
 
     if (input.invite_code) {
       // TODO: invite_code parse et + org bul (invitation tablosu eklenecek)
       throw new HttpError(501, 'Davet kodu sistemi henüz aktif değil', 'NOT_IMPLEMENTED');
     } else if (input.org_name) {
-      const slug = input.org_name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 60);
-      const [newOrg] = await db
-        .insert(orgs)
-        .values({
-          name: input.org_name,
-          slug: `${slug}-${Math.random().toString(36).slice(2, 6)}`,
-          plan: 'free',
-          kvkk_consent_text: input.org_name + ' aydınlatma metni — düzenlenecek.',
-        })
-        .returning();
-      orgId = newOrg!.id;
-      role = 'owner';
-
-      // Yeni org için 4 default departman seed
-      await db
-        .insert(departments)
-        .values([
-          { org_id: orgId, name: 'Satış', slug: 'satis', color: '#10B981', is_default: true },
-          { org_id: orgId, name: 'Sevk', slug: 'sevk', color: '#3B82F6', is_default: true },
-          { org_id: orgId, name: 'Muhasebe', slug: 'muhasebe', color: '#8B5CF6', is_default: true },
-          { org_id: orgId, name: 'Diğer', slug: 'diger', color: '#9CA3AF', is_default: true },
-        ])
-        .onConflictDoNothing();
+      // Eski akış kapatıldı — başvuru sistemine yönlendir
+      throw new HttpError(
+        400,
+        'Şirket açmak için /v1/auth/apply-org başvuru formunu kullan. Admin onayı sonrası owner hesabın aktive edilecek.',
+        'USE_APPLY_ORG',
+      );
     } else {
-      throw new HttpError(400, 'Şirket adı veya davet kodu gerekli', 'ORG_REQUIRED');
+      // Çalışan modu — pending; admin sonradan org'a atar
+      isPending = true;
     }
 
-    // Supabase Auth'ta kullanıcı oluştur
+    // Supabase Auth'ta kullanıcı oluştur — email_confirm:true → onay maili YOK (rate limit fix)
     const supabase = getSupabaseAdmin();
     const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
       email: input.email,
       password: input.password,
-      email_confirm: false, // Email confirm akışı
+      email_confirm: true,
       user_metadata: { full_name: input.full_name },
     });
     if (authErr || !authData.user) {
       throw new HttpError(400, authErr?.message ?? 'Auth oluşturma hatası', 'AUTH_CREATE_FAILED');
     }
 
-    // Damga DB profile
+    // Damga DB profile (org_id null + is_pending=true)
     const [user] = await db
       .insert(users)
       .values({
         org_id: orgId,
         auth_user_id: authData.user.id,
-        email: input.email,
+        email: input.email.toLowerCase(),
         full_name: input.full_name,
         role,
         department: input.department ?? 'Diğer',
+        is_pending: isPending,
       })
       .returning();
 
-    // Supabase admin.createUser zaten email_confirm: false ile çağrıldı.
-    // Confirmation email Supabase'in dahili email template'leri ile gönderilir
-    // (Auth → Email Templates → Confirm signup).
-
-    logger.info({ userId: user!.id, orgId }, 'Yeni kullanıcı + org oluşturuldu');
+    logger.info(
+      { userId: user!.id, orgId, isPending },
+      'Yeni kullanıcı oluşturuldu (employee, pending)',
+    );
 
     res.status(201).json({
       user: {
@@ -139,8 +130,12 @@ authRouter.post('/sign-up', async (req, res, next) => {
         full_name: user!.full_name,
         role: user!.role,
         org_id: user!.org_id,
+        is_pending: isPending,
       },
-      requires_email_confirmation: true,
+      requires_email_confirmation: false,
+      message: isPending
+        ? 'Hesabın oluşturuldu. Yöneticin tarafından bir şirkete atanana kadar bekleme ekranı görürsün.'
+        : 'Hesabın oluşturuldu. Giriş yapabilirsin.',
     });
   } catch (err) {
     next(err);
@@ -160,6 +155,7 @@ authRouter.get('/me', requireAuth, (req, res) => {
       full_name: u.full_name,
       role: u.role,
       org_id: u.org_id,
+      is_pending: u.is_pending,
       department: u.department,
       title: u.title,
       avatar_url: u.avatar_url,

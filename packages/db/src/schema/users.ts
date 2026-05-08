@@ -31,6 +31,8 @@ export const users = pgTable(
     title: text('title'), // ör. "Yazılım Geliştirici"
     hired_at: date('hired_at'),
     is_active: boolean('is_active').notNull().default(true),
+    /** Admin onayı bekleyen kayıt mı? (org_id atanmadan giriş yapamaz) */
+    is_pending: boolean('is_pending').notNull().default(false),
     /** Kayıtlı device id'leri (mobil cihaz tanıma) */
     device_ids: text('device_ids').array().notNull().default(sql`'{}'::text[]`),
     /** Çalışanın yıllık izin kotası (gün) */

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { healthRouter } from './health';
 import { authRouter } from './auth';
+import { applicationsRouter } from './applications';
 import { checkInRouter } from './check-in';
 import { eventsRouter } from './events';
 import { leavesRouter } from './leaves';
@@ -19,6 +20,7 @@ export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
+apiRouter.use(applicationsRouter);
 apiRouter.use(checkInRouter);
 apiRouter.use(eventsRouter);
 apiRouter.use(leavesRouter);

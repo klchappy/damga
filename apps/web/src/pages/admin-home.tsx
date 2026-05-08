@@ -10,6 +10,7 @@ import {
   Webhook,
   ChevronRight,
   Tags,
+  Building2,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -106,6 +107,12 @@ export function AdminHomePage() {
           icon={<Database className="size-6" />}
           title="Raporlar"
           desc="Aylık devam, fazla mesai, izin kullanımı — CSV export."
+        />
+        <AdminCard
+          to="/admin/applications"
+          icon={<Building2 className="size-6" />}
+          title="Şirket Başvuruları"
+          desc="Damga'ya başvuran şirketleri incele, onayla → owner hesabı + departmanlar otomatik kurulur."
         />
       </div>
 

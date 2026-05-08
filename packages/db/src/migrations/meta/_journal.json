@@ -15,6 +15,13 @@
       "when": 1778238147484,
       "tag": "0001_tricky_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778240018525,
+      "tag": "0002_majestic_power_man",
+      "breakpoints": true
     }
   ]
 }

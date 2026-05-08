@@ -127,12 +127,20 @@ export function SignInPage() {
           </Link>
         </div>
 
-        <p className="text-center text-sm text-muted">
-          Hesabın yok mu?{' '}
-          <Link to="/auth/sign-up" className="text-orange-600 underline-offset-4 hover:underline">
-            Şirketini kaydet
-          </Link>
-        </p>
+        <div className="text-center text-sm text-muted space-y-1">
+          <p>
+            Hesabın yok mu?{' '}
+            <Link to="/auth/sign-up" className="text-orange-600 underline-offset-4 hover:underline">
+              Hesap oluştur
+            </Link>
+          </p>
+          <p>
+            Şirketini Damga'ya katmak ister misin?{' '}
+            <Link to="/apply-org" className="text-orange-600 underline-offset-4 hover:underline">
+              Başvur
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

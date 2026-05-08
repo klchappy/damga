@@ -11,6 +11,7 @@ export interface AuthUser {
   full_name: string;
   role: 'employee' | 'manager' | 'admin' | 'owner';
   org_id: string | null;
+  is_pending: boolean;
   department?: string | null;
   title?: string | null;
   avatar_url?: string | null;

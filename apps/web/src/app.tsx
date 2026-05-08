@@ -6,6 +6,8 @@ import { AppLayout } from '@/components/layout';
 import { DamgaSplash } from '@/components/splash';
 import { SignInPage } from '@/pages/sign-in';
 import { SignUpPage } from '@/pages/sign-up';
+import { ApplyOrgPage } from '@/pages/apply-org';
+import { PendingPage } from '@/pages/pending';
 import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
 import { EmployeeHomePage } from '@/pages/employee-home';
 import { ManagerHomePage } from '@/pages/manager-home';
@@ -16,6 +18,7 @@ import { AdminLocationsPage } from '@/pages/admin-locations';
 import { AdminApiKeysPage } from '@/pages/admin-api-keys';
 import { AdminTeamPage } from '@/pages/admin-team';
 import { AdminDepartmentsPage } from '@/pages/admin-departments';
+import { AdminApplicationsPage } from '@/pages/admin-applications';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
 import { ProfilePage } from '@/pages/profile';
@@ -33,6 +36,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
   if (loading) return <DamgaSplash />;
   if (!user) return <Navigate to="/auth/sign-in" replace />;
+  // Atanmamış kullanıcı → bekleme ekranı
+  if (user.is_pending || !user.org_id) return <PendingPage />;
   return <>{children}</>;
 }
 
@@ -56,6 +61,7 @@ function AppInner() {
       {/* Public auth */}
       <Route path="/auth/sign-in" element={<SignInPage />} />
       <Route path="/auth/sign-up" element={<SignUpPage />} />
+      <Route path="/apply-org" element={<ApplyOrgPage />} />
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -141,6 +147,14 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminDepartmentsPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/applications"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminApplicationsPage />
             </RoleGate>
           }
         />
