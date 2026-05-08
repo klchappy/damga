@@ -1,7 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { Users, Calendar, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  Users,
+  Calendar,
+  AlertTriangle,
+  ShieldCheck,
+  Camera,
+  Activity,
+  ChevronRight,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTimeTr } from '@/lib/utils';
+import { LocationBadge } from '@/pages/history';
 
 interface Event {
   id: string;
@@ -9,6 +19,13 @@ interface Event {
   server_time: string;
   verification_score: number;
   flags: string[];
+  latitude?: number | null;
+  longitude?: number | null;
+  distance_from_office_m?: number | null;
+  verification_methods?: string[];
+  review_status?: 'approved' | 'pending_review' | 'rejected';
+  review_reasons?: string[];
+  selfie_url?: string | null;
   user?: { full_name: string; email: string };
   location?: { name: string };
 }
@@ -25,27 +42,48 @@ interface Leave {
 export function ManagerHomePage() {
   const { data: events } = useQuery<{ items: Event[] }>({
     queryKey: ['manager', 'events'],
-    queryFn: async () => (await api.get('/events?limit=20')).data,
+    queryFn: async () => (await api.get('/events?limit=50')).data,
     refetchInterval: 15_000,
   });
   const { data: pending } = useQuery<{ items: Leave[] }>({
     queryKey: ['manager', 'leaves', 'pending'],
     queryFn: async () => (await api.get('/leaves?status=pending')).data,
   });
+  const { data: pendingReviews } = useQuery<{ items: { id: string }[] }>({
+    queryKey: ['manager', 'pending-reviews'],
+    queryFn: async () => (await api.get('/admin/pending-reviews')).data,
+    refetchInterval: 30_000,
+  });
 
   const today = new Date().toISOString().slice(0, 10);
   const todayEvents = (events?.items ?? []).filter((e) => e.server_time.startsWith(today));
-  const flagged = todayEvents.filter((e) => e.flags.length > 0 || e.verification_score < 80);
+  const pendingReviewCount = pendingReviews?.items.length ?? 0;
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl">Ekip Yönetimi</h1>
-        <p className="text-muted">Bugünkü tablo</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-3xl">Ekip Yönetimi</h1>
+          <p className="text-muted">Bugünkü tablo</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Link to="/admin/live-feed" className="btn-outline text-sm">
+            <Activity className="size-4" /> Damga Akışı
+          </Link>
+          {pendingReviewCount > 0 ? (
+            <Link to="/admin/pending-reviews" className="btn-primary text-sm">
+              <Camera className="size-4" /> {pendingReviewCount} Onay Bekliyor
+            </Link>
+          ) : (
+            <Link to="/admin/pending-reviews" className="btn-outline text-sm">
+              <Camera className="size-4" /> Onay Bekleyen
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat
           icon={<Users className="size-5" />}
           label="Bugün gelen"
@@ -53,14 +91,28 @@ export function ManagerHomePage() {
         />
         <Stat
           icon={<ShieldCheck className="size-5" />}
-          label="Yüksek güven"
-          value={todayEvents.filter((e) => e.verification_score >= 80).length}
+          label="Konum doğrulandı"
+          value={
+            todayEvents.filter(
+              (e) =>
+                e.review_status === 'approved' &&
+                !(e.review_reasons ?? []).includes('out_of_geofence'),
+            ).length
+          }
           color="success"
         />
         <Stat
+          icon={<Camera className="size-5" />}
+          label="Onay bekliyor"
+          value={pendingReviewCount}
+          color="warning"
+        />
+        <Stat
           icon={<AlertTriangle className="size-5" />}
-          label="Bayraklı"
-          value={flagged.length}
+          label="Lokasyon dışı"
+          value={
+            todayEvents.filter((e) => (e.review_reasons ?? []).includes('out_of_geofence')).length
+          }
           color="warning"
         />
         <Stat
@@ -73,14 +125,22 @@ export function ManagerHomePage() {
 
       {/* Bugünün canlı feed */}
       <div className="card">
-        <h2 className="text-xl mb-3">⚡ Bugünün damgaları (canlı)</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl">⚡ Bugünün damgaları (canlı)</h2>
+          <Link
+            to="/admin/live-feed"
+            className="text-xs text-orange-600 hover:underline inline-flex items-center gap-0.5"
+          >
+            Tümünü gör <ChevronRight className="size-3" />
+          </Link>
+        </div>
         {todayEvents.length === 0 ? (
           <p className="text-sm text-muted">Bugün kimse damga vurmadı.</p>
         ) : (
           <ul className="divide-y divide-orange-100">
-            {todayEvents.map((e) => (
-              <li key={e.id} className="flex items-center justify-between py-2.5">
-                <div>
+            {todayEvents.slice(0, 10).map((e) => (
+              <li key={e.id} className="flex items-start justify-between py-2.5 gap-3 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-1">
                   <div className="font-medium">
                     {e.user?.full_name ?? 'Bilinmeyen'} ·{' '}
                     {e.type === 'check_in' ? '⏱️ Giriş' : e.type === 'check_out' ? '🏃 Çıkış' : e.type}
@@ -88,9 +148,20 @@ export function ManagerHomePage() {
                   <div className="text-xs text-muted">
                     {formatDateTimeTr(e.server_time)}
                     {e.location && ` · ${e.location.name}`}
-                    {e.flags.length > 0 && (
-                      <span className="ml-2 text-warning font-mono">⚠ {e.flags.join(', ')}</span>
+                    {e.distance_from_office_m != null && (
+                      <span
+                        className={
+                          (e.review_reasons ?? []).includes('out_of_geofence')
+                            ? 'ml-1 text-warning font-medium'
+                            : 'ml-1 text-muted'
+                        }
+                      >
+                        ({e.distance_from_office_m}m)
+                      </span>
                     )}
+                  </div>
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    <LocationBadge event={e} />
                   </div>
                 </div>
                 <span
@@ -100,7 +171,7 @@ export function ManagerHomePage() {
                       : e.verification_score >= 60
                         ? 'bg-warning/10 text-warning'
                         : 'bg-danger/10 text-danger'
-                  }`}
+                  } shrink-0`}
                 >
                   {e.verification_score}
                 </span>
