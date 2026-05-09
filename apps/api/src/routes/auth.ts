@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import { eq, or, sql } from 'drizzle-orm';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 import {
   signUpSchema,
   magicLinkSchema,
   resolveIdentifierSchema,
   forgotPasswordMultiSchema,
 } from '@damga/shared';
-import { getDb, users, orgs } from '@damga/db';
+import { getDb, users, orgs, departments } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { authLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
 import { generateStrongPassword } from '../lib/password';
@@ -144,6 +145,127 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
         ? 'Hesabın oluşturuldu. Yöneticin tarafından bir şirkete atanana kadar bekleme ekranı görürsün.'
         : 'Hesabın oluşturuldu. Giriş yapabilirsin.',
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /v1/auth/sign-up-org
+ * Self-org-signup akışı: client önce supabase.auth.signUp() ile auth oluşturur,
+ * oradan aldığı JWT ile bu endpoint'i çağırır → public.orgs + public.users (owner)
+ * + 4 default departman oluşturulur.
+ *
+ * Mevcut "apply-org → admin onay" akışına PARALEL — admin onayı beklemeden
+ * kullanıcı kendi org'unu açabilir. Ücretsiz dönem: trial yok, plan='free'.
+ *
+ * Body: { org_name, full_name?, accept_terms: true }
+ * Idempotent: zaten kayıtlıysa mevcut user + org dön.
+ */
+authRouter.post('/sign-up-org', requireSupabaseAuth, async (req, res, next) => {
+  try {
+    if (!req.supabaseAuth) throw new HttpError(401, 'Yetki yok');
+    const input = z
+      .object({
+        org_name: z.string().trim().min(2).max(120),
+        full_name: z.string().trim().max(120).optional(),
+        accept_terms: z.literal(true, {
+          errorMap: () => ({
+            message: "Kullanım koşullarını ve KVKK'yı kabul etmelisin",
+          }),
+        }),
+      })
+      .parse(req.body);
+
+    const db = getDb();
+
+    // Idempotent check
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.auth_user_id, req.supabaseAuth.authUserId));
+    if (existing) {
+      const [existingOrg] = existing.org_id
+        ? await db.select().from(orgs).where(eq(orgs.id, existing.org_id))
+        : [];
+      res.json({ user: existing, org: existingOrg ?? null, already_existed: true });
+      return;
+    }
+
+    // Email collision (auth_user_id farklı bir kullanıcı bu email'i kullanıyorsa)
+    const [emailExists] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, req.supabaseAuth.email.toLowerCase()));
+    if (emailExists) {
+      throw new HttpError(409, 'Bu e-posta zaten kayıtlı', 'EMAIL_EXISTS');
+    }
+
+    // Slug auto-generate (TR karakter normalize)
+    const trMap: Record<string, string> = {
+      ı: 'i', ğ: 'g', ü: 'u', ş: 's', ö: 'o', ç: 'c',
+    };
+    const baseSlug = input.org_name
+      .toLocaleLowerCase('tr-TR')
+      .replace(/[ığüşöç]/g, (m) => trMap[m] ?? m)
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'sirket';
+    let slug = baseSlug;
+    let counter = 1;
+    while (counter <= 50) {
+      const r = await db.execute(sql`select 1 from public.orgs where slug = ${slug}`);
+      if (r.rows.length === 0) break;
+      slug = `${baseSlug}-${++counter}`;
+    }
+    if (counter > 50) slug = `${baseSlug}-${Date.now()}`;
+
+    // Org oluştur (plan='free', org_type DB default 'damga_only')
+    const [newOrg] = await db
+      .insert(orgs)
+      .values({
+        name: input.org_name,
+        slug,
+        plan: 'free',
+      })
+      .returning();
+    if (!newOrg) throw new HttpError(500, 'Org oluşturulamadı');
+
+    // 4 default departman seed
+    await db.insert(departments).values([
+      { org_id: newOrg.id, name: 'Satış', slug: 'satis', is_default: true },
+      { org_id: newOrg.id, name: 'Sevk', slug: 'sevk', is_default: true },
+      { org_id: newOrg.id, name: 'Muhasebe', slug: 'muhasebe', is_default: true },
+      { org_id: newOrg.id, name: 'Diğer', slug: 'diger', is_default: true },
+    ]);
+
+    // Owner kullanıcı
+    const fullName =
+      input.full_name?.trim() ||
+      req.supabaseAuth.fullName ||
+      req.supabaseAuth.email.split('@')[0] ||
+      'Kullanıcı';
+    const [u] = await db
+      .insert(users)
+      .values({
+        auth_user_id: req.supabaseAuth.authUserId,
+        email: req.supabaseAuth.email.toLowerCase(),
+        full_name: fullName,
+        org_id: newOrg.id,
+        role: 'owner',
+        department: 'Diğer',
+        is_active: true,
+        is_pending: false,
+      })
+      .returning();
+    if (!u) throw new HttpError(500, 'Kullanıcı kaydı oluşturulamadı');
+
+    logger.info(
+      { userId: u.id, orgId: newOrg.id, slug: newOrg.slug },
+      'Self-org-signup: yeni org + owner oluşturuldu',
+    );
+
+    res.status(201).json({ user: u, org: newOrg });
   } catch (err) {
     next(err);
   }

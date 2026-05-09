@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/layout';
 import { DamgaSplash } from '@/components/splash';
 import { SignInPage } from '@/pages/sign-in';
 import { SignUpPage } from '@/pages/sign-up';
+import { SignUpOrgPage } from '@/pages/sign-up-org';
 import { ApplyOrgPage } from '@/pages/apply-org';
 import { PendingPage } from '@/pages/pending';
 import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
@@ -80,6 +81,7 @@ function AppInner() {
       {/* Public auth */}
       <Route path="/auth/sign-in" element={<SignInPage />} />
       <Route path="/auth/sign-up" element={<SignUpPage />} />
+      <Route path="/auth/sign-up-org" element={<SignUpOrgPage />} />
       <Route path="/apply-org" element={<ApplyOrgPage />} />
       {/* QR landing — kendi içinde auth check yapar (login yoksa sign-in'e yönlendirir) */}
       <Route path="/q/:locationId" element={<QLandingPage />} />
