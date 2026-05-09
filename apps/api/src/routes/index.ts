@@ -21,6 +21,7 @@ import { rewardsRouter } from './rewards';
 import { shiftsRouter } from './shifts';
 import { notificationsRouter } from './notifications';
 import { analyticsRouter } from './analytics';
+import { platformRouter } from './platform';
 
 export const apiRouter = Router();
 
@@ -46,6 +47,7 @@ apiRouter.use(rewardsRouter);
 apiRouter.use(shiftsRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(analyticsRouter);
+apiRouter.use(platformRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({

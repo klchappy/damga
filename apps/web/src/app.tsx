@@ -41,6 +41,7 @@ import { MenuFeedbackPage } from '@/pages/menu-feedback';
 import { QLandingPage } from '@/pages/q-landing';
 import { AnnouncementsPage } from '@/pages/announcements';
 import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from '@/pages/legal';
+import { PlatformPage } from '@/pages/platform';
 import { CookieBanner } from '@/components/cookie-banner';
 
 const queryClient = new QueryClient({
@@ -311,6 +312,7 @@ function AppInner() {
             </RoleGate>
           }
         />
+        <Route path="platform" element={<PlatformPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" />} />

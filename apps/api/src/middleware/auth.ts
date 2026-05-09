@@ -107,6 +107,52 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   }
 };
 
+/**
+ * Sadece Supabase JWT'yi doğrular, public.users tablosunda kayıt aramaz.
+ * Platform admin endpoint'leri ve self-signup akışları için (kullanıcı henüz
+ * public.users'a yazılmamış olabilir veya org-bağımsız çalışılır).
+ */
+export interface SupabaseAuthInfo {
+  authUserId: string;
+  email: string;
+  fullName: string;
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      supabaseAuth?: SupabaseAuthInfo;
+    }
+  }
+}
+
+export const requireSupabaseAuth: RequestHandler = async (req, _res, next) => {
+  try {
+    const header = req.headers.authorization ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+    if (!token) {
+      throw new HttpError(401, 'Authorization header eksik', 'NO_TOKEN');
+    }
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+      throw new HttpError(401, 'Geçersiz token', 'INVALID_TOKEN');
+    }
+    req.supabaseAuth = {
+      authUserId: data.user.id,
+      email: data.user.email ?? '',
+      fullName:
+        (data.user.user_metadata?.full_name as string | undefined) ??
+        (data.user.user_metadata?.name as string | undefined) ??
+        '',
+    };
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** Belirli rollere izin ver */
 export function requireRole(...roles: Array<'employee' | 'manager' | 'admin' | 'owner'>) {
   const allowed = new Set(roles);

@@ -1,12 +1,14 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { LogOut, Menu as MenuIcon } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   useAuthStore,
   signOut,
   DEFAULT_EMPLOYEE_PAGES,
   type EmployeePageKey,
 } from '@/hooks/use-auth';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { MoodPromptAuto } from '@/components/mood-prompt';
 import { NotificationPermissionGate } from '@/components/notification-permission';
@@ -20,6 +22,15 @@ export function AppLayout() {
 
   const isManager = user && ['manager', 'admin', 'owner'].includes(user.role);
   const isAdmin = user && ['admin', 'owner'].includes(user.role);
+
+  const { data: platformMe } = useQuery<{ is_platform_admin: boolean }>({
+    queryKey: ['platform-me'],
+    queryFn: async () => (await api.get('/platform/me')).data,
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const isPlatformAdmin = platformMe?.is_platform_admin === true;
 
   // Çalışan görünür sayfa kümesi — admin/manager hepsini görür.
   // Admin /admin/settings'ten bunu açıp kapatabilir.
@@ -73,6 +84,7 @@ export function AppLayout() {
             <NavItem to="/gamification">Performans</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
             {isAdmin && <NavItem to="/admin">Admin</NavItem>}
+            {isPlatformAdmin && <NavItem to="/platform">Platform</NavItem>}
             {can('profile') && <NavItem to="/profile">Profil</NavItem>}
           </nav>
 
@@ -135,6 +147,11 @@ export function AppLayout() {
             {isAdmin && (
               <NavItem to="/admin" onClick={() => setOpen(false)}>
                 Admin
+              </NavItem>
+            )}
+            {isPlatformAdmin && (
+              <NavItem to="/platform" onClick={() => setOpen(false)}>
+                Platform
               </NavItem>
             )}
             {can('profile') && (
