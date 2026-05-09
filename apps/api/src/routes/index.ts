@@ -109,8 +109,12 @@ apiRouter.get('/', (_req, res) => {
         'POST /shift-assignments (single or { assignments: [...] })',
         'PATCH/DELETE /shift-assignments/:id',
         'GET  /me/shifts?date_from&date_to (employee)',
+        'POST /shift-swaps { from_assignment_id, to_user_id, [to_assignment_id, message] }',
+        'GET  /me/shift-swaps?direction=incoming|outgoing|all',
+        'POST /shift-swaps/:id/accept|reject|cancel',
         'GET  /overtime?status&user_id, POST /overtime/:id/approve|reject',
         'GET  /overtime/pending-count (badge), PATCH /overtime/:id/reason',
+        'GET  /reports/overtime?month=YYYY-MM&format=csv|json&status=approved (CSV bordro)',
       ],
       notifications: [
         'GET  /me/notifications?unread=1&limit=30',

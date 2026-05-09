@@ -5,6 +5,7 @@ import {
   getDb,
   shiftTemplates,
   shiftAssignments,
+  shiftSwapRequests,
   overtimeRecords,
   users,
   locations,
@@ -624,6 +625,378 @@ shiftsRouter.patch('/overtime/:id/reason', requireAuth, async (req, res, next) =
     next(err);
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// SHIFT SWAP REQUESTS
+// ─────────────────────────────────────────────────────────────────────────
+
+const createSwapSchema = z.object({
+  from_assignment_id: z.string().uuid(),
+  to_user_id: z.string().uuid(),
+  to_assignment_id: z.string().uuid().nullable().optional(),
+  message: z.string().trim().max(500).optional(),
+});
+
+shiftsRouter.post('/shift-swaps', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const input = createSwapSchema.parse(req.body);
+    if (input.to_user_id === req.authUserId) {
+      throw new HttpError(400, 'Kendine devredemezsin', 'SELF_SWAP');
+    }
+    const db = getDb();
+
+    // From assignment doğrulama
+    const [fromA] = await db
+      .select()
+      .from(shiftAssignments)
+      .where(
+        and(
+          eq(shiftAssignments.id, input.from_assignment_id),
+          eq(shiftAssignments.org_id, req.authOrgId),
+          eq(shiftAssignments.user_id, req.authUserId),
+        ),
+      );
+    if (!fromA)
+      throw new HttpError(404, 'Devredilen vardiya bulunamadı veya sana ait değil');
+    if (fromA.status !== 'scheduled')
+      throw new HttpError(400, 'Sadece scheduled vardiyalar devredilebilir');
+
+    // To user aynı org'da mı?
+    const [toUser] = await db
+      .select({ id: users.id, org_id: users.org_id, full_name: users.full_name })
+      .from(users)
+      .where(eq(users.id, input.to_user_id));
+    if (!toUser || toUser.org_id !== req.authOrgId)
+      throw new HttpError(404, 'Hedef kullanıcı bulunamadı');
+
+    // To assignment varsa doğrula
+    if (input.to_assignment_id) {
+      const [toA] = await db
+        .select()
+        .from(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.id, input.to_assignment_id),
+            eq(shiftAssignments.org_id, req.authOrgId),
+            eq(shiftAssignments.user_id, input.to_user_id),
+          ),
+        );
+      if (!toA)
+        throw new HttpError(404, 'Karşı vardiya bulunamadı veya hedef kullanıcıya ait değil');
+      if (toA.status !== 'scheduled')
+        throw new HttpError(400, 'Karşı vardiya scheduled değil');
+    } else {
+      // Tek yön: to_user'ın o günde başka aktif vardiyası olmamalı
+      const [conflict] = await db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.user_id, input.to_user_id),
+            eq(shiftAssignments.shift_date, fromA.shift_date),
+            sql`${shiftAssignments.status} <> 'swapped'`,
+          ),
+        );
+      if ((conflict?.c ?? 0) > 0) {
+        throw new HttpError(
+          400,
+          `${toUser.full_name}'in o gün zaten vardiyası var; iki yönlü takas iste`,
+          'TARGET_HAS_SHIFT',
+        );
+      }
+    }
+
+    // Aynı assignment için aktif (pending) bir talep var mı?
+    const [exist] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(shiftSwapRequests)
+      .where(
+        and(
+          eq(shiftSwapRequests.from_assignment_id, input.from_assignment_id),
+          eq(shiftSwapRequests.status, 'pending'),
+        ),
+      );
+    if ((exist?.c ?? 0) > 0)
+      throw new HttpError(409, 'Bu vardiya için zaten bekleyen bir devir talebi var');
+
+    const [created] = await db
+      .insert(shiftSwapRequests)
+      .values({
+        org_id: req.authOrgId,
+        from_user_id: req.authUserId,
+        from_assignment_id: input.from_assignment_id,
+        to_user_id: input.to_user_id,
+        to_assignment_id: input.to_assignment_id ?? null,
+        message: input.message ?? null,
+      })
+      .returning();
+
+    // Notification: hedef kullanıcıya
+    void createNotification({
+      orgId: req.authOrgId,
+      userId: input.to_user_id,
+      type: 'shift_swap_requested',
+      title: '🔁 Vardiya devir talebi geldi',
+      body: `${fromA.shift_date} vardiyası için talep alındı${input.message ? `: ${input.message.slice(0, 100)}` : ''}`,
+      url: '/me/shift-swaps',
+      metadata: {
+        swap_id: created!.id,
+        shift_date: fromA.shift_date,
+        two_way: !!input.to_assignment_id,
+      },
+    });
+
+    logger.info(
+      { swapId: created?.id, from: req.authUserId, to: input.to_user_id },
+      '🔁 Vardiya devir talebi oluşturuldu',
+    );
+
+    res.status(201).json({ swap: created });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /me/shift-swaps?direction=incoming|outgoing|all&status= */
+shiftsRouter.get('/me/shift-swaps', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const q = z
+      .object({
+        direction: z.enum(['incoming', 'outgoing', 'all']).default('all'),
+        status: z
+          .enum(['pending', 'accepted', 'rejected', 'cancelled', 'expired'])
+          .optional(),
+      })
+      .parse(req.query);
+
+    const conds: ReturnType<typeof eq>[] = [];
+    if (q.direction === 'incoming') {
+      conds.push(eq(shiftSwapRequests.to_user_id, req.authUserId));
+    } else if (q.direction === 'outgoing') {
+      conds.push(eq(shiftSwapRequests.from_user_id, req.authUserId));
+    }
+    if (q.status) conds.push(eq(shiftSwapRequests.status, q.status));
+
+    const fromUser = users;
+    const baseWhere =
+      q.direction === 'all'
+        ? and(
+            sql`(${shiftSwapRequests.from_user_id} = ${req.authUserId} OR ${shiftSwapRequests.to_user_id} = ${req.authUserId})`,
+            ...(q.status ? [eq(shiftSwapRequests.status, q.status)] : []),
+          )
+        : and(...conds);
+
+    const rows = await getDb()
+      .select({
+        s: shiftSwapRequests,
+        from_assignment: shiftAssignments,
+        from_user_name: fromUser.full_name,
+        from_user_avatar: fromUser.avatar_url,
+        template_name: shiftTemplates.name,
+        template_color: shiftTemplates.color,
+        template_start: shiftTemplates.start_time,
+        template_end: shiftTemplates.end_time,
+      })
+      .from(shiftSwapRequests)
+      .innerJoin(
+        shiftAssignments,
+        eq(shiftAssignments.id, shiftSwapRequests.from_assignment_id),
+      )
+      .innerJoin(fromUser, eq(fromUser.id, shiftSwapRequests.from_user_id))
+      .innerJoin(shiftTemplates, eq(shiftTemplates.id, shiftAssignments.shift_template_id))
+      .where(baseWhere)
+      .orderBy(desc(shiftSwapRequests.created_at))
+      .limit(100);
+
+    // To user adı için ek select
+    const toUserIds = Array.from(new Set(rows.map((r) => r.s.to_user_id)));
+    const toUsers = toUserIds.length
+      ? await getDb()
+          .select({ id: users.id, full_name: users.full_name, avatar_url: users.avatar_url })
+          .from(users)
+          .where(inArray(users.id, toUserIds))
+      : [];
+    const toMap = new Map(toUsers.map((u) => [u.id, u]));
+
+    res.json({
+      items: rows.map((r) => ({
+        ...r.s,
+        from_user_name: r.from_user_name,
+        from_user_avatar: r.from_user_avatar,
+        to_user_name: toMap.get(r.s.to_user_id)?.full_name ?? null,
+        to_user_avatar: toMap.get(r.s.to_user_id)?.avatar_url ?? null,
+        shift_date: r.from_assignment.shift_date,
+        template_name: r.template_name,
+        template_color: r.template_color,
+        template_start: r.template_start,
+        template_end: r.template_end,
+        is_incoming: r.s.to_user_id === req.authUserId,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+shiftsRouter.post(
+  '/shift-swaps/:id/accept',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const db = getDb();
+
+      const [swap] = await db
+        .select()
+        .from(shiftSwapRequests)
+        .where(
+          and(eq(shiftSwapRequests.id, id), eq(shiftSwapRequests.org_id, req.authOrgId)),
+        );
+      if (!swap) throw new HttpError(404, 'Talep bulunamadı');
+      if (swap.to_user_id !== req.authUserId)
+        throw new HttpError(403, 'Bu talebi sen kabul edemezsin');
+      if (swap.status !== 'pending')
+        throw new HttpError(400, `Talep zaten ${swap.status}`, 'NOT_PENDING');
+
+      // Atomik takas
+      // 1) from_assignment.user_id = to_user (yani req.authUserId)
+      await db
+        .update(shiftAssignments)
+        .set({ user_id: swap.to_user_id, updated_at: new Date() })
+        .where(eq(shiftAssignments.id, swap.from_assignment_id));
+
+      // 2) to_assignment varsa: user_id = from_user
+      if (swap.to_assignment_id) {
+        await db
+          .update(shiftAssignments)
+          .set({ user_id: swap.from_user_id, updated_at: new Date() })
+          .where(eq(shiftAssignments.id, swap.to_assignment_id));
+      }
+
+      // 3) Swap kaydı accepted
+      const [updated] = await db
+        .update(shiftSwapRequests)
+        .set({
+          status: 'accepted',
+          responded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(eq(shiftSwapRequests.id, id))
+        .returning();
+
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: swap.from_user_id,
+        type: 'shift_swap_accepted',
+        title: '✅ Vardiya devrin kabul edildi',
+        body: 'Talebin onaylandı, vardiya artık karşı taraftaa.',
+        url: '/me/shifts',
+        metadata: { swap_id: swap.id },
+      });
+
+      logger.info({ swapId: id, by: req.authUserId }, '🔁 Swap kabul edildi');
+
+      res.json({ ok: true, swap: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const rejectSwapSchema = z.object({
+  response_reason: z.string().trim().max(500).optional(),
+});
+
+shiftsRouter.post(
+  '/shift-swaps/:id/reject',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const body = rejectSwapSchema.parse(req.body);
+      const db = getDb();
+
+      const [swap] = await db
+        .select()
+        .from(shiftSwapRequests)
+        .where(
+          and(eq(shiftSwapRequests.id, id), eq(shiftSwapRequests.org_id, req.authOrgId)),
+        );
+      if (!swap) throw new HttpError(404, 'Talep bulunamadı');
+      if (swap.to_user_id !== req.authUserId)
+        throw new HttpError(403, 'Bu talebi sen reddedemezsin');
+      if (swap.status !== 'pending')
+        throw new HttpError(400, `Talep zaten ${swap.status}`, 'NOT_PENDING');
+
+      const [updated] = await db
+        .update(shiftSwapRequests)
+        .set({
+          status: 'rejected',
+          response_reason: body.response_reason ?? null,
+          responded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(eq(shiftSwapRequests.id, id))
+        .returning();
+
+      void createNotification({
+        orgId: req.authOrgId,
+        userId: swap.from_user_id,
+        type: 'shift_swap_rejected',
+        title: '❌ Vardiya devir talebin reddedildi',
+        body: body.response_reason ?? 'Karşı taraf reddetti.',
+        url: '/me/shift-swaps',
+        metadata: { swap_id: swap.id, reason: body.response_reason },
+      });
+
+      res.json({ ok: true, swap: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+shiftsRouter.post(
+  '/shift-swaps/:id/cancel',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const db = getDb();
+
+      const [swap] = await db
+        .select()
+        .from(shiftSwapRequests)
+        .where(
+          and(eq(shiftSwapRequests.id, id), eq(shiftSwapRequests.org_id, req.authOrgId)),
+        );
+      if (!swap) throw new HttpError(404, 'Talep bulunamadı');
+      if (swap.from_user_id !== req.authUserId)
+        throw new HttpError(403, 'Bu talebi sen iptal edemezsin');
+      if (swap.status !== 'pending')
+        throw new HttpError(400, `Talep zaten ${swap.status}`, 'NOT_PENDING');
+
+      const [updated] = await db
+        .update(shiftSwapRequests)
+        .set({
+          status: 'cancelled',
+          responded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(eq(shiftSwapRequests.id, id))
+        .returning();
+
+      res.json({ ok: true, swap: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 /** Sayım: bekleyen overtime sayısı (Admin Home badge için) */
 shiftsRouter.get(

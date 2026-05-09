@@ -78,6 +78,13 @@
       "when": 1778256917139,
       "tag": "0010_mighty_puff_adder",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778307165212,
+      "tag": "0011_charming_wiccan",
+      "breakpoints": true
     }
   ]
 }

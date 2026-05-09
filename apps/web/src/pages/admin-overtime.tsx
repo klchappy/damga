@@ -11,6 +11,7 @@ import {
   Filter,
   Coins,
   User as UserIcon,
+  Download,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatDateTimeTr } from '@/lib/utils';
@@ -109,16 +110,19 @@ export function AdminOvertimePage() {
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
-          <Clock className="size-6" />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
+            <Clock className="size-6" />
+          </div>
+          <div>
+            <h1 className="font-display text-3xl">Fazla Mesai</h1>
+            <p className="text-sm text-muted">
+              Çalışanların vardiya bitiminden sonra çalıştığı süreler. Onayla veya reddet.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-display text-3xl">Fazla Mesai</h1>
-          <p className="text-sm text-muted">
-            Çalışanların vardiya bitiminden sonra çalıştığı süreler. Onayla veya reddet.
-          </p>
-        </div>
+        <ExportButton />
       </div>
 
       {/* Stats */}
@@ -365,6 +369,96 @@ export function AdminOvertimePage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ExportButton() {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [status, setStatus] = useState<'approved' | 'pending' | 'rejected' | 'all'>(
+    'approved',
+  );
+  const [downloading, setDownloading] = useState(false);
+
+  const handleExport = async () => {
+    setDownloading(true);
+    try {
+      const r = await api.get(
+        `/reports/overtime?month=${month}&status=${status}&format=csv`,
+        { responseType: 'blob' },
+      );
+      const blob = new Blob([r.data], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `overtime-${month}-${status}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('📥 CSV indirildi');
+      setOpen(false);
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn-outline text-sm">
+        <Download className="size-4" />
+        CSV İndir
+      </button>
+    );
+  }
+
+  return (
+    <div className="card flex flex-col sm:flex-row items-stretch sm:items-end gap-2 p-3">
+      <div>
+        <label className="label text-[10px]">Ay</label>
+        <input
+          type="month"
+          className="input mt-1 text-xs"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+        />
+      </div>
+      <div>
+        <label className="label text-[10px]">Durum</label>
+        <select
+          className="input mt-1 text-xs"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as typeof status)}
+        >
+          <option value="approved">Onaylı</option>
+          <option value="pending">Bekleyen</option>
+          <option value="rejected">Reddedilen</option>
+          <option value="all">Hepsi</option>
+        </select>
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          onClick={handleExport}
+          disabled={downloading}
+          className="btn-primary text-xs"
+        >
+          {downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+          İndir
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          disabled={downloading}
+          className="btn-ghost text-xs p-2"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

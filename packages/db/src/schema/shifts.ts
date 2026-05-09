@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { orgs } from './orgs';
@@ -92,8 +93,8 @@ export const shiftAssignments = pgTable(
   (table) => ({
     orgDateIdx: index('idx_shift_assignments_org_date').on(table.org_id, table.shift_date),
     userDateIdx: index('idx_shift_assignments_user_date').on(table.user_id, table.shift_date),
-    // Unique: bir kullanıcının aynı günde tek vardiyası olur
-    userDateUnq: index('uq_shift_assignments_user_date')
+    // Unique: bir kullanıcının aynı günde tek aktif vardiyası olur (swapped hariç)
+    userDateUnq: uniqueIndex('uq_shift_assignments_user_date')
       .on(table.user_id, table.shift_date)
       .where(sql`status <> 'swapped'`),
   }),
@@ -158,3 +159,55 @@ export const overtimeRecords = pgTable(
 
 export type OvertimeRecord = typeof overtimeRecords.$inferSelect;
 export type NewOvertimeRecord = typeof overtimeRecords.$inferInsert;
+
+/**
+ * shift_swap_requests — bir kullanıcının vardiyasını başka kullanıcıyla değiştirme talebi.
+ *
+ * Akış:
+ *   1) requester (`from_user`) kendi `from_assignment`'ına "B'ye devret" istiyor
+ *   2) Tek yön: `to_assignment` null → B'nin o gün vardiyası yoksa direkt devir
+ *      İki yön: `to_assignment` set → karşılıklı takas (A B'nin vardiyasını alır, B A'nınkini)
+ *   3) `to_user` kabul eder/reddeder (ya da requester iptal eder)
+ *   4) accepted olunca: from_assignment.user_id = to_user, to_assignment varsa user_id = from_user
+ *      (atomik, transaction içinde)
+ */
+export const shiftSwapRequests = pgTable(
+  'shift_swap_requests',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    org_id: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    from_user_id: uuid('from_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    from_assignment_id: uuid('from_assignment_id')
+      .notNull()
+      .references(() => shiftAssignments.id, { onDelete: 'cascade' }),
+    to_user_id: uuid('to_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Çift yönlü takas için karşı atama; null ise tek yön devir */
+    to_assignment_id: uuid('to_assignment_id').references(() => shiftAssignments.id, {
+      onDelete: 'cascade',
+    }),
+    message: text('message'),
+    status: text('status', {
+      enum: ['pending', 'accepted', 'rejected', 'cancelled', 'expired'],
+    })
+      .notNull()
+      .default('pending'),
+    response_reason: text('response_reason'),
+    responded_at: timestamp('responded_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    fromIdx: index('idx_swap_from_user').on(table.from_user_id, table.status),
+    toIdx: index('idx_swap_to_user').on(table.to_user_id, table.status),
+    orgStatusIdx: index('idx_swap_org_status').on(table.org_id, table.status),
+  }),
+);
+
+export type ShiftSwapRequest = typeof shiftSwapRequests.$inferSelect;
+export type NewShiftSwapRequest = typeof shiftSwapRequests.$inferInsert;

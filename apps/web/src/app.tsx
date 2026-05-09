@@ -30,6 +30,7 @@ import { AdminShiftsPage } from '@/pages/admin-shifts';
 import { ManagerSchedulePage } from '@/pages/manager-schedule';
 import { AdminOvertimePage } from '@/pages/admin-overtime';
 import { MyShiftsPage } from '@/pages/my-shifts';
+import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
 import { ManagerAnalyticsPage } from '@/pages/manager-analytics';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
@@ -279,6 +280,7 @@ function AppInner() {
           }
         />
         <Route path="me/shifts" element={<MyShiftsPage />} />
+        <Route path="me/shift-swaps" element={<MyShiftSwapsPage />} />
         <Route
           path="manager/analytics"
           element={

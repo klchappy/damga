@@ -1,7 +1,18 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, Loader2, MapPin, Clock } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import {
+  CalendarClock,
+  Loader2,
+  MapPin,
+  Clock,
+  Repeat,
+  X,
+  ArrowRight,
+} from 'lucide-react';
+import { api, getErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/hooks/use-auth';
 
 interface MyShift {
   id: string;
@@ -32,6 +43,8 @@ const STATUS_STYLE = {
 } as const;
 
 export function MyShiftsPage() {
+  const [swapping, setSwapping] = useState<MyShift | null>(null);
+
   const { data, isLoading } = useQuery<{ items: MyShift[] }>({
     queryKey: ['me', 'shifts', 'all'],
     queryFn: async () => {
@@ -62,16 +75,21 @@ export function MyShiftsPage() {
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
-          <CalendarClock className="size-6" />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
+            <CalendarClock className="size-6" />
+          </div>
+          <div>
+            <h1 className="font-display text-3xl">Vardiyalarım</h1>
+            <p className="text-sm text-muted">
+              Yaklaşan ve geçmiş vardiyalar. "Devret" ile arkadaşına aktar.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-display text-3xl">Vardiyalarım</h1>
-          <p className="text-sm text-muted">
-            Yaklaşan ve geçmiş vardiyalar. Hatırlatma için kalendere ekle.
-          </p>
-        </div>
+        <Link to="/me/shift-swaps" className="btn-outline text-sm">
+          <Repeat className="size-4" /> Devir Talepleri
+        </Link>
       </div>
 
       {isLoading ? (
@@ -93,7 +111,12 @@ export function MyShiftsPage() {
             ) : (
               <ul className="space-y-2">
                 {grouped.upcoming.map((s) => (
-                  <ShiftRow key={s.id} shift={s} highlight={s.shift_date === today} />
+                  <ShiftRow
+                    key={s.id}
+                    shift={s}
+                    highlight={s.shift_date === today}
+                    onSwap={() => setSwapping(s)}
+                  />
                 ))}
               </ul>
             )}
@@ -111,11 +134,195 @@ export function MyShiftsPage() {
           )}
         </>
       )}
+
+      {swapping && (
+        <SwapModal
+          shift={swapping}
+          onClose={() => setSwapping(null)}
+          onSubmitted={() => setSwapping(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ShiftRow({ shift: s, highlight }: { shift: MyShift; highlight?: boolean }) {
+function SwapModal({
+  shift,
+  onClose,
+  onSubmitted,
+}: {
+  shift: MyShift;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const me = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
+  const [toUserId, setToUserId] = useState('');
+  const [twoWay, setTwoWay] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const { data: usersData } = useQuery<{ items: { id: string; full_name: string; department: string | null }[] }>({
+    queryKey: ['users-for-swap'],
+    queryFn: async () => (await api.get('/users')).data,
+  });
+  const candidates = (usersData?.items ?? []).filter(
+    (u) => u.id !== me?.id,
+  );
+
+  const { data: theirShifts } = useQuery<{ items: MyShift[] }>({
+    queryKey: ['shift-assignments-day', shift.shift_date, toUserId],
+    queryFn: async () =>
+      (
+        await api.get(
+          `/shift-assignments?date_from=${shift.shift_date}&date_to=${shift.shift_date}&user_id=${toUserId}`,
+        )
+      ).data,
+    enabled: !!toUserId && twoWay,
+  });
+  const theirShift = (theirShifts?.items ?? [])[0];
+
+  const submitMut = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        from_assignment_id: shift.id,
+        to_user_id: toUserId,
+      };
+      if (twoWay && theirShift) payload.to_assignment_id = theirShift.id;
+      if (message.trim()) payload.message = message.trim();
+      return (await api.post('/shift-swaps', payload)).data;
+    },
+    onSuccess: () => {
+      toast.success('🔁 Devir talebi gönderildi');
+      void qc.invalidateQueries({ queryKey: ['me', 'shift-swaps'] });
+      onSubmitted();
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-3 py-4 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md card space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-orange-600 text-xs font-medium uppercase tracking-wider">
+              <Repeat className="size-3.5" /> Vardiya Devri
+            </div>
+            <h3 className="font-display text-xl mt-1">
+              {shift.template_name}
+            </h3>
+            <p className="text-xs text-muted">
+              {shift.shift_date} ·{' '}
+              {(shift.override_start ?? shift.template_start).slice(0, 5)}–
+              {(shift.override_end ?? shift.template_end).slice(0, 5)}
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1.5">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="label">Kime devretmek istiyorsun?</label>
+          <select
+            className="input mt-1"
+            value={toUserId}
+            onChange={(e) => setToUserId(e.target.value)}
+          >
+            <option value="">— Çalışan seç —</option>
+            {candidates.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name}
+                {u.department ? ` · ${u.department}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={twoWay}
+              onChange={(e) => setTwoWay(e.target.checked)}
+              className="size-4 accent-orange-500"
+            />
+            <span className="text-sm">Karşılıklı takas (onun da o gün vardiyası varsa)</span>
+          </label>
+          {twoWay && toUserId && (
+            <div className="mt-2 text-xs">
+              {theirShift ? (
+                <div
+                  className="rounded-md p-2 flex items-center gap-2"
+                  style={{ backgroundColor: theirShift.template_color + '20' }}
+                >
+                  <ArrowRight className="size-3.5 text-orange-500" />
+                  <span>
+                    Onun vardiyası: <strong>{theirShift.template_name}</strong>
+                    {' '}
+                    {(theirShift.override_start ?? theirShift.template_start).slice(0, 5)}–
+                    {(theirShift.override_end ?? theirShift.template_end).slice(0, 5)}
+                    {' '}— sen alacaksın
+                  </span>
+                </div>
+              ) : (
+                <div className="rounded-md bg-warning/10 text-warning p-2">
+                  Bu kişinin o gün vardiyası yok — karşılıklı takas yapılamaz.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Mesaj (opsiyonel)</label>
+          <textarea
+            className="input mt-1 resize-none text-sm"
+            rows={2}
+            placeholder="Doktora gitmem gerekiyor, alabilir misin?"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={500}
+          />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="btn-outline flex-1" disabled={submitMut.isPending}>
+            İptal
+          </button>
+          <button
+            onClick={() => submitMut.mutate()}
+            disabled={
+              submitMut.isPending ||
+              !toUserId ||
+              (twoWay && !theirShift)
+            }
+            className="btn-primary flex-1"
+          >
+            {submitMut.isPending && <Loader2 className="size-4 animate-spin" />}
+            <Repeat className="size-4" />
+            Devir Talep Et
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShiftRow({
+  shift: s,
+  highlight,
+  onSwap,
+}: {
+  shift: MyShift;
+  highlight?: boolean;
+  onSwap?: () => void;
+}) {
   const start = (s.override_start ?? s.template_start).slice(0, 5);
   const end = (s.override_end ?? s.template_end).slice(0, 5);
   const dateLabel = new Date(s.shift_date).toLocaleDateString('tr-TR', {
@@ -165,9 +372,19 @@ function ShiftRow({ shift: s, highlight }: { shift: MyShift; highlight?: boolean
           </div>
         )}
       </div>
-      <span className={`chip text-[10px] ${STATUS_STYLE[s.status]}`}>
-        {STATUS_TR[s.status]}
-      </span>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <span className={`chip text-[10px] ${STATUS_STYLE[s.status]}`}>
+          {STATUS_TR[s.status]}
+        </span>
+        {onSwap && s.status === 'scheduled' && (
+          <button
+            onClick={onSwap}
+            className="text-[11px] px-2 py-0.5 rounded-md border border-orange-200 text-orange-700 hover:bg-orange-50 transition inline-flex items-center gap-1"
+          >
+            <Repeat className="size-3" /> Devret
+          </button>
+        )}
+      </div>
     </li>
   );
 }
