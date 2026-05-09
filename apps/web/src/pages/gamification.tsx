@@ -156,7 +156,7 @@ export function GamificationPage() {
         <div>
           <h1 className="font-display text-3xl">Performans & Ödüller</h1>
           <p className="text-sm text-muted">
-            Sıralama, ödül kataloğu ve aylık liderlik programı tek yerde.
+            Sıralama · Ödül Mağazası · Liderlik Mağazası
           </p>
         </div>
       </div>
@@ -223,7 +223,7 @@ export function GamificationPage() {
             onClick={() => setTab('store')}
             icon={<Gift className="size-4" />}
           >
-            Ödüller
+            Ödül Mağazası
           </TabButton>
           <TabButton
             active={tab === 'monthly'}
@@ -232,7 +232,7 @@ export function GamificationPage() {
             badge={hasMarketAccess ? marketCredit : null}
             highlighted={hasMarketAccess}
           >
-            Aylık Program
+            Liderlik Mağazası
           </TabButton>
         </div>
       </div>
@@ -858,7 +858,7 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
           <div>
             <h3 className="font-display text-lg">Bu dönem yetkin yok</h3>
             <p className="text-sm text-muted mt-1 max-w-md mx-auto">
-              Aylık Liderlik Programı <strong>sadece her ayın ilk 3 sıradaki personeline</strong>{' '}
+              Liderlik Mağazası <strong>sadece her ayın ilk 3 sıradaki personeline</strong>{' '}
               açılır. Pencere ayın 1'inden 8'ine kadar — 7 gün geçerli.
             </p>
           </div>
@@ -1071,7 +1071,7 @@ function RewardFormModal({
               }`}
             >
               <ShoppingBag className="size-3.5 mx-auto mb-0.5" />
-              <div className="font-medium">Aylık Top 3</div>
+              <div className="font-medium">Liderlik</div>
               <div className="text-[10px] opacity-80">Sadece ay top 3</div>
             </button>
           </div>
