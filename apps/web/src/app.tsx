@@ -23,8 +23,7 @@ import { AdminSettingsPage } from '@/pages/admin-settings';
 import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
 import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
 import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
-import { LeaderboardPage } from '@/pages/leaderboard';
-import { RewardsPage } from '@/pages/rewards';
+import { GamificationPage } from '@/pages/gamification';
 import { AdminRedemptionsPage } from '@/pages/admin-redemptions';
 import { AdminShiftsPage } from '@/pages/admin-shifts';
 import { ManagerSchedulePage } from '@/pages/manager-schedule';
@@ -33,7 +32,6 @@ import { MyShiftsPage } from '@/pages/my-shifts';
 import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
 import { ManagerAnalyticsPage } from '@/pages/manager-analytics';
 import { AdminBulkImportPage } from '@/pages/admin-bulk-import';
-import { MyMonthlyMarketPage } from '@/pages/my-monthly-market';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -139,8 +137,15 @@ function AppInner() {
             </EmployeePageGate>
           }
         />
-        <Route path="leaderboard" element={<LeaderboardPage />} />
-        <Route path="rewards" element={<RewardsPage />} />
+        <Route path="gamification" element={<GamificationPage />} />
+        <Route
+          path="leaderboard"
+          element={<Navigate to="/gamification?tab=ranks" replace />}
+        />
+        <Route
+          path="rewards"
+          element={<Navigate to="/gamification?tab=store" replace />}
+        />
 
         {/* Manager+ */}
         <Route
@@ -283,7 +288,10 @@ function AppInner() {
         />
         <Route path="me/shifts" element={<MyShiftsPage />} />
         <Route path="me/shift-swaps" element={<MyShiftSwapsPage />} />
-        <Route path="me/monthly-market" element={<MyMonthlyMarketPage />} />
+        <Route
+          path="me/monthly-market"
+          element={<Navigate to="/gamification?tab=monthly" replace />}
+        />
         <Route
           path="admin/bulk-import"
           element={

@@ -70,9 +70,7 @@ export function AppLayout() {
             {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
-            <NavItem to="/leaderboard">🏆 Sıralama</NavItem>
-            <NavItem to="/rewards">🎁 Ödüller</NavItem>
-            <NavItem to="/me/monthly-market">🛒 Aylık</NavItem>
+            <NavItem to="/gamification">🏆 Oyun & Ödül</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
             {isAdmin && <NavItem to="/admin">Admin</NavItem>}
             {can('profile') && <NavItem to="/profile">Profil</NavItem>}
@@ -126,6 +124,9 @@ export function AppLayout() {
                 Duyurular
               </NavItem>
             )}
+            <NavItem to="/gamification" onClick={() => setOpen(false)}>
+              🏆 Oyun & Ödül
+            </NavItem>
             {isManager && (
               <NavItem to="/manager" onClick={() => setOpen(false)}>
                 Ekip

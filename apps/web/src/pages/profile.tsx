@@ -151,7 +151,7 @@ export function ProfilePage() {
 
         {/* 3 sıralama: haftalık + aylık + tüm zamanlar */}
         <Link
-          to="/leaderboard"
+          to="/gamification?tab=ranks"
           className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-cream p-3 hover:border-orange-300 transition"
         >
           <RankCell label="Bu hafta" rank={lb?.me_rank ?? null} xp={lb?.me_xp ?? 0} />
