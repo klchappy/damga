@@ -70,7 +70,7 @@ export function AppLayout() {
             {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
-            <NavItem to="/gamification">🏆 Oyun & Ödül</NavItem>
+            <NavItem to="/gamification">Performans</NavItem>
             {isManager && <NavItem to="/manager">Ekip</NavItem>}
             {isAdmin && <NavItem to="/admin">Admin</NavItem>}
             {can('profile') && <NavItem to="/profile">Profil</NavItem>}
@@ -125,7 +125,7 @@ export function AppLayout() {
               </NavItem>
             )}
             <NavItem to="/gamification" onClick={() => setOpen(false)}>
-              🏆 Oyun & Ödül
+              Performans
             </NavItem>
             {isManager && (
               <NavItem to="/manager" onClick={() => setOpen(false)}>

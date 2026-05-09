@@ -148,6 +148,19 @@ export function GamificationPage() {
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 space-y-4">
+      {/* Sayfa başlığı */}
+      <div className="flex items-center gap-3">
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
+          <Trophy className="size-6" />
+        </div>
+        <div>
+          <h1 className="font-display text-3xl">Performans & Ödüller</h1>
+          <p className="text-sm text-muted">
+            Sıralama, ödül kataloğu ve aylık liderlik programı tek yerde.
+          </p>
+        </div>
+      </div>
+
       {/* Snapshot */}
       <div className="card overflow-hidden relative">
         <div className="absolute -top-8 -right-8 size-32 rounded-full bg-orange-100/60 blur-2xl" />
@@ -210,7 +223,7 @@ export function GamificationPage() {
             onClick={() => setTab('store')}
             icon={<Gift className="size-4" />}
           >
-            Mağaza
+            Ödüller
           </TabButton>
           <TabButton
             active={tab === 'monthly'}
@@ -219,7 +232,7 @@ export function GamificationPage() {
             badge={hasMarketAccess ? marketCredit : null}
             highlighted={hasMarketAccess}
           >
-            Aylık {hasMarketAccess && '⭐'}
+            Aylık Program
           </TabButton>
         </div>
       </div>
@@ -843,20 +856,20 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
             <Lock className="size-6" />
           </div>
           <div>
-            <h3 className="font-display text-lg">Bu ay erişimin yok</h3>
+            <h3 className="font-display text-lg">Bu dönem yetkin yok</h3>
             <p className="text-sm text-muted mt-1 max-w-md mx-auto">
-              Aylık özel market <strong>sadece her ayın ilk 3 sıradaki personeline</strong>{' '}
-              açılır. Pencere ayın 1'inden 8'ine kadardır.
+              Aylık Liderlik Programı <strong>sadece her ayın ilk 3 sıradaki personeline</strong>{' '}
+              açılır. Pencere ayın 1'inden 8'ine kadar — 7 gün geçerli.
             </p>
           </div>
         </div>
         <div className="card bg-purple-50/40 border-purple-200 text-xs space-y-1.5">
-          <div className="font-medium text-purple-700 mb-1">📋 Nasıl çalışır?</div>
+          <div className="font-medium text-purple-700 mb-1">Program kuralları</div>
           <ul className="space-y-1 text-purple-700 list-disc list-inside">
-            <li>Ay sonunda ilk 3'e otomatik kredi yatar</li>
-            <li>Kredi = o ay kazandığın XP + sıra bonusu (2000/1000/500)</li>
-            <li>Sadece bu sayfadaki "monthly_top3" ödüllerini alabilirsin</li>
-            <li>Pencere 7 gün açık · kullanılmayan kredi yanar</li>
+            <li>Ay sonunda ilk 3 personele otomatik kredi yatırılır</li>
+            <li>Kredi tutarı = o ay kazanılan XP + sıralama bonusu (2.000 / 1.000 / 500)</li>
+            <li>Krediler yalnızca bu kataloğa özel ödüllerde geçerlidir</li>
+            <li>Kullanılmayan kredi pencere kapandığında geçersiz olur</li>
           </ul>
         </div>
       </div>
