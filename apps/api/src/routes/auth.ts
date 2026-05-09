@@ -16,7 +16,9 @@ import { logger } from '../config/logger';
 import { generateStrongPassword } from '../lib/password';
 
 export const authRouter = Router();
-authRouter.use(authLimiter);
+// authLimiter sadece sensitif POST'lara uygulanır (sign-up, magic-link,
+// resolve-identifier, forgot). /auth/me GET'i her sayfa yüklenmesinde
+// çağrıldığı için MUAF — apiLimiter (300/dk) yeterli koruma sağlar.
 
 function getSupabaseAdmin() {
   if (!isConfigured.supabase) {
@@ -31,7 +33,7 @@ function getSupabaseAdmin() {
  * Magic link gönder.
  * Supabase Auth tarafından email'e link gönderilir, callback /auth/callback'e gelir.
  */
-authRouter.post('/magic-link', async (req, res, next) => {
+authRouter.post('/magic-link', authLimiter, async (req, res, next) => {
   try {
     const { email } = magicLinkSchema.parse(req.body);
     const supabase = getSupabaseAdmin();
@@ -61,7 +63,7 @@ authRouter.post('/magic-link', async (req, res, next) => {
  * Supabase email_confirm: TRUE → onay maili gönderilmez (rate limit fix).
  * Kullanıcı şifresiyle direkt giriş yapar; yöneticiyle eşleşene kadar /pending sayfası görür.
  */
-authRouter.post('/sign-up', async (req, res, next) => {
+authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
   try {
     const input = signUpSchema.parse(req.body);
     const db = getDb();
@@ -157,7 +159,7 @@ authRouter.post('/sign-up', async (req, res, next) => {
  *   - bulunmadı: { email: null }
  * (Brute-force enumeration için authLimiter zaten 60sn'de 10 istek)
  */
-authRouter.post('/resolve-identifier', async (req, res, next) => {
+authRouter.post('/resolve-identifier', authLimiter, async (req, res, next) => {
   try {
     const input = resolveIdentifierSchema.parse(req.body);
     const id = input.identifier.trim();
@@ -200,7 +202,7 @@ authRouter.post('/resolve-identifier', async (req, res, next) => {
  * Kullanıcının email/username/phone bilgisini idantifier olarak alır, kayıtlı
  * kullanıcının email'ini bulur, sonra method'a göre işlem yapar.
  */
-authRouter.post('/forgot', async (req, res, next) => {
+authRouter.post('/forgot', authLimiter, async (req, res, next) => {
   try {
     const input = forgotPasswordMultiSchema.parse(req.body);
     const id = input.identifier.trim();
