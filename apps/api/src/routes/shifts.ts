@@ -362,6 +362,91 @@ shiftsRouter.delete(
   },
 );
 
+/**
+ * POST /v1/shift-assignments/:id/move { user_id, shift_date }
+ *
+ * Drag-drop için: vardiyayı başka kullanıcıya/güne taşır.
+ * Target slot dolu ise 409. Aynı slot tek satır (unique index ile garanti).
+ */
+const moveSchema = z.object({
+  user_id: z.string().uuid(),
+  shift_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+shiftsRouter.post(
+  '/shift-assignments/:id/move',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const body = moveSchema.parse(req.body);
+      const db = getDb();
+
+      const [a] = await db
+        .select()
+        .from(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.id, id),
+            eq(shiftAssignments.org_id, req.authOrgId),
+          ),
+        );
+      if (!a) throw new HttpError(404, 'Atama bulunamadı');
+
+      // Hedef kullanıcının org doğrulaması
+      const [u] = await db
+        .select({ org_id: users.org_id })
+        .from(users)
+        .where(eq(users.id, body.user_id));
+      if (!u || u.org_id !== req.authOrgId)
+        throw new HttpError(404, 'Hedef kullanıcı bulunamadı');
+
+      // Aynı slot zaten dolu mu? (kendisi hariç)
+      const [conflict] = await db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.user_id, body.user_id),
+            eq(shiftAssignments.shift_date, body.shift_date),
+            sql`${shiftAssignments.id} <> ${id}`,
+            sql`${shiftAssignments.status} <> 'swapped'`,
+          ),
+        );
+      if ((conflict?.c ?? 0) > 0)
+        throw new HttpError(409, 'Hedef slot dolu', 'TARGET_OCCUPIED');
+
+      const [updated] = await db
+        .update(shiftAssignments)
+        .set({
+          user_id: body.user_id,
+          shift_date: body.shift_date,
+          updated_at: new Date(),
+        })
+        .where(eq(shiftAssignments.id, id))
+        .returning();
+
+      // Notification (yeni kullanıcı + farklı kişiyse)
+      if (body.user_id !== a.user_id) {
+        void createNotification({
+          orgId: req.authOrgId,
+          userId: body.user_id,
+          type: 'shift_assigned',
+          title: '📅 Vardiya sana atandı',
+          body: `${body.shift_date} vardiyası — manager taşıdı`,
+          url: '/me/shifts',
+          metadata: { assignment_id: id, shift_date: body.shift_date },
+        });
+      }
+
+      res.json({ assignment: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 /** Çalışan kendi yaklaşan vardiyalarını görür */
 shiftsRouter.get('/me/shifts', requireAuth, async (req, res, next) => {
   try {
