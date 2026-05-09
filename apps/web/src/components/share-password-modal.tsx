@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Copy,
@@ -36,24 +36,33 @@ export function SharePasswordModal({
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [reveal, setReveal] = useState(true);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(password);
       setCopied(true);
       toast.success('Şifre kopyalandı');
-      window.setTimeout(() => setCopied(false), 2500);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2500);
     } catch {
       toast.error('Kopyalanamadı');
     }
   };
 
+  const signInUrl = `${window.location.origin}/auth/sign-in`;
   const waMessage = encodeURIComponent(
-    `Merhaba ${recipientName},\n\nDamga şifren güncellendi:\n\nE-posta: ${recipientEmail}\nŞifre: ${password}\n\nGiriş: https://damga.deploi.net/auth/sign-in\n\nİlk girişten sonra Profil → Şifre değiştir kısmından kendi şifrene değiştirmen önerilir.`,
+    `Merhaba ${recipientName},\n\nDamga şifren güncellendi:\n\nE-posta: ${recipientEmail}\nŞifre: ${password}\n\nGiriş: ${signInUrl}\n\nİlk girişten sonra Profil → Şifre değiştir kısmından kendi şifrene değiştirmen önerilir.`,
   );
   const mailSubject = encodeURIComponent('Damga şifren güncellendi');
   const mailBody = encodeURIComponent(
-    `Merhaba ${recipientName},\n\nDamga şifren güncellendi.\n\nE-posta: ${recipientEmail}\nŞifre: ${password}\n\nGiriş: https://damga.deploi.net/auth/sign-in\n\nİlk girişten sonra Profil → Şifre değiştir kısmından kendi şifrene değiştirmen önerilir.`,
+    `Merhaba ${recipientName},\n\nDamga şifren güncellendi.\n\nE-posta: ${recipientEmail}\nŞifre: ${password}\n\nGiriş: ${signInUrl}\n\nİlk girişten sonra Profil → Şifre değiştir kısmından kendi şifrene değiştirmen önerilir.`,
   );
 
   return (

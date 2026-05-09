@@ -94,6 +94,7 @@ export function AnnouncementsPage() {
   const readMut = useMutation({
     mutationFn: async (id: string) => api.post(`/announcements/${id}/read`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
+    onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const deleteMut = useMutation({

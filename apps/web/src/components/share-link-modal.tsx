@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Copy, Mail, MessageCircle, X, CheckCircle2, AlertTriangle, Link as LinkIcon } from 'lucide-react';
 
@@ -30,6 +30,13 @@ export function ShareLinkModal({
   description = 'Aşağıdaki şifre belirleme linkini kullanıcıya paylaş — istediği kanaldan (WhatsApp, kurumsal mail, fiziksel teslim).',
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (!link) return;
@@ -37,18 +44,20 @@ export function ShareLinkModal({
       await navigator.clipboard.writeText(link);
       setCopied(true);
       toast.success('Link kopyalandı');
-      window.setTimeout(() => setCopied(false), 2500);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2500);
     } catch {
       toast.error('Kopyalanamadı');
     }
   };
 
+  const signInUrl = `${window.location.origin}/auth/sign-in`;
   const waMessage = encodeURIComponent(
     `Merhaba ${recipientName},\n\nDamga hesabını kurduk. Şifre belirleme linki:\n${link}\n\nLink'e tıkla → şifreni belirle → giriş yap.`,
   );
   const mailSubject = encodeURIComponent('Damga hesabın hazır — şifreni belirle');
   const mailBody = encodeURIComponent(
-    `Merhaba ${recipientName},\n\nDamga hesabın oluşturuldu.\n\nŞifreni belirlemek için:\n${link}\n\nGiriş yapmak için: https://damga.deploi.net/auth/sign-in`,
+    `Merhaba ${recipientName},\n\nDamga hesabın oluşturuldu.\n\nŞifreni belirlemek için:\n${link}\n\nGiriş yapmak için: ${signInUrl}`,
   );
 
   return (

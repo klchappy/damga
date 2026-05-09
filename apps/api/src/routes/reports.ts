@@ -697,6 +697,7 @@ const exportQuery = z.object({
 reportsRouter.get(
   '/export/events',
   requireAuth,
+  requireRole('manager', 'admin', 'owner'),
   requireScope('events:read'),
   async (req, res, next) => {
     try {

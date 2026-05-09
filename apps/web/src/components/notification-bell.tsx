@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Bell, Check } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import { sendBrowserNotification, getNotificationPermission } from '@/lib/notifications';
 import { formatDateTimeTr } from '@/lib/utils';
 
@@ -107,6 +108,7 @@ export function NotificationBell() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['me', 'notifications'] });
     },
+    onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const markAllMut = useMutation({
@@ -114,6 +116,7 @@ export function NotificationBell() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['me', 'notifications'] });
     },
+    onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const unread = data?.unread_count ?? 0;
