@@ -182,11 +182,15 @@ export function SignUpPage() {
           <label className="flex items-start gap-2 text-xs text-muted">
             <input type="checkbox" className="mt-0.5" {...register('kvkk_consent')} />
             <span>
-              <strong className="text-ink">KVKK Aydınlatma Metni</strong>'ni okudum, onaylıyorum.
-              Damga, çalışan giriş/çıkış verilerini sözleşmesel zorunluluk gereği işler. Detaylar:{' '}
               <Link to="/legal/kvkk" className="text-orange-600 underline">
-                /legal/kvkk
+                KVKK Aydınlatma Metni
               </Link>
+              'ni ve{' '}
+              <Link to="/legal/terms" className="text-orange-600 underline">
+                Kullanım Şartları
+              </Link>
+              'nı okudum, onaylıyorum. Damga, çalışan giriş/çıkış verilerini sözleşmesel zorunluluk
+              gereği işler.
             </span>
           </label>
           {errors.kvkk_consent && (

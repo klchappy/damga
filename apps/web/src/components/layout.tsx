@@ -163,6 +163,14 @@ export function AppLayout() {
         ·{' '}
         <Link to="/legal/terms" className="hover:text-orange-600 underline">
           Kullanım Şartları
+        </Link>{' '}
+        ·{' '}
+        <Link to="/legal/privacy" className="hover:text-orange-600 underline">
+          Gizlilik
+        </Link>{' '}
+        ·{' '}
+        <Link to="/legal/cookies" className="hover:text-orange-600 underline">
+          Çerezler
         </Link>
       </footer>
     </div>

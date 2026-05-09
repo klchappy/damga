@@ -40,7 +40,8 @@ import { MenuPage } from '@/pages/menu';
 import { MenuFeedbackPage } from '@/pages/menu-feedback';
 import { QLandingPage } from '@/pages/q-landing';
 import { AnnouncementsPage } from '@/pages/announcements';
-import { KvkkPage, TermsPage } from '@/pages/legal';
+import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from '@/pages/legal';
+import { CookieBanner } from '@/components/cookie-banner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -86,6 +87,8 @@ function AppInner() {
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/legal/kvkk" element={<KvkkPage />} />
       <Route path="/legal/terms" element={<TermsPage />} />
+      <Route path="/legal/privacy" element={<PrivacyPage />} />
+      <Route path="/legal/cookies" element={<CookiesPage />} />
 
       {/* Auth gerekli */}
       <Route
@@ -320,6 +323,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AppInner />
+        <CookieBanner />
         <Toaster
           position="top-right"
           theme="light"
