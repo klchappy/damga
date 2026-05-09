@@ -101,6 +101,8 @@ apiRouter.get('/', (_req, res) => {
         'GET /api-keys, POST /api-keys, DELETE /api-keys/:id',
         'GET /webhooks, POST /webhooks, /webhooks/:id/deliveries|test',
         'GET /reports/attendance, /reports/payroll, /export/events',
+        'GET /reports/monthly-summary (BORDRO 3-1: attendance+izin+overtime tek CSV)',
+        'GET /reports/audit-export (KVKK: hash chain doğrulamalı tüm event log)',
         'GET /departments, POST /departments, PATCH /departments/:id',
       ],
       shifts: [

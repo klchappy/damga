@@ -142,6 +142,194 @@ reportsRouter.get(
 );
 
 /**
+ * GET /v1/reports/monthly-summary?month=YYYY-MM&format=csv|json
+ *
+ * BORDRO 3-1: tek dosyada attendance + onaylı izin + onaylı fazla mesai.
+ * Her kullanıcı için tek satır.
+ *
+ * Hesaplama:
+ *  - Çalışılan gün = ay içinde en az 1 check_in olan farklı günler
+ *  - Geç kalma = check_in saati >= 09:15 olan günler
+ *  - İzin günü = onaylı leave business_days toplamı
+ *  - Fazla mesai (dk) = onaylı overtime_records.overtime_minutes toplamı
+ *  - Tahmini çalışma saati = (çalışılan gün × 9) + (overtime_min / 60) − (mola)
+ */
+reportsRouter.get(
+  '/reports/monthly-summary',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  requireScope('reports:read'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const q = monthQuery.parse(req.query);
+      const [yyyy, mm] = q.month.split('-').map(Number) as [number, number];
+      const start = new Date(Date.UTC(yyyy, mm - 1, 1));
+      const end = new Date(Date.UTC(yyyy, mm, 0, 23, 59, 59));
+      const startStr = `${yyyy}-${String(mm).padStart(2, '0')}-01`;
+      const endStr = `${yyyy}-${String(mm).padStart(2, '0')}-${new Date(yyyy, mm, 0).getDate()}`;
+
+      // Per-user attendance metrics (Istanbul TZ ile gün)
+      const attRows = await getDb()
+        .select({
+          userId: users.id,
+          fullName: users.full_name,
+          email: users.email,
+          department: users.department,
+          worked_days: sql<number>`count(distinct date(${attendanceEvents.server_time} at time zone 'Europe/Istanbul')) filter (where ${attendanceEvents.type} = 'check_in')::int`,
+          check_in_count: sql<number>`count(*) filter (where ${attendanceEvents.type} = 'check_in')::int`,
+          check_out_count: sql<number>`count(*) filter (where ${attendanceEvents.type} = 'check_out')::int`,
+          late_count: sql<number>`count(*) filter (
+            where ${attendanceEvents.type} = 'check_in'
+            and (extract(hour from ${attendanceEvents.server_time} at time zone 'Europe/Istanbul') > 9
+                 or (extract(hour from ${attendanceEvents.server_time} at time zone 'Europe/Istanbul') = 9
+                     and extract(minute from ${attendanceEvents.server_time} at time zone 'Europe/Istanbul') >= 15))
+          )::int`,
+          flagged_count: sql<number>`count(*) filter (where ${attendanceEvents.verification_score} < 80)::int`,
+          avg_trust: sql<number>`coalesce(round(avg(${attendanceEvents.verification_score}) filter (where ${attendanceEvents.type} = 'check_in')), 0)::int`,
+        })
+        .from(users)
+        .leftJoin(
+          attendanceEvents,
+          and(
+            eq(attendanceEvents.user_id, users.id),
+            gte(attendanceEvents.server_time, start),
+            lte(attendanceEvents.server_time, end),
+          ),
+        )
+        .where(eq(users.org_id, req.authOrgId))
+        .groupBy(users.id, users.full_name, users.email, users.department);
+
+      // Onaylı izin günleri toplamı
+      const leaveRows = await getDb()
+        .select({
+          userId: leaves.user_id,
+          totalDays: sql<number>`coalesce(sum(cast(${leaves.business_days} as int)), 0)::int`,
+        })
+        .from(leaves)
+        .where(
+          and(
+            eq(leaves.org_id, req.authOrgId),
+            eq(leaves.status, 'approved'),
+            gte(leaves.start_date, startStr),
+            lte(leaves.end_date, endStr),
+          ),
+        )
+        .groupBy(leaves.user_id);
+      const leaveMap = new Map(leaveRows.map((r) => [r.userId, r.totalDays]));
+
+      // Onaylı overtime dakikaları
+      const otRows = await getDb()
+        .select({
+          userId: overtimeRecords.user_id,
+          totalMinutes: sql<number>`coalesce(sum(${overtimeRecords.overtime_minutes}), 0)::int`,
+        })
+        .from(overtimeRecords)
+        .where(
+          and(
+            eq(overtimeRecords.org_id, req.authOrgId),
+            eq(overtimeRecords.status, 'approved'),
+            gte(overtimeRecords.created_at, start),
+            lte(overtimeRecords.created_at, end),
+          ),
+        )
+        .groupBy(overtimeRecords.user_id);
+      const otMap = new Map(otRows.map((r) => [r.userId, r.totalMinutes]));
+
+      const items = attRows.map((r) => {
+        const leaveDays = leaveMap.get(r.userId) ?? 0;
+        const otMin = otMap.get(r.userId) ?? 0;
+        const baseHours = r.worked_days * 9; // varsayılan tam gün
+        const totalHours = (baseHours + otMin / 60).toFixed(1);
+        return {
+          user_id: r.userId,
+          full_name: r.fullName,
+          email: r.email,
+          department: r.department ?? '',
+          worked_days: r.worked_days,
+          check_in_count: r.check_in_count,
+          check_out_count: r.check_out_count,
+          late_count: r.late_count,
+          flagged_count: r.flagged_count,
+          avg_trust: r.avg_trust,
+          leave_days: leaveDays,
+          overtime_minutes: otMin,
+          overtime_hours: (otMin / 60).toFixed(2),
+          base_hours: baseHours,
+          total_hours: totalHours,
+        };
+      });
+
+      if (q.format === 'csv') {
+        const csvEsc = (v: string | number | null | undefined): string => {
+          const s = v == null ? '' : String(v);
+          if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        };
+        const headers = [
+          'Ad Soyad',
+          'E-posta',
+          'Departman',
+          'Çalışılan Gün',
+          'Toplam Giriş',
+          'Toplam Çıkış',
+          'Geç Kalma',
+          'Bayraklı',
+          'Ortalama Trust',
+          'Onaylı İzin (gün)',
+          'Fazla Mesai (dk)',
+          'Fazla Mesai (sa)',
+          'Baz Çalışma (sa)',
+          'Toplam Çalışma (sa)',
+        ];
+        const lines = [
+          headers.map(csvEsc).join(','),
+          ...items.map((i) =>
+            [
+              i.full_name,
+              i.email,
+              i.department,
+              i.worked_days,
+              i.check_in_count,
+              i.check_out_count,
+              i.late_count,
+              i.flagged_count,
+              i.avg_trust,
+              i.leave_days,
+              i.overtime_minutes,
+              i.overtime_hours,
+              i.base_hours,
+              i.total_hours,
+            ]
+              .map(csvEsc)
+              .join(','),
+          ),
+        ];
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="bordro-${q.month}.csv"`,
+        );
+        res.send('﻿' + lines.join('\n'));
+        return;
+      }
+
+      res.json({
+        month: q.month,
+        total_users: items.length,
+        total_worked_days: items.reduce((s, i) => s + i.worked_days, 0),
+        total_overtime_minutes: items.reduce((s, i) => s + i.overtime_minutes, 0),
+        items,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
  * GET /v1/reports/overtime?month=YYYY-MM&format=csv|json&status=approved
  *
  * Ay içindeki onaylı (default) fazla mesai kayıtları — bordroya direkt yüklenebilir.
@@ -305,6 +493,192 @@ reportsRouter.get(
         total_minutes: totalMinutes,
         total_hours: (totalMinutes / 60).toFixed(2),
         count: items.length,
+        items,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /v1/reports/audit-export?month=YYYY-MM&format=csv|json
+ *
+ * KVKK uyumlu audit raporu — tüm attendance_events kayıtlarının hash chain
+ * doğrulaması ile beraber. Her satır:
+ *   - id, type, server_time, user, location
+ *   - verification_score, verification_methods, flags
+ *   - hash, prev_hash, is_valid (chain doğrulama sonucu)
+ *
+ * Bir denetçiye verilebilir; hash chain'in bütünlüğü ile kayıtların
+ * sonradan değiştirilmediği kanıtlanır.
+ */
+reportsRouter.get(
+  '/reports/audit-export',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  requireScope('reports:read'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const q = monthQuery.parse(req.query);
+      const [yyyy, mm] = q.month.split('-').map(Number) as [number, number];
+      const start = new Date(Date.UTC(yyyy, mm - 1, 1));
+      const end = new Date(Date.UTC(yyyy, mm, 0, 23, 59, 59));
+
+      // Hash chain doğrulama sonucunu map'le
+      const verifyResult = await getDb().execute<{
+        event_id: string;
+        is_valid: boolean;
+        expected_hash: string;
+        actual_hash: string;
+        position: number;
+      }>(sql`select * from verify_hash_chain(${req.authOrgId}::uuid)`);
+      const verifyRows =
+        (verifyResult as unknown as { rows: Array<{ event_id: string; is_valid: boolean; expected_hash: string; position: number }> }).rows ??
+        [];
+      const validityMap = new Map(
+        verifyRows.map((r) => [r.event_id, { valid: r.is_valid, expected: r.expected_hash, position: r.position }]),
+      );
+
+      // Ay içi tüm event'ler
+      const rows = await getDb()
+        .select({
+          id: attendanceEvents.id,
+          type: attendanceEvents.type,
+          server_time: attendanceEvents.server_time,
+          client_time: attendanceEvents.client_time,
+          user_id: attendanceEvents.user_id,
+          full_name: users.full_name,
+          email: users.email,
+          department: users.department,
+          location_id: attendanceEvents.location_id,
+          latitude: attendanceEvents.latitude,
+          longitude: attendanceEvents.longitude,
+          distance_from_office_m: attendanceEvents.distance_from_office_m,
+          verification_score: attendanceEvents.verification_score,
+          verification_methods: attendanceEvents.verification_methods,
+          flags: attendanceEvents.flags,
+          review_status: attendanceEvents.review_status,
+          review_reasons: attendanceEvents.review_reasons,
+          hash: attendanceEvents.this_event_hash,
+          prev_hash: attendanceEvents.previous_event_hash,
+        })
+        .from(attendanceEvents)
+        .innerJoin(users, eq(users.id, attendanceEvents.user_id))
+        .where(
+          and(
+            eq(attendanceEvents.org_id, req.authOrgId),
+            gte(attendanceEvents.server_time, start),
+            lte(attendanceEvents.server_time, end),
+          ),
+        )
+        .orderBy(asc(attendanceEvents.server_time));
+
+      const items = rows.map((r) => {
+        const v = validityMap.get(r.id);
+        return {
+          id: r.id,
+          type: r.type,
+          server_time: r.server_time.toISOString(),
+          client_time: r.client_time.toISOString(),
+          user_id: r.user_id,
+          full_name: r.full_name,
+          email: r.email,
+          department: r.department ?? '',
+          location_id: r.location_id ?? '',
+          latitude: r.latitude ?? '',
+          longitude: r.longitude ?? '',
+          distance_from_office_m: r.distance_from_office_m ?? '',
+          verification_score: r.verification_score,
+          verification_methods: (r.verification_methods ?? []).join('+'),
+          flags: (r.flags ?? []).join(';'),
+          review_status: r.review_status ?? 'approved',
+          review_reasons: (r.review_reasons ?? []).join(';'),
+          hash: r.hash ?? '',
+          prev_hash: r.prev_hash ?? '',
+          chain_valid: v?.valid ?? null,
+          chain_position: v?.position ?? null,
+        };
+      });
+
+      const total = items.length;
+      const broken = items.filter((i) => i.chain_valid === false).length;
+
+      if (q.format === 'csv') {
+        const csvEsc = (v: string | number | boolean | null | undefined): string => {
+          const s = v == null ? '' : String(v);
+          if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        };
+        const headers = [
+          'Event ID',
+          'Tip',
+          'Sunucu Zamanı (UTC)',
+          'İstemci Zamanı (UTC)',
+          'Kullanıcı',
+          'E-posta',
+          'Departman',
+          'Lokasyon ID',
+          'Enlem',
+          'Boylam',
+          'Ofis Mesafesi (m)',
+          'Trust (0-100)',
+          'Doğrulama Yöntemleri',
+          'Bayraklar',
+          'İnceleme Durumu',
+          'İnceleme Sebepleri',
+          'Hash',
+          'Önceki Hash',
+          'Chain Geçerli',
+          'Chain Pozisyon',
+        ];
+        const lines = [
+          headers.map(csvEsc).join(','),
+          ...items.map((i) =>
+            [
+              i.id,
+              i.type,
+              i.server_time,
+              i.client_time,
+              i.full_name,
+              i.email,
+              i.department,
+              i.location_id,
+              i.latitude,
+              i.longitude,
+              i.distance_from_office_m,
+              i.verification_score,
+              i.verification_methods,
+              i.flags,
+              i.review_status,
+              i.review_reasons,
+              i.hash,
+              i.prev_hash,
+              i.chain_valid == null ? '' : i.chain_valid ? 'EVET' : 'HAYIR',
+              i.chain_position ?? '',
+            ]
+              .map(csvEsc)
+              .join(','),
+          ),
+        ];
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="audit-${q.month}.csv"`,
+        );
+        res.send('﻿' + lines.join('\n'));
+        return;
+      }
+
+      res.json({
+        month: q.month,
+        total,
+        valid: total - broken,
+        broken,
+        chain_integrity_pct: total > 0 ? Math.round(((total - broken) / total) * 1000) / 10 : 100,
         items,
       });
     } catch (err) {
