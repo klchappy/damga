@@ -32,6 +32,8 @@ import { AdminOvertimePage } from '@/pages/admin-overtime';
 import { MyShiftsPage } from '@/pages/my-shifts';
 import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
 import { ManagerAnalyticsPage } from '@/pages/manager-analytics';
+import { AdminBulkImportPage } from '@/pages/admin-bulk-import';
+import { MyMonthlyMarketPage } from '@/pages/my-monthly-market';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -281,6 +283,15 @@ function AppInner() {
         />
         <Route path="me/shifts" element={<MyShiftsPage />} />
         <Route path="me/shift-swaps" element={<MyShiftSwapsPage />} />
+        <Route path="me/monthly-market" element={<MyMonthlyMarketPage />} />
+        <Route
+          path="admin/bulk-import"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminBulkImportPage />
+            </RoleGate>
+          }
+        />
         <Route
           path="manager/analytics"
           element={

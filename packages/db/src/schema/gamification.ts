@@ -81,6 +81,10 @@ export const rewards = pgTable(
     /** Aynı kullanıcının kaç kez kullanabileceği (null=sınırsız) */
     per_user_limit: integer('per_user_limit'),
     is_active: boolean('is_active').notNull().default(true),
+    /** 'standard' = herkes XP'siyle alır; 'monthly_top3' = sadece ay sonu top 3 special market'te */
+    market_type: text('market_type', { enum: ['standard', 'monthly_top3'] })
+      .notNull()
+      .default('standard'),
     created_by: uuid('created_by').references(() => users.id),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -130,3 +134,46 @@ export const userRedemptions = pgTable(
 
 export type UserRedemption = typeof userRedemptions.$inferSelect;
 export type NewUserRedemption = typeof userRedemptions.$inferInsert;
+
+/**
+ * monthly_market_credits — ay sonu top 3'üne verilen, sadece "monthly_top3"
+ * market_type'lı rewards'ı satın alabilecekleri kredi.
+ *
+ * Her ay 1'i 09:00 Europe/Istanbul'da `runMonthly()` cron'u top 3'ü bulur ve
+ * her birine o ay kazandığı period_xp kadar credit yatırır.
+ *
+ * Pencere: ayın 1'i 00:00 (oluşturma anı) → ayın 8'i 23:59 (expires_at).
+ * Pencere kapandığında kullanılmamış credit otomatik yanar (sıfırlanır).
+ */
+export const monthlyMarketCredits = pgTable(
+  'monthly_market_credits',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    org_id: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 'YYYY-MM' — hangi ayın top 3'ü için */
+    period: text('period').notNull(),
+    rank: integer('rank').notNull(), // 1, 2, 3
+    /** Verilen credit (kazandığı period_xp + finalize bonus toplamı) */
+    credit_amount: integer('credit_amount').notNull(),
+    spent_amount: integer('spent_amount').notNull().default(0),
+    /** Bu tarihten sonra credit kullanılamaz */
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+    is_active: boolean('is_active').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userActiveIdx: index('idx_market_credit_user_active').on(
+      table.user_id,
+      table.is_active,
+    ),
+    orgPeriodIdx: index('idx_market_credit_org_period').on(table.org_id, table.period),
+  }),
+);
+
+export type MonthlyMarketCredit = typeof monthlyMarketCredits.$inferSelect;
+export type NewMonthlyMarketCredit = typeof monthlyMarketCredits.$inferInsert;

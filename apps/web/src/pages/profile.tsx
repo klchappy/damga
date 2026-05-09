@@ -44,6 +44,24 @@ export function ProfilePage() {
     staleTime: 60_000,
   });
 
+  const { data: lbMonth } = useQuery<{
+    me_rank: number | null;
+    me_xp: number | null;
+  }>({
+    queryKey: ['leaderboard', 'monthly', 'profile'],
+    queryFn: async () => (await api.get('/leaderboard?period=monthly')).data,
+    staleTime: 60_000,
+  });
+
+  const { data: lbAll } = useQuery<{
+    me_rank: number | null;
+    me_xp: number | null;
+  }>({
+    queryKey: ['leaderboard', 'all', 'profile'],
+    queryFn: async () => (await api.get('/leaderboard?period=all')).data,
+    staleTime: 120_000,
+  });
+
   if (!user) return null;
 
   const xpToNext = Math.pow(user.level, 2) * 100 - user.total_xp;
@@ -131,54 +149,28 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* Bu hafta sıram */}
+        {/* 3 sıralama: haftalık + aylık + tüm zamanlar */}
         <Link
           to="/leaderboard"
-          className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-cream px-3 py-2.5 hover:border-orange-300 transition group"
+          className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-cream p-3 hover:border-orange-300 transition"
         >
-          <div className="flex items-center gap-2.5">
-            {lb?.me_rank === 1 ? (
-              <span className="flex size-9 items-center justify-center rounded-full bg-yellow-400 text-white shrink-0">
-                <Crown className="size-5" />
-              </span>
-            ) : lb?.me_rank === 2 ? (
-              <span className="flex size-9 items-center justify-center rounded-full bg-zinc-300 text-white shrink-0">
-                <Medal className="size-5" />
-              </span>
-            ) : lb?.me_rank === 3 ? (
-              <span className="flex size-9 items-center justify-center rounded-full bg-orange-300 text-white shrink-0">
-                <Award className="size-5" />
-              </span>
-            ) : (
-              <span className="flex size-9 items-center justify-center rounded-full bg-orange-100 text-orange-600 shrink-0">
-                <Trophy className="size-5" />
-              </span>
-            )}
-            <div>
-              <div className="text-xs text-muted">Bu hafta sıran</div>
-              <div className="font-display text-lg leading-tight">
-                {lb?.me_rank ? (
-                  <>
-                    #{lb.me_rank}
-                    {lb.me_rank <= 3 && (
-                      <span className="text-xs text-muted ml-1">
-                        · {lb.me_rank === 1 ? '🥇 +500 XP' : lb.me_rank === 2 ? '🥈 +300 XP' : '🥉 +100 XP'}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-muted">Bu hafta XP yok</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-muted">Haftalık XP</div>
-            <div className="font-display text-base">
-              {lb?.me_xp ?? 0}
-            </div>
-          </div>
+          <RankCell label="Bu hafta" rank={lb?.me_rank ?? null} xp={lb?.me_xp ?? 0} />
+          <RankCell
+            label="Bu ay"
+            rank={lbMonth?.me_rank ?? null}
+            xp={lbMonth?.me_xp ?? 0}
+            divider
+          />
+          <RankCell
+            label="Tüm zamanlar"
+            rank={lbAll?.me_rank ?? null}
+            xp={lbAll?.me_xp ?? 0}
+            divider
+          />
         </Link>
+        <p className="text-[10px] text-muted text-center mt-1.5">
+          🏆 Sıralamayı görmek için tıkla · Geç gelirsen XP düşer (-5/-10)
+        </p>
       </div>
 
       {/* Mood */}
@@ -237,6 +229,45 @@ export function ProfilePage() {
         />
       )}
       {changingPw && <ChangePasswordModal onClose={() => setChangingPw(false)} />}
+    </div>
+  );
+}
+
+function RankCell({
+  label,
+  rank,
+  xp,
+  divider,
+}: {
+  label: string;
+  rank: number | null;
+  xp: number;
+  divider?: boolean;
+}) {
+  const Icon =
+    rank === 1 ? Crown : rank === 2 ? Medal : rank === 3 ? Award : Trophy;
+  const ringClass =
+    rank === 1
+      ? 'bg-yellow-400 text-white'
+      : rank === 2
+        ? 'bg-zinc-300 text-white'
+        : rank === 3
+          ? 'bg-orange-300 text-white'
+          : 'bg-orange-100 text-orange-600';
+  return (
+    <div className={`text-center ${divider ? 'border-l border-orange-100' : ''}`}>
+      <div className="flex justify-center mb-1">
+        <span
+          className={`flex size-7 items-center justify-center rounded-full ${ringClass}`}
+        >
+          <Icon className="size-4" />
+        </span>
+      </div>
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="font-display text-base leading-tight">
+        {rank ? `#${rank}` : '—'}
+      </div>
+      <div className="text-[10px] text-muted">{xp} XP</div>
     </div>
   );
 }

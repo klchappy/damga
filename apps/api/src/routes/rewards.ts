@@ -7,6 +7,7 @@ import {
   userRedemptions,
   users,
   xpTransactions,
+  monthlyMarketCredits,
 } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -16,13 +17,22 @@ import { logger } from '../config/logger';
 
 export const rewardsRouter = Router();
 
-/** Liste — herkes görebilir (sadece kendi org'unun aktif ödülleri) */
+/**
+ * GET /v1/rewards — herkes görebilir (sadece kendi org'unun aktif ödülleri)
+ * ?market_type=standard|monthly_top3|all (default: standard)
+ * ?all=1 → admin için pasifleri de göster
+ */
 rewardsRouter.get('/rewards', requireAuth, async (req, res, next) => {
   try {
     if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
     const includeInactive = req.query.all === '1';
+    const marketType =
+      (req.query.market_type as string | undefined) ?? 'standard';
     const conditions = [eq(rewards.org_id, req.authOrgId)];
     if (!includeInactive) conditions.push(eq(rewards.is_active, true));
+    if (marketType === 'standard' || marketType === 'monthly_top3') {
+      conditions.push(eq(rewards.market_type, marketType));
+    }
     const items = await getDb()
       .select()
       .from(rewards)
@@ -42,6 +52,7 @@ const createRewardSchema = z.object({
   cost_xp: z.number().int().positive().max(100_000),
   stock: z.number().int().nonnegative().nullable().optional(),
   per_user_limit: z.number().int().positive().nullable().optional(),
+  market_type: z.enum(['standard', 'monthly_top3']).default('standard'),
 });
 
 rewardsRouter.post(
@@ -62,6 +73,7 @@ rewardsRouter.post(
           cost_xp: input.cost_xp,
           stock: input.stock ?? null,
           per_user_limit: input.per_user_limit ?? null,
+          market_type: input.market_type,
           created_by: req.authUserId,
         })
         .returning();
@@ -95,6 +107,7 @@ rewardsRouter.patch(
         'stock',
         'per_user_limit',
         'is_active',
+        'market_type',
       ] as const) {
         if (input[k] !== undefined) updates[k] = input[k];
       }
@@ -298,6 +311,180 @@ rewardsRouter.get(
           user_email: r.user_email,
           user_phone: r.user_phone,
         })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// MONTHLY MARKET (top3 only)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** GET /v1/me/monthly-market — kullanıcının aktif credit'i + market_type='monthly_top3' rewards */
+rewardsRouter.get('/me/monthly-market', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const db = getDb();
+
+    const credits = await db
+      .select()
+      .from(monthlyMarketCredits)
+      .where(
+        and(
+          eq(monthlyMarketCredits.user_id, req.authUserId),
+          eq(monthlyMarketCredits.is_active, true),
+          sql`${monthlyMarketCredits.expires_at} > now()`,
+        ),
+      )
+      .orderBy(desc(monthlyMarketCredits.created_at));
+
+    const totalRemaining = credits.reduce(
+      (sum, c) => sum + (c.credit_amount - c.spent_amount),
+      0,
+    );
+
+    // Market'te satılan ödüller
+    const items = await db
+      .select()
+      .from(rewards)
+      .where(
+        and(
+          eq(rewards.org_id, req.authOrgId),
+          eq(rewards.is_active, true),
+          eq(rewards.market_type, 'monthly_top3'),
+        ),
+      )
+      .orderBy(rewards.cost_xp);
+
+    res.json({
+      credits,
+      total_remaining: totalRemaining,
+      has_access: credits.length > 0,
+      items,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /v1/monthly-market/redeem/:reward_id
+ * Aylık market'ten ödül satın alır. Credit'ten düşer (XP'den değil).
+ */
+rewardsRouter.post(
+  '/monthly-market/redeem/:reward_id',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const rewardId = String(req.params.reward_id ?? '').trim();
+      const db = getDb();
+
+      const [reward] = await db
+        .select()
+        .from(rewards)
+        .where(
+          and(eq(rewards.id, rewardId), eq(rewards.org_id, req.authOrgId)),
+        );
+      if (!reward) throw new HttpError(404, 'Ödül bulunamadı');
+      if (!reward.is_active) throw new HttpError(400, 'Ödül aktif değil', 'INACTIVE');
+      if (reward.market_type !== 'monthly_top3')
+        throw new HttpError(400, 'Bu ödül aylık markette satılmıyor', 'WRONG_MARKET');
+
+      // Stok kontrol
+      if (reward.stock !== null) {
+        const [used] = await db
+          .select({ c: sql<number>`count(*)::int` })
+          .from(userRedemptions)
+          .where(
+            and(
+              eq(userRedemptions.reward_id, rewardId),
+              sql`${userRedemptions.status} <> 'cancelled'`,
+            ),
+          );
+        if ((used?.c ?? 0) >= reward.stock)
+          throw new HttpError(400, 'Stok tükendi', 'OUT_OF_STOCK');
+      }
+
+      // Per-user limit
+      if (reward.per_user_limit !== null) {
+        const [used] = await db
+          .select({ c: sql<number>`count(*)::int` })
+          .from(userRedemptions)
+          .where(
+            and(
+              eq(userRedemptions.reward_id, rewardId),
+              eq(userRedemptions.user_id, req.authUserId),
+              sql`${userRedemptions.status} <> 'cancelled'`,
+            ),
+          );
+        if ((used?.c ?? 0) >= reward.per_user_limit)
+          throw new HttpError(400, 'Limit aşıldı', 'PER_USER_LIMIT');
+      }
+
+      // Aktif credit'leri bul, FIFO sırasıyla harca
+      const credits = await db
+        .select()
+        .from(monthlyMarketCredits)
+        .where(
+          and(
+            eq(monthlyMarketCredits.user_id, req.authUserId),
+            eq(monthlyMarketCredits.is_active, true),
+            sql`${monthlyMarketCredits.expires_at} > now()`,
+            sql`${monthlyMarketCredits.credit_amount} > ${monthlyMarketCredits.spent_amount}`,
+          ),
+        )
+        .orderBy(monthlyMarketCredits.expires_at);
+
+      const totalAvailable = credits.reduce(
+        (sum, c) => sum + (c.credit_amount - c.spent_amount),
+        0,
+      );
+      if (totalAvailable < reward.cost_xp) {
+        throw new HttpError(
+          400,
+          `Yetersiz market kredisi — ${reward.cost_xp} gerekli, ${totalAvailable} var`,
+          'INSUFFICIENT_CREDIT',
+        );
+      }
+
+      // FIFO harcama (en yakın expire eden önce)
+      let remaining = reward.cost_xp;
+      for (const c of credits) {
+        if (remaining <= 0) break;
+        const available = c.credit_amount - c.spent_amount;
+        const take = Math.min(available, remaining);
+        await db
+          .update(monthlyMarketCredits)
+          .set({ spent_amount: c.spent_amount + take })
+          .where(eq(monthlyMarketCredits.id, c.id));
+        remaining -= take;
+      }
+
+      // Redemption kaydı (XP transaction'ı YOK — direkt credit'ten düştük)
+      const [redemption] = await db
+        .insert(userRedemptions)
+        .values({
+          org_id: req.authOrgId,
+          user_id: req.authUserId,
+          reward_id: reward.id,
+          cost_xp: reward.cost_xp,
+          status: 'pending',
+        })
+        .returning();
+
+      logger.info(
+        { userId: req.authUserId, rewardId, cost: reward.cost_xp },
+        '🛒 Aylık market redeemed',
+      );
+
+      res.status(201).json({
+        ok: true,
+        redemption,
+        reward,
+        remaining_credit: totalAvailable - reward.cost_xp,
       });
     } catch (err) {
       next(err);

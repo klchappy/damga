@@ -17,6 +17,7 @@ import {
   Clock,
   CalendarDays,
   BarChart3,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -193,6 +194,12 @@ export function AdminHomePage() {
           icon={<BarChart3 className="size-6" />}
           title="Analitik"
           desc="Geç gelme heatmap'i, departman karşılaştırması, günlük trend, en çok geç kalanlar."
+        />
+        <AdminCard
+          to="/admin/bulk-import"
+          icon={<FileSpreadsheet className="size-6" />}
+          title="Toplu İçe Aktarma"
+          desc="Excel/CSV ile menü ve izin günlerini toplu yükle. Şablon hazır."
         />
       </div>
 

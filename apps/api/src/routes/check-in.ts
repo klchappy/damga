@@ -13,6 +13,7 @@ import { dispatchWebhook } from '../modules/webhook-delivery';
 import { uploadSelfie } from '../lib/storage';
 import { awardXp, computeOnTimeBonus } from '../lib/xp';
 import { detectOvertime } from '../lib/overtime';
+import { createNotification } from '../lib/notifications';
 
 export const checkInRouter = Router();
 
@@ -396,21 +397,25 @@ async function performAttendance(
       refType: 'attendance_event',
     });
 
-    // 2) Çalışma saatlerine uygunluk bonusu
+    // 2) Çalışma saatlerine uygunluk bonusu / cezası
     const onTime = computeOnTimeBonus({
       type,
       serverTime: event.server_time,
       workStart: location.work_hours_start || '09:00',
       workEnd: location.work_hours_end || '18:00',
     });
-    if (onTime.bonus > 0) {
+    if (onTime.bonus !== 0) {
+      const isPenalty = onTime.bonus < 0;
       await awardXp({
         orgId: req.authOrgId,
         userId: req.authUserId,
         source: onTime.reason,
         amount: onTime.bonus,
-        description:
-          onTime.reason === 'on_time_check_in'
+        description: isPenalty
+          ? onTime.reason === 'late_penalty_60'
+            ? '⛔ 1+ saat geç giriş — XP cezası'
+            : '⏰ 30+ dk geç giriş — XP cezası'
+          : onTime.reason === 'on_time_check_in'
             ? 'Zamanında giriş bonusu'
             : onTime.reason === 'full_day_check_out'
               ? 'Tam gün çıkışı bonusu'
@@ -418,6 +423,21 @@ async function performAttendance(
         refId: event.id,
         refType: 'attendance_event',
       });
+      // Ceza ise kullanıcıya bildirim
+      if (isPenalty) {
+        void createNotification({
+          orgId: req.authOrgId,
+          userId: req.authUserId,
+          type: 'late_penalty',
+          title: `⚠️ ${onTime.bonus} XP ceza`,
+          body:
+            onTime.reason === 'late_penalty_60'
+              ? '1 saatten fazla geç geldin. Düzenli ol — sıralamada düşersin.'
+              : '30+ dakika geç. XP cezası uygulandı.',
+          url: '/profile',
+          metadata: { penalty: onTime.bonus, reason: onTime.reason },
+        });
+      }
     }
 
     // 3) Tam doğrulama bonusu (trust 100)

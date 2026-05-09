@@ -55,7 +55,21 @@ export async function awardXp(input: AwardXpInput) {
   return { transaction_id: tx?.id ?? null, total_xp: updated?.total_xp ?? null };
 }
 
-/** Çalışma saatlerine uygunluk bonusu — basit kural seti */
+/**
+ * Çalışma saatlerine uygunluk bonusu/cezası — basit kural seti.
+ *
+ * check_in:
+ *   - <= start             → +5 (on_time)
+ *   - start+15 dk içinde   → +2 (slightly_late)
+ *   - start+15 ile +30 dk  →  0 (late, ceza yok ama bonus yok)
+ *   - start+30 ile +60 dk  → -5 (late_penalty_30)
+ *   - start+60 dk üstü     → -10 (late_penalty_60)
+ *
+ * check_out:
+ *   - >= end          → +5 (full_day)
+ *   - end-15 ile end  → +2 (almost_full)
+ *   - end-15 öncesi   →  0 (early_check_out)
+ */
 export function computeOnTimeBonus(args: {
   type: 'check_in' | 'check_out';
   serverTime: Date;
@@ -67,19 +81,23 @@ export function computeOnTimeBonus(args: {
   const [sH, sM] = args.workStart.split(':').map(Number) as [number, number];
   const [eH, eM] = args.workEnd.split(':').map(Number) as [number, number];
   const now = args.serverTime;
-  const minutes = now.getHours() * 60 + now.getMinutes();
+  // Server UTC, lokasyon Türkiye varsayımı: UTC+3
+  const istMinutes =
+    ((now.getUTCHours() + 3) % 24) * 60 + now.getUTCMinutes();
   const startMin = (sH ?? 9) * 60 + (sM ?? 0);
   const endMin = (eH ?? 18) * 60 + (eM ?? 0);
 
   if (args.type === 'check_in') {
-    // Erken (start - 30dk ile start arası): tam bonus
-    if (minutes <= startMin) return { bonus: 5, reason: 'on_time_check_in' };
-    // start sonrası 15dk: hala kabul (geç değil)
-    if (minutes <= startMin + 15) return { bonus: 2, reason: 'slightly_late_check_in' };
-    return { bonus: 0, reason: 'late_check_in' };
+    if (istMinutes <= startMin) return { bonus: 5, reason: 'on_time_check_in' };
+    if (istMinutes <= startMin + 15)
+      return { bonus: 2, reason: 'slightly_late_check_in' };
+    if (istMinutes <= startMin + 30) return { bonus: 0, reason: 'late_check_in' };
+    if (istMinutes <= startMin + 60)
+      return { bonus: -5, reason: 'late_penalty_30' };
+    return { bonus: -10, reason: 'late_penalty_60' };
   }
-  // check_out
-  if (minutes >= endMin) return { bonus: 5, reason: 'full_day_check_out' };
-  if (minutes >= endMin - 15) return { bonus: 2, reason: 'almost_full_day' };
+  if (istMinutes >= endMin) return { bonus: 5, reason: 'full_day_check_out' };
+  if (istMinutes >= endMin - 15)
+    return { bonus: 2, reason: 'almost_full_day' };
   return { bonus: 0, reason: 'early_check_out' };
 }

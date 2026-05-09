@@ -95,6 +95,10 @@ apiRouter.get('/', (_req, res) => {
         'DELETE /announcements/:id/comments/:commentId',
       ],
       misc: [
+        'POST /admin/menus/bulk { items } (Excel toplu menü)',
+        'POST /admin/leaves/bulk { items, default_status } (Excel toplu izin, email lookup)',
+        'GET  /me/monthly-market (top3 only — credit + reward listesi)',
+        'POST /monthly-market/redeem/:reward_id (credit harca)',
         'GET /leaves, POST /leaves, PATCH /leaves/:id/approve|reject',
         'GET /moods/today, /moods/team, POST /moods',
         'POST /statuses, DELETE /statuses/current, GET /statuses/team',

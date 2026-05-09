@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createLeaveSchema, rejectLeaveSchema } from '@damga/shared';
 import { getDb, leaves, users } from '@damga/db';
@@ -123,6 +123,103 @@ leavesRouter.patch(
         metadata: { leave_id: leave.id, type: leave.type },
       });
       res.json({ leave });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /v1/admin/leaves/bulk { items: [{ user_email|user_id, type, start_date, end_date, status?, reason? }] }
+ * Toplu izin oluşturma. status default = 'approved' (admin manuel kayıt).
+ * email ile kullanıcı lookup; bulunamazsa o satır skipped'a düşer.
+ */
+const bulkLeaveSchema = z.object({
+  default_status: z.enum(['pending', 'approved']).default('approved'),
+  items: z
+    .array(
+      z.object({
+        user_email: z.string().email().optional(),
+        user_id: z.string().uuid().optional(),
+        type: z.enum([
+          'annual',
+          'sick',
+          'unpaid',
+          'maternity',
+          'paternity',
+          'compassionate',
+        ]),
+        start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        reason: z.string().max(500).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+leavesRouter.post(
+  '/admin/leaves/bulk',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const body = bulkLeaveSchema.parse(req.body);
+
+      // Email → user_id lookup
+      const emails = Array.from(
+        new Set(body.items.filter((i) => i.user_email).map((i) => i.user_email!)),
+      );
+      const userByEmail = new Map<string, string>();
+      if (emails.length > 0) {
+        const found = await getDb()
+          .select({ id: users.id, email: users.email, org_id: users.org_id })
+          .from(users)
+          .where(sql`${users.email} = ANY(${emails})`);
+        for (const u of found) {
+          if (u.org_id === req.authOrgId) userByEmail.set(u.email, u.id);
+        }
+      }
+
+      let inserted = 0;
+      const skipped: Array<{ row: number; reason: string }> = [];
+
+      for (let i = 0; i < body.items.length; i++) {
+        const item = body.items[i]!;
+        let userId = item.user_id;
+        if (!userId && item.user_email) {
+          userId = userByEmail.get(item.user_email);
+        }
+        if (!userId) {
+          skipped.push({ row: i + 1, reason: 'user_not_found' });
+          continue;
+        }
+        if (item.start_date > item.end_date) {
+          skipped.push({ row: i + 1, reason: 'invalid_date_range' });
+          continue;
+        }
+
+        const businessDays = String(calcBusinessDays(item.start_date, item.end_date));
+
+        await getDb()
+          .insert(leaves)
+          .values({
+            org_id: req.authOrgId,
+            user_id: userId,
+            type: item.type,
+            start_date: item.start_date,
+            end_date: item.end_date,
+            reason: item.reason ?? null,
+            status: body.default_status,
+            approved_by: body.default_status === 'approved' ? req.authUserId : null,
+            approved_at: body.default_status === 'approved' ? new Date() : null,
+            business_days: businessDays,
+          });
+        inserted++;
+      }
+
+      res.status(201).json({ ok: true, inserted, skipped });
     } catch (err) {
       next(err);
     }

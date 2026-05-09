@@ -9,7 +9,13 @@
  */
 
 import { and, eq, gte, sql } from 'drizzle-orm';
-import { getDb, orgs, xpTransactions, users } from '@damga/db';
+import {
+  getDb,
+  orgs,
+  xpTransactions,
+  users,
+  monthlyMarketCredits,
+} from '@damga/db';
 import { logger } from '../config/logger';
 import { awardXp } from './xp';
 import { createNotification } from './notifications';
@@ -106,8 +112,57 @@ async function finalizeForOrg(args: {
       url: '/leaderboard',
       metadata: { rank: i + 1, bonus, period: args.source },
     });
+
+    // AYLIK MARKET CREDIT: sadece monthly finalize'da, top3'e period_xp + bonus kadar
+    if (args.source === 'top3_monthly') {
+      const credit = (t.period_xp ?? 0) + bonus;
+      // expires_at = ay başından 7 gün sonra (this period'un başından + 1 ay + 7 gün)
+      const now = new Date();
+      const expires = new Date(now.getFullYear(), now.getMonth(), 8, 23, 59, 59);
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      try {
+        await getDb()
+          .insert(monthlyMarketCredits)
+          .values({
+            org_id: args.orgId,
+            user_id: t.user_id,
+            period,
+            rank: i + 1,
+            credit_amount: credit,
+            expires_at: expires,
+          });
+        void createNotification({
+          orgId: args.orgId,
+          userId: t.user_id,
+          type: 'monthly_market_open',
+          title: '🛒 Aylık özel market açıldı',
+          body: `${credit} kredinle özel ödüller satın alabilirsin (7 gün geçerli)`,
+          url: '/me/monthly-market',
+          metadata: { rank: i + 1, credit, period, expires: expires.toISOString() },
+        });
+      } catch (e) {
+        logger.error({ err: e, orgId: args.orgId, userId: t.user_id }, 'Market credit insert failed');
+      }
+    }
   }
   return { awarded, skipped: false };
+}
+
+/** Süresi geçmiş aktif credit'leri pasifleştir (ayın 9'unda 00:00 sonrası) */
+async function expireOldCredits(): Promise<void> {
+  try {
+    await getDb()
+      .update(monthlyMarketCredits)
+      .set({ is_active: false })
+      .where(
+        and(
+          eq(monthlyMarketCredits.is_active, true),
+          sql`${monthlyMarketCredits.expires_at} < now()`,
+        ),
+      );
+  } catch (e) {
+    logger.error({ err: e }, 'expireOldCredits failed');
+  }
 }
 
 async function runWeekly(): Promise<void> {
@@ -225,6 +280,11 @@ function tick(): void {
       // (lastRunMonthly key'ini paylaşıyoruz çünkü her yıl sadece 1 kez)
       void runAnnualLeaveReset();
     }
+  }
+
+  // Her gün 00:05'te eski credit'leri expire et (gün başında bir kez)
+  if (hour === '00') {
+    void expireOldCredits();
   }
 }
 

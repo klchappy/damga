@@ -103,6 +103,99 @@ menusRouter.post(
 );
 
 /**
+ * POST /v1/admin/menus/bulk { items: [{ date, main_dish, description?, calories?, allergens?, is_vegetarian?, is_vegan? }] }
+ * Toplu menü oluşturma (Excel import için).
+ * Aynı org+date+location varsa atlar (skipped sayar).
+ */
+const bulkMenuSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        main_dish: z.string().trim().min(1).max(200),
+        description: z.string().max(1000).nullable().optional(),
+        calories: z.number().int().nonnegative().nullable().optional(),
+        allergens: z.array(z.string()).default([]),
+        is_vegetarian: z.boolean().default(false),
+        is_vegan: z.boolean().default(false),
+        location_id: z.string().uuid().nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(366),
+});
+
+menusRouter.post(
+  '/admin/menus/bulk',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const body = bulkMenuSchema.parse(req.body);
+
+      let inserted = 0;
+      const skipped: string[] = [];
+
+      for (const item of body.items) {
+        // Aynı tarihte var mı?
+        const exist = await getDb()
+          .select({ id: menus.id })
+          .from(menus)
+          .where(
+            and(
+              eq(menus.org_id, req.authOrgId),
+              eq(menus.date, item.date),
+              item.location_id
+                ? eq(menus.location_id, item.location_id)
+                : isNotNull(menus.id), // null location'lı kayıtlarda eşleştirme yok, hep ekle
+            ),
+          )
+          .limit(1);
+        if (exist.length > 0 && !item.location_id) {
+          // Aynı tarihte non-locational menu varsa atla
+          const sameDateGeneric = await getDb()
+            .select({ id: menus.id })
+            .from(menus)
+            .where(
+              and(
+                eq(menus.org_id, req.authOrgId),
+                eq(menus.date, item.date),
+                sql`${menus.location_id} IS NULL`,
+              ),
+            )
+            .limit(1);
+          if (sameDateGeneric.length > 0) {
+            skipped.push(item.date);
+            continue;
+          }
+        }
+
+        await getDb()
+          .insert(menus)
+          .values({
+            org_id: req.authOrgId,
+            location_id: item.location_id ?? null,
+            date: item.date,
+            main_dish: item.main_dish,
+            description: item.description ?? null,
+            calories: item.calories ?? null,
+            allergens: item.allergens,
+            is_vegetarian: item.is_vegetarian,
+            is_vegan: item.is_vegan,
+            created_by: req.authUserId,
+          });
+        inserted++;
+      }
+
+      res.status(201).json({ ok: true, inserted, skipped });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
  * PATCH /v1/menus/:id — admin/owner menüyü düzenler.
  */
 menusRouter.patch(
