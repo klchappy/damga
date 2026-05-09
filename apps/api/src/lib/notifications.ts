@@ -9,6 +9,7 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDb, notifications } from '@damga/db';
 import { logger } from '../config/logger';
+import { sendPushToUser } from './push';
 
 export interface CreateNotificationInput {
   orgId: string;
@@ -36,6 +37,15 @@ export async function createNotification(
         metadata: input.metadata ?? {},
       })
       .returning({ id: notifications.id });
+
+    // Web push (best-effort, fail-safe)
+    void sendPushToUser(input.userId, {
+      title: input.title,
+      body: input.body ?? undefined,
+      url: input.url ?? undefined,
+      tag: `damga-${input.type}-${r?.id ?? 'x'}`,
+    }).catch((e) => logger.warn({ err: e }, 'sendPushToUser failed (non-fatal)'));
+
     return r ? { id: r.id } : null;
   } catch (e) {
     logger.error({ err: e, type: input.type }, 'createNotification failed');

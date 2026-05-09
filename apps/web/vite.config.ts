@@ -1,9 +1,45 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectRegister: false, // kendi register'ımızı kullanırız (use-push-subscription)
+      manifest: {
+        name: 'Damga — Şeffaf İşyeri Yoklama',
+        short_name: 'Damga',
+        description: 'Türkiye için şeffaf, hash-chain destekli işyeri yoklama sistemi',
+        theme_color: '#f97316',
+        background_color: '#fff7ed',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
+        lang: 'tr',
+        icons: [
+          {
+            src: '/favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+      },
+      devOptions: {
+        enabled: false, // dev'de SW kapatılı; prod build'de aktif
+      },
+    }),
+  ],
   envDir: path.resolve(__dirname, '../../'),
   resolve: {
     alias: {

@@ -11,3 +11,14 @@ ReactDOM.createRoot(root).render(
     <App />
   </React.StrictMode>,
 );
+
+// Service Worker register (production build'de aktif)
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch((err) => {
+        console.warn('SW registration failed:', err);
+      });
+  });
+}

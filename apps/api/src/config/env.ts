@@ -34,6 +34,11 @@ const envSchema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+
+  /** Web Push (VAPID) — production'da MUTLAKA set'le */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:noreply@damga.deploi.net'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -56,6 +61,7 @@ const fallback = {
   NFC_SIGNING_SECRET: 'damga-dev-default-secret-change-in-prod-please',
   RATE_LIMIT_WINDOW_MS: 60_000,
   RATE_LIMIT_MAX: 120,
+  VAPID_SUBJECT: 'mailto:noreply@damga.deploi.net',
 };
 
 export const env = (parsed.success
@@ -68,4 +74,5 @@ export const isConfigured = {
   supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
   redis: Boolean(env.REDIS_URL),
   resend: Boolean(env.RESEND_API_KEY),
+  webPush: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
 };

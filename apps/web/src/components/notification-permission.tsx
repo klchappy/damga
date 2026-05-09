@@ -7,6 +7,7 @@ import {
   requestNotificationPermission,
   setPermissionPromptDismissed,
 } from '@/lib/notifications';
+import { subscribePush, isPushSupported } from '@/lib/push-subscribe';
 
 /**
  * Sağ alttta kibar bir chip — kullanıcıya bildirim izni vermesini önerir.
@@ -32,7 +33,11 @@ export function NotificationPermissionGate() {
 
   const handleAllow = async () => {
     setRequesting(true);
-    await requestNotificationPermission();
+    const perm = await requestNotificationPermission();
+    if (perm === 'granted' && isPushSupported()) {
+      // Granted olunca server'a push subscription'ı da kaydet
+      await subscribePush().catch(() => null);
+    }
     setRequesting(false);
     setVisible(false);
     setPermissionPromptDismissed();

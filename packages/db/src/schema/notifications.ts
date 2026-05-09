@@ -54,3 +54,40 @@ export const notifications = pgTable(
 
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+
+/**
+ * push_subscriptions — Web Push API endpoint kayıtları.
+ *
+ * Browser permission verildikten sonra serviceWorker.pushManager.subscribe()
+ * sonucu buraya kaydedilir. createNotification çağrılınca tüm aktif
+ * subscription'lara web-push ile gönderilir.
+ *
+ * Aynı kullanıcının birden fazla cihazı (telefon + masaüstü) olabilir.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    org_id: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    /** PushSubscription.keys.p256dh */
+    p256dh: text('p256dh').notNull(),
+    /** PushSubscription.keys.auth */
+    auth: text('auth').notNull(),
+    user_agent: text('user_agent'),
+    is_active: boolean('is_active').notNull().default(true),
+    last_used_at: timestamp('last_used_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index('idx_push_subs_user').on(table.user_id, table.is_active),
+  }),
+);
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
