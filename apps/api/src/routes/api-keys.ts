@@ -52,6 +52,7 @@ apiKeysRouter.post(
         .insert(apiKeys)
         .values({
           org_id: req.authOrgId,
+          key_type: 'org_admin',
           name: input.name,
           key_hash: hash,
           key_prefix: prefix,

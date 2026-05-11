@@ -16,6 +16,8 @@ declare global {
       authOrgId?: string;
       apiKeyId?: string;
       apiKeyScopes?: string[];
+      /** true ise istek service-to-service key ile geldi (org_id ?org_id query param'dan resolve edildi) */
+      isServiceKey?: boolean;
     }
   }
 }
@@ -46,9 +48,11 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
     const apiKeyRaw = (apiKeyHeader as string) || (token?.startsWith('dmg_live_') ? token : null);
 
-    // 1) API key auth
-    if (apiKeyRaw && apiKeyRaw.startsWith('dmg_live_')) {
-      const prefix = apiKeyRaw.slice(0, 16) + '...';
+    // 1) API key auth — iki tür: dmg_live_ (org-admin) veya dmg_svc_ (service-to-service)
+    if (apiKeyRaw && (apiKeyRaw.startsWith('dmg_live_') || apiKeyRaw.startsWith('dmg_svc_'))) {
+      const isService = apiKeyRaw.startsWith('dmg_svc_');
+      const prefixLen = isService ? 15 : 16;
+      const prefix = apiKeyRaw.slice(0, prefixLen) + '...';
       const db = getDb();
       const candidates = await db.select().from(apiKeys).where(eq(apiKeys.key_prefix, prefix));
       let matched: typeof candidates[number] | undefined;
@@ -64,9 +68,34 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
       if (matched.expires_at && matched.expires_at < new Date()) {
         throw new HttpError(401, 'API key süresi dolmuş', 'API_KEY_EXPIRED');
       }
+      // Tip ile prefix tutarlılığı
+      const expectedType = isService ? 'service' : 'org_admin';
+      if (matched.key_type !== expectedType) {
+        throw new HttpError(401, 'API key tipi uyuşmuyor', 'KEY_TYPE_MISMATCH');
+      }
+
       req.apiKeyId = matched.id;
       req.apiKeyScopes = matched.scopes;
-      req.authOrgId = matched.org_id;
+
+      if (isService) {
+        // Service key: org_id query param ZORUNLU (cross-org leak önleme)
+        const queryOrgId =
+          (typeof req.query.org_id === 'string' && req.query.org_id.trim()) ||
+          (typeof req.headers['x-damga-org'] === 'string' && (req.headers['x-damga-org'] as string).trim());
+        if (!queryOrgId) {
+          throw new HttpError(
+            400,
+            'Service key isteklerinde ?org_id=<uuid> query param veya X-Damga-Org header zorunlu',
+            'MISSING_ORG_ID',
+          );
+        }
+        req.authOrgId = queryOrgId;
+        req.isServiceKey = true;
+      } else {
+        // Org admin key: kendi org'una bağlı
+        req.authOrgId = matched.org_id ?? undefined;
+      }
+
       // last_used_at güncelle (fire-and-forget)
       void db
         .update(apiKeys)

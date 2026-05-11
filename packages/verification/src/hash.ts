@@ -52,10 +52,20 @@ export function computeEvidenceHash(input: {
   return sha256(canonical);
 }
 
-/** Public API key formatı: `dmg_live_<48 hex char>` */
+/** Org-admin API key formatı: `dmg_live_<48 hex char>` */
 export function generateApiKey(): { raw: string; prefix: string } {
   const raw = `dmg_live_${randomBytes(24).toString('hex')}`;
   const prefix = `${raw.slice(0, 16)}...`;
+  return { raw, prefix };
+}
+
+/**
+ * Service-to-service key formatı: `dmg_svc_<48 hex char>`.
+ * Sadece platform admin (Kaan) üretir. Org-bağımsız, ?org_id query param zorunlu.
+ */
+export function generateServiceKey(): { raw: string; prefix: string } {
+  const raw = `dmg_svc_${randomBytes(24).toString('hex')}`;
+  const prefix = `${raw.slice(0, 15)}...`;
   return { raw, prefix };
 }
 

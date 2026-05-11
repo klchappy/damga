@@ -4,6 +4,7 @@ import {
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -13,20 +14,30 @@ import { orgs } from './orgs';
 import { users } from './users';
 
 /**
- * api_keys — public API entegrasyonları için (örn. TahminIO sync).
+ * api_key_type:
+ *   - 'org_admin': org owner üretir, sadece kendi org'una erişir (mevcut akış, default)
+ *   - 'service': platform admin (Kaan) üretir, tüm org'lara erişir;
+ *     her istekte ?org_id=xxx query param ZORUNLU, prefix `dmg_svc_*`
+ */
+export const apiKeyTypeEnum = pgEnum('api_key_type', ['org_admin', 'service']);
+
+/**
+ * api_keys — entegrasyon (org-bağlı admin key'leri) ve servis-arası iletişim
+ * (org-bağımsız service key'ler) için.
+ *
  * key_hash bcrypt ile saklanır; raw key sadece oluşturma anında kullanıcıya gösterilir.
  */
 export const apiKeys = pgTable(
   'api_keys',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    org_id: uuid('org_id')
-      .notNull()
-      .references(() => orgs.id, { onDelete: 'cascade' }),
+    /** NULL ise service key (org-bağımsız); aksi halde org owner key'i */
+    org_id: uuid('org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    key_type: apiKeyTypeEnum('key_type').notNull().default('org_admin'),
     name: text('name').notNull(),
     /** bcrypt hash */
     key_hash: text('key_hash').notNull(),
-    /** Raw key'in görünen kısmı (UI'da: "dmg_live_xxxx****") */
+    /** Raw key'in görünen kısmı (UI'da: "dmg_live_xxxx****" / "dmg_svc_xxxx****") */
     key_prefix: text('key_prefix').notNull(),
     /** Scope listesi: ['events:read', 'events:write', 'leaves:read', ...] */
     scopes: text('scopes').array().notNull(),
@@ -40,6 +51,7 @@ export const apiKeys = pgTable(
   (table) => ({
     orgIdx: index('idx_api_keys_org').on(table.org_id),
     prefixIdx: index('idx_api_keys_prefix').on(table.key_prefix),
+    typeIdx: index('idx_api_keys_type').on(table.key_type),
   }),
 );
 

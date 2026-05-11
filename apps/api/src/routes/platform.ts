@@ -8,8 +8,11 @@
  * paylaşımlı; Damga schema'da Drizzle tarafında yok, raw SQL ile erişilir.
  */
 import { Router, type RequestHandler } from 'express';
-import { sql } from 'drizzle-orm';
-import { getDb } from '@damga/db';
+import { sql, eq, and, desc } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
+import { generateServiceKey } from '@damga/verification';
+import { getDb, apiKeys, auditLog } from '@damga/db';
 import { requireSupabaseAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 
@@ -72,6 +75,132 @@ platformRouter.get('/platform/orgs', ...platformGuard, async (_req, res, next) =
           ORDER BY o.created_at DESC`,
     );
     res.json({ items: r.rows, count: r.rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Service Keys (S2S) ────────────────────────────────────────────────
+
+const createServiceKeySchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  scopes: z.array(z.string().trim().min(1)).min(1),
+  rate_limit_per_min: z.number().int().min(1).max(10000).optional(),
+  expires_at: z.string().datetime().nullable().optional(),
+});
+
+// POST /platform/service-keys — yeni service key üret (raw key sadece burada döner)
+platformRouter.post('/platform/service-keys', ...platformGuard, async (req, res, next) => {
+  try {
+    const input = createServiceKeySchema.parse(req.body);
+    const { raw, prefix } = generateServiceKey();
+    const hash = await bcrypt.hash(raw, 12);
+
+    const [k] = await getDb()
+      .insert(apiKeys)
+      .values({
+        org_id: null,
+        key_type: 'service',
+        name: input.name,
+        key_hash: hash,
+        key_prefix: prefix,
+        scopes: input.scopes,
+        rate_limit_per_min: input.rate_limit_per_min ?? 100,
+        expires_at: input.expires_at ? new Date(input.expires_at) : null,
+        created_by: null,
+      })
+      .returning();
+    if (!k) throw new HttpError(500, 'Service key oluşturulamadı');
+
+    // Audit (org_id null çünkü platform-level)
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.service_key_created',
+        target_type: 'api_key',
+        target_id: k.id,
+        details: {
+          name: k.name,
+          scopes: k.scopes,
+          platform_admin: req.supabaseAuth?.email ?? 'unknown',
+        },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.status(201).json({
+      service_key: {
+        id: k.id,
+        name: k.name,
+        key_prefix: k.key_prefix,
+        scopes: k.scopes,
+        rate_limit_per_min: k.rate_limit_per_min,
+        created_at: k.created_at,
+      },
+      secret_key: raw,
+      warning:
+        'Bu key bir daha gösterilmeyecek. Şimdi kopyala ve güvenli sakla. Kullanırken: Authorization: Bearer <key> + ?org_id=<uuid> query param zorunlu.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /platform/service-keys — service key listele (raw göstermez)
+platformRouter.get('/platform/service-keys', ...platformGuard, async (_req, res, next) => {
+  try {
+    const rows = await getDb()
+      .select({
+        id: apiKeys.id,
+        name: apiKeys.name,
+        key_prefix: apiKeys.key_prefix,
+        scopes: apiKeys.scopes,
+        rate_limit_per_min: apiKeys.rate_limit_per_min,
+        last_used_at: apiKeys.last_used_at,
+        expires_at: apiKeys.expires_at,
+        is_active: apiKeys.is_active,
+        created_at: apiKeys.created_at,
+      })
+      .from(apiKeys)
+      .where(eq(apiKeys.key_type, 'service'))
+      .orderBy(desc(apiKeys.created_at));
+    res.json({ items: rows, count: rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /platform/service-keys/:id — service key sil
+platformRouter.delete('/platform/service-keys/:id', ...platformGuard, async (req, res, next) => {
+  try {
+    const id = String(req.params.id ?? '').trim();
+    const [k] = await getDb()
+      .delete(apiKeys)
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.key_type, 'service')))
+      .returning();
+    if (!k) throw new HttpError(404, 'Service key bulunamadı');
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.service_key_revoked',
+        target_type: 'api_key',
+        target_id: id,
+        details: {
+          name: k.name,
+          platform_admin: req.supabaseAuth?.email ?? 'unknown',
+        },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
