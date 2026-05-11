@@ -38,21 +38,29 @@ async function deliver(
   attempt = 1,
 ): Promise<void> {
   const db = getDb();
+  const tsSeconds = Math.floor(Date.now() / 1000);
   const body = JSON.stringify({
     event: eventType,
     payload,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(tsSeconds * 1000).toISOString(),
   });
-  const signature = hmacSha256(secret, body);
+  // Eski format (geri uyumluluk): body imzasi
+  const sigBodyOnly = hmacSha256(secret, body);
+  // Yeni format (Stripe pattern): timestamp.body imzasi (replay protection)
+  const sigV2 = hmacSha256(secret, `${tsSeconds}.${body}`);
 
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Damga-Signature': `sha256=${signature}`,
+        'X-Damga-Signature': `sha256=${sigBodyOnly}`, // legacy format
+        'X-Damga-Signature-V2': `t=${tsSeconds},v1=${sigV2}`, // recommended (replay-safe)
+        'X-Damga-Timestamp': String(tsSeconds),
         'X-Damga-Event': eventType,
-        'User-Agent': 'damga-webhook/0.1',
+        'X-Damga-Webhook-Id': webhookId,
+        'X-Damga-Delivery-Attempt': String(attempt),
+        'User-Agent': 'damga-webhook/0.2',
       },
       body,
       signal: AbortSignal.timeout(10_000),
