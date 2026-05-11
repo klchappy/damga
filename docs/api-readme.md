@@ -2,7 +2,7 @@
 
 Damga'nın HTTP API'sine entegrasyon yapanlar için. Hem kendi sistemlerinin Damga ile veri alışverişi yapması, hem üçüncü taraf entegratörler için.
 
-**Base URL:** `https://api.deploi.net/v1`
+**Base URL:** `https://api.damga.deploi.net/v1`
 **Format:** JSON (request + response)
 **Auth:** Bearer token (3 tip aşağıda)
 
@@ -27,7 +27,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ### 1.2 Org-Admin API Key
 Müşteri kendi Damga org'unun owner'ı olarak `/v1/api-keys` endpoint'inden üretir:
 ```bash
-curl -X POST https://api.deploi.net/v1/api-keys \
+curl -X POST https://api.damga.deploi.net/v1/api-keys \
   -H "Authorization: Bearer <supabase_jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -61,7 +61,7 @@ Sadece platform admin (Kaan) üretebilir. Lokma vb. iç projelerin Damga'ya bağ
 
 Üretme:
 ```bash
-curl -X POST https://api.deploi.net/v1/platform/service-keys \
+curl -X POST https://api.damga.deploi.net/v1/platform/service-keys \
   -H "Authorization: Bearer <kaan_supabase_jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,7 +74,7 @@ curl -X POST https://api.deploi.net/v1/platform/service-keys \
 Kullanım — `?org_id=<damga_org_uuid>` query param **zorunlu** (cross-org leak önleme):
 ```bash
 # Veya X-Damga-Org header
-curl "https://api.deploi.net/v1/users?org_id=550e8400-e29b-41d4-a716-446655440000" \
+curl "https://api.damga.deploi.net/v1/users?org_id=550e8400-e29b-41d4-a716-446655440000" \
   -H "Authorization: Bearer dmg_svc_xxx..."
 ```
 
@@ -129,7 +129,7 @@ Damga olay olduğunda dış sisteminizi bildirir (HTTP POST).
 
 ### 4.1 Webhook oluştur
 ```bash
-curl -X POST https://api.deploi.net/v1/webhooks \
+curl -X POST https://api.damga.deploi.net/v1/webhooks \
   -H "Authorization: Bearer <key>" \
   -d '{
     "url": "https://erp.firma.com/webhooks/damga",
@@ -191,12 +191,12 @@ Lokma bir mutfak çalışanını vardiyaya atadı, çalışan check-in yaptıkç
 ### Adım 1: Service key ve webhook kur (bir kez)
 ```bash
 # Service key (Kaan üretir, Lokma'ya verir)
-curl -X POST https://api.deploi.net/v1/platform/service-keys \
+curl -X POST https://api.damga.deploi.net/v1/platform/service-keys \
   -H "Authorization: Bearer <kaan_jwt>" \
   -d '{"name":"lokma","scopes":["events:read","shifts:read","users:read"]}'
 
 # Lokma webhook subscriber'ı (Lokma'nın URL'i)
-curl -X POST "https://api.deploi.net/v1/webhooks?org_id=<damga_org>" \
+curl -X POST "https://api.damga.deploi.net/v1/webhooks?org_id=<damga_org>" \
   -H "Authorization: Bearer dmg_svc_xxx" \
   -d '{
     "url": "https://api-lokma.deploi.net/webhooks/damga",
@@ -217,13 +217,13 @@ Lokma webhook'u doğrular (HMAC V2), `payload.user_id`'yi alır, mutfak rolünü
 ### Adım 3: Lokma → Damga vardiya verisi çek
 ```bash
 # Yarın çalışacak personel
-curl "https://api.deploi.net/v1/shift-assignments?org_id=<damga_org>&date_from=2026-05-12&date_to=2026-05-12" \
+curl "https://api.damga.deploi.net/v1/shift-assignments?org_id=<damga_org>&date_from=2026-05-12&date_to=2026-05-12" \
   -H "Authorization: Bearer dmg_svc_xxx"
 ```
 
 ### Adım 4: Lokma → Damga overtime onaya gönder (idempotent)
 ```bash
-curl -X POST "https://api.deploi.net/v1/overtime?org_id=<damga_org>" \
+curl -X POST "https://api.damga.deploi.net/v1/overtime?org_id=<damga_org>" \
   -H "Authorization: Bearer dmg_svc_xxx" \
   -H "Idempotency-Key: lokma-ot-2026-05-11-uuid" \
   -d '{ "user_id": "...", "minutes": 90, "reason": "Akşam servisi yoğun" }'
@@ -235,7 +235,7 @@ Lokma worker tekrar çalışırsa aynı key ile retry → çift kayıt OLMAZ.
 
 ## 7. Endpoint Listesi (Hızlı Bakış)
 
-Tam liste: `GET https://api.deploi.net/v1` (kendi gözüne).
+Tam liste: `GET https://api.damga.deploi.net/v1` (kendi gözüne).
 
 Modül başlıklar:
 - **Auth:** `/auth/sign-up`, `/auth/sign-up-org`, `/auth/me`, `/auth/magic-link`, `/auth/forgot`

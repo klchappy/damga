@@ -14,7 +14,7 @@ info:
     name: Proprietary
 
 servers:
-  - url: https://api.deploi.net/v1
+  - url: https://api.damga.deploi.net/v1
     description: Production
 
 # ─── Güvenlik tipleri ──────────────────────────────────────────────────

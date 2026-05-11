@@ -24,15 +24,15 @@ app.use(
 app.use(
   cors({
     origin: (origin, cb) => {
-      // İzinli origin'ler: CLIENT_URL + tüm subdomain'leri
+      // İzinli origin'ler: CLIENT_URL (env) + lokal dev + tüm *.deploi.net subdomain'leri
       if (!origin) return cb(null, true);
-      const allowed = [
-        env.CLIENT_URL,
-        'http://localhost:5273',
-        'http://localhost:5273/',
-        'https://damga.deploi.net',
-      ];
-      if (allowed.some((a) => origin.startsWith(a)) || origin.endsWith('.deploi.net')) {
+      const trimmed = origin.replace(/\/$/, '');
+      const clientUrl = env.CLIENT_URL.replace(/\/$/, '');
+      if (
+        trimmed === clientUrl ||
+        trimmed.startsWith('http://localhost:') ||
+        /^https:\/\/[a-z0-9-]+\.deploi\.net$/.test(trimmed)
+      ) {
         cb(null, true);
       } else {
         cb(new Error(`CORS engellendi: ${origin}`));

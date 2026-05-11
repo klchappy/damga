@@ -4,8 +4,8 @@
  * Sadece public.platform_admins tablosunda kayıtlı email'ler için açılır.
  * Org_id check'i YOKTUR — tüm orgs'i görür (view-only şu an, ücretsiz dönem).
  *
- * Tablo public.platform_admins, Lokma migration'ıyla oluşturuldu — Damga ile
- * paylaşımlı; Damga schema'da Drizzle tarafında yok, raw SQL ile erişilir.
+ * Tablo public.platform_admins ham SQL ile sorgulanır (Drizzle schema'da yok).
+ * Tek satır: kaanklc498@gmail.com (platform sahibi).
  */
 import { Router, type RequestHandler } from 'express';
 import { sql, eq, and, desc } from 'drizzle-orm';
