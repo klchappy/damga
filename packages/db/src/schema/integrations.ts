@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { orgs } from './orgs';
@@ -137,3 +138,36 @@ export const auditLog = pgTable(
 );
 
 export type AuditLog = typeof auditLog.$inferSelect;
+
+/**
+ * idempotency_keys — POST/PUT/PATCH/DELETE retry'larin guvenli tekrar islemesi.
+ * Client `Idempotency-Key: <uuid>` header gonderir. Ayni key + method + path
+ * ile gelen tekrar istek cached response doner (request body hash uyusursa).
+ * TTL: 24 saat (cleanup cron veya rolling delete).
+ */
+export const idempotencyKeys = pgTable(
+  'idempotency_keys',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    key: text('key').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+    /** SHA256(JSON.stringify(req.body)) — body uyusmaz ise 422 */
+    request_hash: text('request_hash').notNull(),
+    response_status: integer('response_status'),
+    response_body: jsonb('response_body'),
+    org_id: uuid('org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    api_key_id: uuid('api_key_id').references(() => apiKeys.id, { onDelete: 'set null' }),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    keyMethodPathIdx: uniqueIndex('idx_idempotency_key_method_path').on(
+      table.key,
+      table.method,
+      table.path,
+    ),
+    createdIdx: index('idx_idempotency_created').on(table.created_at),
+  }),
+);
+
+export type IdempotencyKey = typeof idempotencyKeys.$inferSelect;

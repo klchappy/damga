@@ -22,8 +22,12 @@ import { shiftsRouter } from './shifts';
 import { notificationsRouter } from './notifications';
 import { analyticsRouter } from './analytics';
 import { platformRouter } from './platform';
+import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
+
+// Tum POST/PUT/PATCH/DELETE icin Idempotency-Key destegi (header gondermek opsiyonel)
+apiRouter.use(idempotencyMiddleware);
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
