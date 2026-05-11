@@ -1,4 +1,4 @@
-import type { RequestHandler } from 'express';
+import type { Response, RequestHandler } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
@@ -6,6 +6,64 @@ import { getDb, users, apiKeys } from '@damga/db';
 import type { User } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from './error';
+
+// ─── API key rate limiting (in-memory) ──────────────────────────────────
+// Per-key counter + per-key limit cache. Tek instance için yeterli.
+// Ölçeklenirse Redis'e taşınır (Upstash zaten infra'da).
+
+interface RateSlot {
+  count: number;
+  resetAt: number;
+}
+interface LimitCache {
+  limit: number;
+  cachedAt: number;
+}
+
+const RATE_WINDOW_MS = 60_000;
+const LIMIT_CACHE_TTL_MS = 5 * 60_000;
+const _counters = new Map<string, RateSlot>();
+const _limitCache = new Map<string, LimitCache>();
+
+async function _resolveKeyLimit(keyId: string): Promise<number> {
+  const now = Date.now();
+  const cached = _limitCache.get(keyId);
+  if (cached && now - cached.cachedAt < LIMIT_CACHE_TTL_MS) return cached.limit;
+  const [k] = await getDb()
+    .select({ rl: apiKeys.rate_limit_per_min })
+    .from(apiKeys)
+    .where(eq(apiKeys.id, keyId));
+  const limit = k?.rl ?? 100;
+  _limitCache.set(keyId, { limit, cachedAt: now });
+  return limit;
+}
+
+/**
+ * API key rate limit kontrolü. requireAuth'ın sonunda çağrılır (sadece API key auth'ta).
+ * Aşımda HttpError 429 fırlatır + X-RateLimit-* headers set eder.
+ */
+async function _enforceApiKeyRateLimit(keyId: string, res: Response): Promise<void> {
+  const now = Date.now();
+  const limit = await _resolveKeyLimit(keyId);
+  let slot = _counters.get(keyId);
+  if (!slot || slot.resetAt < now) {
+    slot = { count: 0, resetAt: now + RATE_WINDOW_MS };
+    _counters.set(keyId, slot);
+  }
+  slot.count++;
+  res.setHeader('X-RateLimit-Limit', String(limit));
+  res.setHeader('X-RateLimit-Remaining', String(Math.max(0, limit - slot.count)));
+  res.setHeader('X-RateLimit-Reset', String(Math.floor(slot.resetAt / 1000)));
+  if (slot.count > limit) {
+    const retryAfter = Math.ceil((slot.resetAt - now) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    throw new HttpError(
+      429,
+      `API key rate limit aşıldı (${limit}/dk). ${retryAfter} sn sonra tekrar deneyin.`,
+      'RATE_LIMIT_EXCEEDED',
+    );
+  }
+}
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -37,11 +95,14 @@ function getSupabaseAdmin() {
 
 /**
  * Authorization header'ını parse et:
- *   Bearer <supabase_jwt> → kullanıcı oturumu
- *   Bearer dmg_live_<...> → API key (entegrasyon)
- *   X-API-Key: dmg_live_<...> → API key (alternatif)
+ *   Bearer <supabase_jwt>     → kullanıcı oturumu
+ *   Bearer dmg_live_<...>     → org-admin API key (entegrasyon, kendi org'una bağlı)
+ *   Bearer dmg_svc_<...>      → service key (org-bağımsız, ?org_id query param zorunlu)
+ *   X-API-Key: dmg_live_/svc_ → API key (alternatif header)
+ *
+ * API key auth durumunda per-key rate limit uygulanır (X-RateLimit-* headers).
  */
-export const requireAuth: RequestHandler = async (req, _res, next) => {
+export const requireAuth: RequestHandler = async (req, res, next) => {
   try {
     const header = req.headers.authorization ?? '';
     const apiKeyHeader = req.headers['x-api-key'];
@@ -102,6 +163,10 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
         .set({ last_used_at: new Date() })
         .where(eq(apiKeys.id, matched.id))
         .catch(() => {});
+
+      // Rate limit kontrolü (per-key, in-memory)
+      await _enforceApiKeyRateLimit(matched.id, res);
+
       next();
       return;
     }
