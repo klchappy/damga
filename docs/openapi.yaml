@@ -1,0 +1,501 @@
+openapi: 3.0.3
+info:
+  title: Damga API
+  description: |
+    Şeffaf İşyeri Yoklama platformu — public HTTP API.
+
+    Tam entegrasyon rehberi: [api-readme.md](./api-readme.md)
+    Webhook imza doğrulama: [webhook-verify.md](./webhook-verify.md)
+  version: '1.0.0'
+  contact:
+    name: Damga Destek
+    email: destek@damga.deploi.net
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.deploi.net/v1
+    description: Production
+
+# ─── Güvenlik tipleri ──────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    SupabaseJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase Auth oturum token'ı. Web/mobil client'lar için.
+        Format: `Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`
+
+    OrgAdminKey:
+      type: http
+      scheme: bearer
+      description: |
+        Org owner tarafından `/v1/api-keys` ile üretilen API key.
+        Format: `Authorization: Bearer dmg_live_...` veya `X-API-Key: dmg_live_...`
+        Kendi org'una bağlı, scope ile sınırlı.
+
+    ServiceKey:
+      type: http
+      scheme: bearer
+      description: |
+        Platform admin tarafından üretilen S2S key (Lokma vb. iç projeler).
+        Format: `Authorization: Bearer dmg_svc_...`
+        **Her istekte `?org_id=<uuid>` query param veya `X-Damga-Org` header ZORUNLU.**
+
+  parameters:
+    OrgIdQuery:
+      name: org_id
+      in: query
+      description: 'Service key kullanımında zorunlu — hangi org adına işlem yapıldığı.'
+      schema:
+        type: string
+        format: uuid
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        POST/PUT/PATCH/DELETE retry'larını güvenli yapmak için (8-200 karakter).
+        Aynı key + aynı body → cached response. Aynı key + farklı body → 422.
+        UUID v4 önerilir.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: 'İnsan-okunabilir mesaj (Türkçe)'
+        code:
+          type: string
+          description: 'Machine-readable hata kodu (örn. RATE_LIMIT_EXCEEDED)'
+        details:
+          type: object
+          additionalProperties: true
+
+    Org:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        plan:
+          type: string
+          enum: [free, starter, pro, business, enterprise]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid, nullable: true }
+        email: { type: string, format: email }
+        username: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        full_name: { type: string }
+        role:
+          type: string
+          enum: [employee, manager, admin, owner]
+        department: { type: string, nullable: true }
+        is_active: { type: boolean }
+        is_pending: { type: boolean }
+
+    CheckInEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid, nullable: true }
+        event_type:
+          type: string
+          enum: [check_in, check_out]
+        method:
+          type: string
+          enum: [nfc, qr, gps, manual]
+        trust_score: { type: number, format: float }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items: { type: string }
+        secret: { type: string, description: 'HMAC için (sadece create response)' }
+        is_active: { type: boolean }
+        failure_count: { type: integer }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        key_prefix: { type: string, description: 'Görünen prefix (örn. dmg_live_abc123...)' }
+        scopes:
+          type: array
+          items: { type: string }
+        rate_limit_per_min: { type: integer }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+
+    ServiceKeyCreateRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 100 }
+        scopes:
+          type: array
+          minItems: 1
+          items: { type: string }
+        rate_limit_per_min:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ServiceKeyCreateResponse:
+      type: object
+      properties:
+        service_key: { $ref: '#/components/schemas/ApiKey' }
+        secret_key:
+          type: string
+          description: 'Raw key (`dmg_svc_...`) — sadece bu yanıtta döner. Bir daha gösterilmez.'
+        warning: { type: string }
+
+  responses:
+    Unauthorized:
+      description: 'Auth eksik / geçersiz'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 'Yetki yok / scope eksik'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 'Kaynak bulunamadı'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimitExceeded:
+      description: 'Rate limit aşıldı (Retry-After header)'
+      headers:
+        Retry-After:
+          schema: { type: integer }
+        X-RateLimit-Limit:
+          schema: { type: integer }
+        X-RateLimit-Remaining:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+# ─── Endpoint'ler (core, MVP) ──────────────────────────────────────────
+
+paths:
+  /auth/me:
+    get:
+      summary: 'Geçerli kullanıcı + org bilgisi'
+      tags: [Auth]
+      security:
+        - SupabaseJWT: []
+        - OrgAdminKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  org: { $ref: '#/components/schemas/Org' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users:
+    get:
+      summary: 'Kullanıcı listesi'
+      tags: [Users]
+      security:
+        - SupabaseJWT: []
+        - OrgAdminKey: []
+        - ServiceKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/Unauthorized' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimitExceeded' }
+
+  /events:
+    get:
+      summary: 'Check-in/out event listesi'
+      tags: [Check-in]
+      security:
+        - SupabaseJWT: []
+        - OrgAdminKey: []
+        - ServiceKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+        - name: user_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CheckInEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimitExceeded' }
+
+  /check-in:
+    post:
+      summary: 'Çalışan check-in yapar'
+      tags: [Check-in]
+      security:
+        - SupabaseJWT: []
+        - OrgAdminKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method:
+                  type: string
+                  enum: [nfc, qr, gps, manual]
+                location_id: { type: string, format: uuid }
+                latitude: { type: number }
+                longitude: { type: number }
+                device_id: { type: string }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckInEvent' }
+        '422':
+          description: 'Idempotency key reuse'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /webhooks:
+    get:
+      summary: 'Webhook subscription listesi'
+      tags: [Webhooks]
+      security:
+        - OrgAdminKey: []
+        - ServiceKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Webhook' }
+
+    post:
+      summary: 'Yeni webhook subscribe'
+      tags: [Webhooks]
+      security:
+        - OrgAdminKey: []
+        - ServiceKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items: { type: string }
+                  example: [check_in.created, leave.approved, shift.assigned]
+      responses:
+        '201':
+          description: 'Oluşturuldu — secret yalnızca burada döner'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Webhook' }
+
+  /api-keys:
+    get:
+      summary: 'Org API key listesi'
+      tags: [API Keys]
+      security:
+        - SupabaseJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiKey' }
+
+    post:
+      summary: 'Yeni org-admin API key üret'
+      tags: [API Keys]
+      security:
+        - SupabaseJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string }
+                scopes:
+                  type: array
+                  items: { type: string }
+                rate_limit_per_min: { type: integer, default: 100 }
+                expires_at: { type: string, format: date-time, nullable: true }
+      responses:
+        '201':
+          description: 'Raw key sadece burada döner'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_key: { $ref: '#/components/schemas/ApiKey' }
+                  secret_key: { type: string }
+                  warning: { type: string }
+
+  /platform/service-keys:
+    get:
+      summary: 'Service key listesi (sadece platform admin)'
+      tags: [Platform]
+      security:
+        - SupabaseJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiKey' }
+
+    post:
+      summary: 'Yeni service key üret (sadece platform admin)'
+      tags: [Platform]
+      security:
+        - SupabaseJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ServiceKeyCreateRequest' }
+      responses:
+        '201':
+          description: 'Raw key sadece burada döner'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceKeyCreateResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /platform/orgs:
+    get:
+      summary: 'Tüm org listesi (sadece platform admin)'
+      tags: [Platform]
+      security:
+        - SupabaseJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Org'
+                        - type: object
+                          properties:
+                            user_count: { type: integer }
+                            location_count: { type: integer }
+                            check_in_count: { type: integer }
+                            last_activity: { type: string, format: date-time, nullable: true }
+
+tags:
+  - name: Auth
+    description: 'Login + me + sign-up'
+  - name: Users
+    description: 'Kullanıcı yönetimi'
+  - name: Check-in
+    description: 'NFC/QR/GPS check-in/out + event'
+  - name: Webhooks
+    description: 'Outbound event push'
+  - name: API Keys
+    description: 'Org-admin API key (org owner)'
+  - name: Platform
+    description: 'Platform admin (sadece Kaan)'
