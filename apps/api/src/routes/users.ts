@@ -15,7 +15,11 @@ export const usersRouter = Router();
 
 function getSupabaseAdmin() {
   if (!isConfigured.supabase) {
-    throw new HttpError(503, 'Supabase yapılandırılmamış', 'SUPABASE_NOT_CONFIGURED');
+    throw new HttpError(
+      503,
+      'Supabase yapılandırılmamış',
+      'SUPABASE_NOT_CONFIGURED',
+    );
   }
   return createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -35,7 +39,10 @@ const updateSelfSchema = z.object({
   username: z
     .string()
     .trim()
-    .regex(/^[a-z0-9._-]{3,32}$/i, 'Kullanıcı adı 3-32 karakter (harf/rakam/.-_)')
+    .regex(
+      /^[a-z0-9._-]{3,32}$/i,
+      'Kullanıcı adı 3-32 karakter (harf/rakam/.-_)',
+    )
     .optional()
     .nullable(),
   phone: z
@@ -66,7 +73,10 @@ usersRouter.patch('/users/me', requireAuth, async (req, res, next) => {
       .returning();
     if (!user) throw new HttpError(404, 'Kullanıcı bulunamadı');
 
-    logger.info({ userId: req.authUserId }, 'Kullanıcı kendi profilini güncelledi');
+    logger.info(
+      { userId: req.authUserId },
+      'Kullanıcı kendi profilini güncelledi',
+    );
     res.json({ user });
   } catch (err) {
     next(err);
@@ -80,10 +90,15 @@ usersRouter.get(
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const includeInactive =
+        req.query.include_inactive === '1' ||
+        req.query.include_inactive === 'true';
+      const conditions = [eq(users.org_id, req.authOrgId)];
+      if (!includeInactive) conditions.push(eq(users.is_active, true));
       const rows = await getDb()
         .select()
         .from(users)
-        .where(eq(users.org_id, req.authOrgId));
+        .where(and(...conditions));
       res.json({ items: rows });
     } catch (err) {
       next(err);
@@ -109,12 +124,17 @@ usersRouter.post(
   requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
-      if (!req.authOrgId || !req.authUser) throw new HttpError(401, 'Yetki yok');
+      if (!req.authOrgId || !req.authUser)
+        throw new HttpError(401, 'Yetki yok');
       const input = createUserSchema.parse(req.body);
 
       // owner sadece owner ekleyebilir
       if (input.role === 'owner' && req.authUser.role !== 'owner') {
-        throw new HttpError(403, 'Sadece şirket sahibi başka owner ekleyebilir', 'OWNER_ONLY');
+        throw new HttpError(
+          403,
+          'Sadece şirket sahibi başka owner ekleyebilir',
+          'OWNER_ONLY',
+        );
       }
 
       const db = getDb();
@@ -141,12 +161,13 @@ usersRouter.post(
         authUserId = matched.id;
       } else {
         const tmpPassword = Math.random().toString(36).slice(2) + 'A1!';
-        const { data: created, error: authErr } = await supabase.auth.admin.createUser({
-          email: input.email,
-          password: tmpPassword,
-          email_confirm: true,
-          user_metadata: { full_name: input.full_name },
-        });
+        const { data: created, error: authErr } =
+          await supabase.auth.admin.createUser({
+            email: input.email,
+            password: tmpPassword,
+            email_confirm: true,
+            user_metadata: { full_name: input.full_name },
+          });
         if (authErr || !created.user) {
           throw new HttpError(
             502,
@@ -182,11 +203,12 @@ usersRouter.post(
       let resetLink: string | null = null;
       let resetError: string | null = null;
       try {
-        const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-          type: 'recovery',
-          email: input.email,
-          options: { redirectTo },
-        });
+        const { data: linkData, error: linkErr } =
+          await supabase.auth.admin.generateLink({
+            type: 'recovery',
+            email: input.email,
+            options: { redirectTo },
+          });
         if (linkErr || !linkData?.properties?.action_link) {
           resetError = linkErr?.message ?? 'Link üretilemedi';
         } else {
@@ -233,13 +255,18 @@ usersRouter.patch(
   requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
-      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      if (!req.authOrgId || !req.authUserId)
+        throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
       const input = adminUpdateUserSchema.parse(req.body);
 
       // Sadece owner başkasını owner yapabilir veya owner'lığı kaldırabilir
       if (input.role === 'owner' && req.authUser?.role !== 'owner') {
-        throw new HttpError(403, 'Sadece şirket sahibi başka owner ekleyebilir', 'OWNER_ONLY');
+        throw new HttpError(
+          403,
+          'Sadece şirket sahibi başka owner ekleyebilir',
+          'OWNER_ONLY',
+        );
       }
 
       const updates: Record<string, unknown> = { updated_at: new Date() };
@@ -291,13 +318,17 @@ usersRouter.post(
 
       const supabase = getSupabaseAdmin();
       const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
-      const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-        type: 'recovery',
-        email: u.email,
-        options: { redirectTo },
-      });
+      const { data: linkData, error: linkErr } =
+        await supabase.auth.admin.generateLink({
+          type: 'recovery',
+          email: u.email,
+          options: { redirectTo },
+        });
       if (linkErr || !linkData?.properties?.action_link) {
-        throw new HttpError(502, `Link üretilemedi: ${linkErr?.message ?? 'unknown'}`);
+        throw new HttpError(
+          502,
+          `Link üretilemedi: ${linkErr?.message ?? 'unknown'}`,
+        );
       }
       res.json({
         ok: true,
@@ -328,11 +359,7 @@ usersRouter.post(
  *    şifre değiştirme yapması önerilir (bu UI tarafında not edilir)
  */
 const setPasswordSchema = z.object({
-  password: z
-    .string()
-    .min(8, 'En az 8 karakter')
-    .max(72)
-    .optional(),
+  password: z.string().min(8, 'En az 8 karakter').max(72).optional(),
   /** Şifreyi otomatik gönder: 'show' (default, admin'e modal'da göster), 'sms', 'whatsapp' */
   send_via: z.enum(['show', 'sms', 'whatsapp']).optional(),
 });
@@ -343,7 +370,8 @@ usersRouter.post(
   requireRole('admin', 'owner'),
   async (req, res, next) => {
     try {
-      if (!req.authOrgId || !req.authUser) throw new HttpError(401, 'Yetki yok');
+      if (!req.authOrgId || !req.authUser)
+        throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
       const body = setPasswordSchema.parse(req.body ?? {});
 
@@ -388,15 +416,22 @@ usersRouter.post(
       const generated = !body.password;
 
       const supabase = getSupabaseAdmin();
-      const { error } = await supabase.auth.admin.updateUserById(u.auth_user_id, {
-        password: newPassword,
-      });
+      const { error } = await supabase.auth.admin.updateUserById(
+        u.auth_user_id,
+        {
+          password: newPassword,
+        },
+      );
       if (error) {
         throw new HttpError(502, `Şifre güncellenemedi: ${error.message}`);
       }
 
       // Şifreyi seçili kanaldan ilet — show: admin'e modal'da, sms/whatsapp: gateway veya fallback URL
-      let delivery: { method: string; sent: boolean; fallback_url: string | null } = {
+      let delivery: {
+        method: string;
+        sent: boolean;
+        fallback_url: string | null;
+      } = {
         method: sendVia,
         sent: false,
         fallback_url: null,
@@ -420,7 +455,13 @@ usersRouter.post(
       }
 
       logger.info(
-        { userId: id, by: req.authUserId, generated, send_via: sendVia, sent: delivery.sent },
+        {
+          userId: id,
+          by: req.authUserId,
+          generated,
+          send_via: sendVia,
+          sent: delivery.sent,
+        },
         'Admin kullanıcı şifresini değiştirdi',
       );
 

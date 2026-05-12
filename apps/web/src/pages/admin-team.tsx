@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Pencil, KeyRound, UserCheck, UserX, UserPlus, Loader2, X, Shuffle, Send } from 'lucide-react';
+import {
+  Pencil,
+  KeyRound,
+  UserCheck,
+  UserX,
+  UserPlus,
+  Loader2,
+  X,
+  Shuffle,
+  Send,
+} from 'lucide-react';
 import { useAuthStore } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
 import { ShareLinkModal } from '@/components/share-link-modal';
@@ -65,8 +75,8 @@ export function AdminTeamPage() {
   } | null>(null);
 
   const { data: usersData, isLoading } = useQuery<{ items: User[] }>({
-    queryKey: ['admin', 'users'],
-    queryFn: async () => (await api.get('/users')).data,
+    queryKey: ['admin', 'users', 'all'],
+    queryFn: async () => (await api.get('/users?include_inactive=1')).data,
   });
 
   const { data: deptsData } = useQuery<{ items: Department[] }>({
@@ -84,13 +94,18 @@ export function AdminTeamPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
+  const allUsers = usersData?.items ?? [];
+  const activeUsers = allUsers.filter((u) => u.is_active);
+  const inactiveUsers = allUsers.filter((u) => !u.is_active);
+
   return (
     <div className="container mx-auto max-w-6xl px-4 py-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl">👥 Ekip Yönetimi</h1>
           <p className="text-sm text-muted">
-            Çalışan ekle, düzenle, departman ata, izin kotası belirle, şifre belirle/sıfırla.
+            Çalışan ekle, düzenle, departman ata, izin kotası belirle, şifre
+            belirle/sıfırla.
           </p>
         </div>
         <button
@@ -105,87 +120,228 @@ export function AdminTeamPage() {
 
       {isLoading ? (
         <div className="card text-center text-muted">Yükleniyor…</div>
-      ) : (usersData?.items ?? []).length === 0 ? (
+      ) : allUsers.length === 0 ? (
         <div className="card text-center text-muted">Henüz çalışan yok.</div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-muted">
-              <tr>
-                <th className="py-2 px-2">Çalışan</th>
-                <th className="py-2 px-2">Rol</th>
-                <th className="py-2 px-2">Departman</th>
-                <th className="py-2 px-2 text-right">Yıllık İzin</th>
-                <th className="py-2 px-2 text-right">L / Streak</th>
-                <th className="py-2 px-2 text-right">Aksiyon</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-orange-100">
-              {usersData!.items.map((u) => {
-                const dept = deptsData?.items.find((d) => d.name === u.department);
-                return (
-                  <tr key={u.id} className={u.is_active ? '' : 'opacity-50'}>
-                    <td className="py-2 px-2">
-                      <div className="font-medium">{u.full_name}</div>
-                      <div className="text-xs text-muted">{u.email}</div>
-                    </td>
-                    <td className="py-2 px-2">
-                      <span className={`chip ${ROLE_BADGE[u.role]}`}>{ROLE_TR[u.role]}</span>
-                    </td>
-                    <td className="py-2 px-2">
-                      {dept ? (
-                        <span
-                          className="chip"
-                          style={{ background: dept.color + '22', color: dept.color }}
-                        >
-                          {dept.name}
-                        </span>
-                      ) : (
-                        <span className="text-muted text-xs">{u.department ?? '—'}</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right">{u.annual_leave_quota_days} gün</td>
-                    <td className="py-2 px-2 text-right text-xs text-muted">
-                      L{u.level} · {u.current_streak}🔥
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => setEditing(u)}
-                          title="Düzenle"
-                          className="btn-ghost p-1.5"
-                        >
-                          <Pencil className="size-4" />
-                        </button>
-                        <button
-                          onClick={() => setPwUser(u)}
-                          title="Şifre yönet (yeni şifre belirle veya sıfırlama linki üret)"
-                          className="btn-ghost p-1.5"
-                        >
-                          <KeyRound className="size-4" />
-                        </button>
-                        {u.id !== me?.id && (
-                          <button
-                            onClick={() =>
-                              toggleActiveMut.mutate({ id: u.id, is_active: !u.is_active })
-                            }
-                            title={u.is_active ? 'Pasifleştir' : 'Aktifleştir'}
-                            className="btn-ghost p-1.5"
-                          >
-                            {u.is_active ? (
-                              <UserX className="size-4 text-danger" />
-                            ) : (
-                              <UserCheck className="size-4 text-success" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+        <div className="space-y-4">
+          <div className="card overflow-x-auto">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium">
+                  Aktif Kullanıcılar ({activeUsers.length})
+                </h2>
+                <p className="text-xs text-muted">
+                  Giriş yapabilen ve operasyon listelerinde kullanılan
+                  kullanıcılar.
+                </p>
+              </div>
+            </div>
+            {activeUsers.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-orange-200 p-4 text-center text-sm text-muted">
+                Aktif kullanıcı yok.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted">
+                  <tr>
+                    <th className="py-2 px-2">Çalışan</th>
+                    <th className="py-2 px-2">Rol</th>
+                    <th className="py-2 px-2">Departman</th>
+                    <th className="py-2 px-2 text-right">Yıllık İzin</th>
+                    <th className="py-2 px-2 text-right">L / Streak</th>
+                    <th className="py-2 px-2 text-right">Aksiyon</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-orange-100">
+                  {activeUsers.map((u) => {
+                    const dept = deptsData?.items.find(
+                      (d) => d.name === u.department,
+                    );
+                    return (
+                      <tr key={u.id}>
+                        <td className="py-2 px-2">
+                          <div className="font-medium">{u.full_name}</div>
+                          <div className="text-xs text-muted">{u.email}</div>
+                        </td>
+                        <td className="py-2 px-2">
+                          <span className={`chip ${ROLE_BADGE[u.role]}`}>
+                            {ROLE_TR[u.role]}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2">
+                          {dept ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: dept.color + '22',
+                                color: dept.color,
+                              }}
+                            >
+                              {dept.name}
+                            </span>
+                          ) : (
+                            <span className="text-muted text-xs">
+                              {u.department ?? '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          {u.annual_leave_quota_days} gün
+                        </td>
+                        <td className="py-2 px-2 text-right text-xs text-muted">
+                          L{u.level} · {u.current_streak}🔥
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => setEditing(u)}
+                              title="Düzenle"
+                              className="btn-ghost p-1.5"
+                            >
+                              <Pencil className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => setPwUser(u)}
+                              title="Şifre yönet (yeni şifre belirle veya sıfırlama linki üret)"
+                              className="btn-ghost p-1.5"
+                            >
+                              <KeyRound className="size-4" />
+                            </button>
+                            {u.id !== me?.id && (
+                              <button
+                                onClick={() =>
+                                  toggleActiveMut.mutate({
+                                    id: u.id,
+                                    is_active: !u.is_active,
+                                  })
+                                }
+                                title={
+                                  u.is_active ? 'Pasifleştir' : 'Aktifleştir'
+                                }
+                                className="btn-ghost p-1.5"
+                              >
+                                {u.is_active ? (
+                                  <UserX className="size-4 text-danger" />
+                                ) : (
+                                  <UserCheck className="size-4 text-success" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="card overflow-x-auto">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium">
+                  Pasif Kullanıcılar ({inactiveUsers.length})
+                </h2>
+                <p className="text-xs text-muted">
+                  Pasifleştirilen kullanıcılar aktif kullanıcı listelerinde
+                  görünmez.
+                </p>
+              </div>
+            </div>
+            {inactiveUsers.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-orange-200 p-4 text-center text-sm text-muted">
+                Pasif kullanıcı yok.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted">
+                  <tr>
+                    <th className="py-2 px-2">Çalışan</th>
+                    <th className="py-2 px-2">Rol</th>
+                    <th className="py-2 px-2">Departman</th>
+                    <th className="py-2 px-2 text-right">Yıllık İzin</th>
+                    <th className="py-2 px-2 text-right">L / Streak</th>
+                    <th className="py-2 px-2 text-right">Aksiyon</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-orange-100">
+                  {inactiveUsers.map((u) => {
+                    const dept = deptsData?.items.find(
+                      (d) => d.name === u.department,
+                    );
+                    return (
+                      <tr key={u.id}>
+                        <td className="py-2 px-2">
+                          <div className="font-medium">{u.full_name}</div>
+                          <div className="text-xs text-muted">{u.email}</div>
+                        </td>
+                        <td className="py-2 px-2">
+                          <span className={`chip ${ROLE_BADGE[u.role]}`}>
+                            {ROLE_TR[u.role]}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2">
+                          {dept ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: dept.color + '22',
+                                color: dept.color,
+                              }}
+                            >
+                              {dept.name}
+                            </span>
+                          ) : (
+                            <span className="text-muted text-xs">
+                              {u.department ?? '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          {u.annual_leave_quota_days} gün
+                        </td>
+                        <td className="py-2 px-2 text-right text-xs text-muted">
+                          L{u.level} · {u.current_streak}🔥
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => setEditing(u)}
+                              title="Düzenle"
+                              className="btn-ghost p-1.5"
+                            >
+                              <Pencil className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => setPwUser(u)}
+                              title="Şifre yönet"
+                              className="btn-ghost p-1.5"
+                            >
+                              <KeyRound className="size-4" />
+                            </button>
+                            {u.id !== me?.id && (
+                              <button
+                                onClick={() =>
+                                  toggleActiveMut.mutate({
+                                    id: u.id,
+                                    is_active: !u.is_active,
+                                  })
+                                }
+                                title="Aktifleştir"
+                                className="btn-ghost p-1.5"
+                              >
+                                <UserCheck className="size-4 text-success" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -329,7 +485,11 @@ function ManagePasswordModal({
         full_name: string;
         password: string;
         generated: boolean;
-        delivery: { method: string; sent: boolean; fallback_url: string | null };
+        delivery: {
+          method: string;
+          sent: boolean;
+          fallback_url: string | null;
+        };
       };
     },
     onSuccess: (d) => {
@@ -339,7 +499,9 @@ function ManagePasswordModal({
         );
       } else if (d.delivery.fallback_url) {
         // Gateway konfigsiz → admin elle paylaşacak (modal'da fallback URL ve şifre gösteriliyor)
-        toast.success('🔑 Şifre belirlendi · paylaşmak için aşağıdaki butonu kullan');
+        toast.success(
+          '🔑 Şifre belirlendi · paylaşmak için aşağıdaki butonu kullan',
+        );
       } else {
         toast.success('🔑 Şifre belirlendi');
       }
@@ -417,9 +579,9 @@ function ManagePasswordModal({
         </div>
 
         <div className="rounded-md bg-warning/5 border border-warning/20 px-3 py-2 text-[11px] text-muted">
-          ⚠️ Mevcut şifre <strong className="text-ink">görüntülenemez</strong> (bcrypt hash —
-          geri çevrilemez). Aşağıdaki seçeneklerden biriyle yeni şifre atayabilir veya
-          sıfırlama linki üretebilirsin.
+          ⚠️ Mevcut şifre <strong className="text-ink">görüntülenemez</strong>{' '}
+          (bcrypt hash — geri çevrilemez). Aşağıdaki seçeneklerden biriyle yeni
+          şifre atayabilir veya sıfırlama linki üretebilirsin.
         </div>
 
         {/* Mod seçici */}
@@ -456,7 +618,9 @@ function ManagePasswordModal({
               <Pencil className="size-4 text-orange-500" />
               Manuel gir
             </div>
-            <div className="text-[11px] text-muted mt-0.5">Kendi şifreni belirle</div>
+            <div className="text-[11px] text-muted mt-0.5">
+              Kendi şifreni belirle
+            </div>
           </button>
         </div>
 
@@ -493,7 +657,9 @@ function ManagePasswordModal({
 
         {mode === 'manual' && (
           <div>
-            <label className="label text-xs">Yeni şifre (en az 8 karakter)</label>
+            <label className="label text-xs">
+              Yeni şifre (en az 8 karakter)
+            </label>
             <div className="mt-1 relative">
               <input
                 type={reveal ? 'text' : 'password'}
@@ -513,7 +679,9 @@ function ManagePasswordModal({
               </button>
             </div>
             {manualPw.length > 0 && manualPw.length < 8 && (
-              <p className="mt-1 text-xs text-danger">En az 8 karakter olmalı</p>
+              <p className="mt-1 text-xs text-danger">
+                En az 8 karakter olmalı
+              </p>
             )}
           </div>
         )}
@@ -591,8 +759,10 @@ function CreateUserModal({
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (form.full_name.trim().length < 2) e.full_name = 'Ad soyad gerekli (en az 2 karakter)';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Geçerli e-posta gir';
+    if (form.full_name.trim().length < 2)
+      e.full_name = 'Ad soyad gerekli (en az 2 karakter)';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+      e.email = 'Geçerli e-posta gir';
     if (form.annual_leave_quota_days < 0 || form.annual_leave_quota_days > 60)
       e.annual_leave_quota_days = '0-60 arası';
     setErrors(e);
@@ -610,7 +780,8 @@ function CreateUserModal({
       };
       if (form.title.trim()) payload.title = form.title.trim();
       if (form.hired_at) payload.hired_at = form.hired_at;
-      if (form.username.trim()) payload.username = form.username.trim().toLowerCase();
+      if (form.username.trim())
+        payload.username = form.username.trim().toLowerCase();
       if (form.phone.trim()) payload.phone = form.phone.trim();
       const r = await api.post('/users', payload);
       return r.data as {
@@ -664,11 +835,14 @@ function CreateUserModal({
             <div className="inline-flex items-center gap-1.5 text-orange-600 text-xs font-medium uppercase tracking-wider">
               <UserPlus className="size-3.5" /> Yeni Çalışan
             </div>
-            <h3 className="font-display text-xl mt-1">Şirketine yeni biri ekle</h3>
+            <h3 className="font-display text-xl mt-1">
+              Şirketine yeni biri ekle
+            </h3>
             <p className="text-xs text-muted mt-1">
-              Hesap oluşturulur ve <strong className="text-ink">şifre belirleme link'i</strong>{' '}
-              ekrana gelir — WhatsApp/kurumsal mail/fiziksel teslim ile manuel paylaşırsın
-              (Supabase mail rate-limit'inden bağımsız).
+              Hesap oluşturulur ve{' '}
+              <strong className="text-ink">şifre belirleme link'i</strong>{' '}
+              ekrana gelir — WhatsApp/kurumsal mail/fiziksel teslim ile manuel
+              paylaşırsın (Supabase mail rate-limit'inden bağımsız).
             </p>
           </div>
           <button
@@ -705,7 +879,9 @@ function CreateUserModal({
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="ayse@sirket.com"
           />
-          {errors.email && <p className="mt-1 text-xs text-danger">{errors.email}</p>}
+          {errors.email && (
+            <p className="mt-1 text-xs text-danger">{errors.email}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -717,7 +893,9 @@ function CreateUserModal({
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
-            <p className="mt-1 text-[10px] text-muted">Email yerine sign-in için</p>
+            <p className="mt-1 text-[10px] text-muted">
+              Email yerine sign-in için
+            </p>
           </div>
           <div>
             <label className="label">Telefon (opsiyonel)</label>
@@ -728,7 +906,9 @@ function CreateUserModal({
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
-            <p className="mt-1 text-[10px] text-muted">SMS/WhatsApp ile şifre için</p>
+            <p className="mt-1 text-[10px] text-muted">
+              SMS/WhatsApp ile şifre için
+            </p>
           </div>
         </div>
 
@@ -809,7 +989,9 @@ function CreateUserModal({
               }
             />
             {errors.annual_leave_quota_days && (
-              <p className="mt-1 text-xs text-danger">{errors.annual_leave_quota_days}</p>
+              <p className="mt-1 text-xs text-danger">
+                {errors.annual_leave_quota_days}
+              </p>
             )}
           </div>
         </div>
@@ -906,7 +1088,9 @@ function EditUserModal({
           <select
             className="input mt-1"
             value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value as User['role'] })}
+            onChange={(e) =>
+              setForm({ ...form, role: e.target.value as User['role'] })
+            }
           >
             <option value="employee">Çalışan</option>
             <option value="manager">Yönetici</option>
@@ -959,7 +1143,10 @@ function EditUserModal({
               className="input mt-1"
               value={form.annual_leave_quota_days}
               onChange={(e) =>
-                setForm({ ...form, annual_leave_quota_days: Number(e.target.value) })
+                setForm({
+                  ...form,
+                  annual_leave_quota_days: Number(e.target.value),
+                })
               }
             />
           </div>
