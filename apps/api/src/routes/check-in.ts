@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { eq, and, desc, gte, sql, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { checkInSchema } from '@damga/shared';
-import { computeTrustScore, computeEvidenceHash } from '@damga/verification';
+import { computeTrustScore, computeEvidenceHash, verifyAnyQrFormat, verifyNfcTag } from '@damga/verification';
 import { getDb, attendanceEvents, locations, users, orgs } from '@damga/db';
 import { env } from '../config/env';
 import { HttpError } from '../middleware/error';
@@ -56,13 +56,19 @@ async function performAttendance(
   const input = checkInSchema.parse(req.body);
   const db = getDb();
 
-  // Lokasyon getir (location_id verildiyse veya kullanıcının org'undaki tek lokasyon)
+  const locationIdFromEvidence = resolveLocationIdFromEvidence({
+    nfc: input.nfc_tag_id,
+    qr: input.qr_code_payload,
+  });
+  const requestedLocationId = input.location_id ?? locationIdFromEvidence ?? null;
+
+  // Lokasyon getir (location_id verildiyse, QR/NFC payload'ından çözüldüyse veya org'daki tek lokasyon)
   let location: typeof locations.$inferSelect | null = null;
-  if (input.location_id) {
+  if (requestedLocationId) {
     const [loc] = await db
       .select()
       .from(locations)
-      .where(and(eq(locations.id, input.location_id), eq(locations.org_id, req.authOrgId)));
+      .where(and(eq(locations.id, requestedLocationId), eq(locations.org_id, req.authOrgId)));
     location = loc ?? null;
   } else {
     const allLocs = await db.select().from(locations).where(eq(locations.org_id, req.authOrgId));
@@ -592,6 +598,18 @@ const selfieUploadSchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   base64: z.string().min(100).max(8_000_000), // ~6MB base64 → ~4.5MB binary
 });
+
+function resolveLocationIdFromEvidence(input: { nfc?: string; qr?: string }) {
+  if (input.nfc) {
+    const nfc = verifyNfcTag(env.NFC_SIGNING_SECRET, input.nfc);
+    if (nfc.valid && nfc.payload?.location_id) return nfc.payload.location_id;
+  }
+  if (input.qr) {
+    const qr = verifyAnyQrFormat(env.NFC_SIGNING_SECRET, input.qr);
+    if (qr.valid && qr.payload?.location_id) return qr.payload.location_id;
+  }
+  return null;
+}
 
 checkInRouter.post('/stamp/selfie-upload', requireAuth, async (req, res, next) => {
   try {

@@ -7,7 +7,7 @@ import { verifyQrCode, verifyQrUrlToken, type QrVerifyResult } from './qr';
  * QR ham metnini hem v1 (pipe-separated payload) hem v2 (URL ?t=token) formatında
  * doğrulayan tek girişli helper. Frontend'in nasıl gönderdiğine bakmadan çalışır.
  */
-function verifyAnyQrFormat(secret: string, raw: string): QrVerifyResult {
+export function verifyAnyQrFormat(secret: string, raw: string): QrVerifyResult {
   const trimmed = raw.trim();
   // v2: URL formatında (https://.../q/<id>?t=<token>)
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {

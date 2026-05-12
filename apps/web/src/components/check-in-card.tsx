@@ -27,6 +27,21 @@ interface Props {
 
 type Method = 'nfc' | 'qr' | 'gps';
 
+interface LocationOption {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  geofence_radius_m: number;
+}
+
+interface PrecheckState {
+  location: LocationOption | null;
+  distance_m: number | null;
+  accuracy_m: number;
+  inside: boolean | null;
+}
+
 /**
  * Damga kartı — kullanıcı giriş/çıkış SEÇMEZ.
  * Backend bugünkü son event'e bakıp otomatik karar verir (`POST /v1/stamp`).
@@ -55,10 +70,18 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
     auto?: boolean;
     pendingPayload: Record<string, unknown>;
   } | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckState | null>(null);
+  const [precheckLoading, setPrecheckLoading] = useState(false);
 
   const qc = useQueryClient();
   const geo = useGeolocation();
   const nfc = useNfc();
+
+  const { data: locationsData } = useQuery<{ items: LocationOption[] }>({
+    queryKey: ['locations', 'stamp-precheck'],
+    queryFn: async () => (await api.get('/locations')).data,
+    staleTime: 5 * 60_000,
+  });
 
   // Bugünün mood'u var mı? Damga sonrası tekrar sormamak için bilelim.
   const { data: todayMoodData } = useQuery<{ mood: { id: string } | null }>({
@@ -91,6 +114,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
 
   const stampMutation = useMutation({
     mutationFn: async (payload: {
+      location_id?: string;
       latitude?: number;
       longitude?: number;
       gps_accuracy_m?: number;
@@ -99,7 +123,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       selfie_url?: string;
     }) => {
       const fullPayload = {
-        location_id: locationId,
+        location_id: payload.location_id ?? locationId,
         client_time: new Date().toISOString(),
         device_id: generateDeviceId(),
         app_version: 'web-0.1.0',
@@ -202,6 +226,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
     try {
       const gpsPos = await geo.getCurrent().catch(() => null);
       stampMutation.mutate({
+        location_id: extractLocationIdFromQrUrl(qrText) ?? undefined,
         qr_code_payload: qrText,
         latitude: gpsPos?.latitude,
         longitude: gpsPos?.longitude,
@@ -217,7 +242,9 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
     setMethod('gps');
     try {
       const pos = await geo.getCurrent();
+      const nearest = findBestLocation(locationsData?.items ?? [], pos.latitude, pos.longitude, locationId);
       stampMutation.mutate({
+        location_id: nearest?.id,
         latitude: pos.latitude,
         longitude: pos.longitude,
         gps_accuracy_m: pos.accuracy,
@@ -229,6 +256,27 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
   };
 
   const isPending = stampMutation.isPending || method !== null;
+
+  const handlePrecheck = async () => {
+    setPrecheckLoading(true);
+    try {
+      const pos = await geo.getCurrent();
+      const nearest = findBestLocation(locationsData?.items ?? [], pos.latitude, pos.longitude, locationId);
+      const distance = nearest
+        ? Math.round(haversineMeters(pos.latitude, pos.longitude, nearest.latitude, nearest.longitude))
+        : null;
+      setPrecheck({
+        location: nearest ?? null,
+        distance_m: distance,
+        accuracy_m: pos.accuracy,
+        inside: nearest && distance != null ? distance <= nearest.geofence_radius_m : null,
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setPrecheckLoading(false);
+    }
+  };
 
   return (
     <div className="card space-y-5">
@@ -257,6 +305,62 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
             </>
           )}
         </div>
+      </div>
+
+      <div
+        className={`rounded-lg border p-3 text-sm ${
+          precheck?.inside === true
+            ? 'border-success/30 bg-success/5'
+            : precheck?.inside === false
+              ? 'border-warning/30 bg-warning/5'
+              : 'border-orange-100 bg-cream'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-medium">Konum ön kontrolü</div>
+            <div className="text-xs text-muted">
+              {precheck
+                ? precheck.location
+                  ? `${precheck.location.name} · ${precheck.distance_m}m uzaklık · GPS doğruluğu ${precheck.accuracy_m}m`
+                  : `Lokasyon seçilemedi · GPS doğruluğu ${precheck.accuracy_m}m`
+                : 'Damga basmadan önce GPS ve geofence durumunu kontrol et.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handlePrecheck}
+            disabled={precheckLoading || isPending}
+            className="btn-outline px-3 py-1.5 text-xs"
+          >
+            {precheckLoading && <Loader2 className="size-3 animate-spin" />}
+            Kontrol et
+          </button>
+        </div>
+        {precheck && (
+          <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
+            {precheck.inside === true && (
+              <span className="chip bg-success/10 text-success border border-success/30">
+                Geofence içinde
+              </span>
+            )}
+            {precheck.inside === false && (
+              <span className="chip bg-warning/10 text-warning border border-warning/30">
+                Geofence dışında · selfie/onay gerekebilir
+              </span>
+            )}
+            {precheck.accuracy_m > 200 && (
+              <span className="chip bg-warning/10 text-warning border border-warning/30">
+                GPS doğruluğu düşük
+              </span>
+            )}
+            {!precheck.location && (
+              <span className="chip bg-danger/10 text-danger border border-danger/30">
+                Lokasyon bulunamadı
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {showQrScanner ? (
@@ -401,4 +505,42 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       )}
     </div>
   );
+}
+
+function findBestLocation(
+  locations: LocationOption[],
+  latitude: number,
+  longitude: number,
+  preferredId?: string,
+) {
+  if (preferredId) return locations.find((location) => location.id === preferredId) ?? null;
+  if (locations.length === 0) return null;
+  return locations
+    .map((location) => ({
+      location,
+      distance: haversineMeters(latitude, longitude, location.latitude, location.longitude),
+    }))
+    .sort((a, b) => a.distance - b.distance)[0]?.location ?? null;
+}
+
+function extractLocationIdFromQrUrl(raw: string) {
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const qIndex = parts.indexOf('q');
+    return qIndex >= 0 ? parts[qIndex + 1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const earthRadiusM = 6_371_000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
