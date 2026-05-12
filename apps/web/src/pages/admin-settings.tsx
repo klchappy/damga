@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Save,
@@ -10,6 +11,10 @@ import {
   ShieldCheck,
   Camera,
   MapPin,
+  Users,
+  Tags,
+  Plug,
+  Webhook,
 } from 'lucide-react';
 import {
   useAuthStore,
@@ -24,6 +29,14 @@ interface PageOption {
   label: string;
   desc: string;
   alwaysOn?: boolean;
+}
+
+interface IntegrationStatus {
+  counts: {
+    active_api_keys: number;
+    active_webhooks: number;
+  };
+  services: Record<'database' | 'supabase' | 'resend' | 'redis' | 'web_push', boolean>;
 }
 
 function ToggleRow({
@@ -132,6 +145,11 @@ export function AdminSettingsPage() {
   const setOrg = useAuthStore((s) => s.setOrg);
   const qc = useQueryClient();
 
+  const { data: integrationStatus } = useQuery<IntegrationStatus>({
+    queryKey: ['admin', 'integrations', 'status'],
+    queryFn: async () => (await api.get('/integrations/status')).data,
+  });
+
   const initialVisible: Set<EmployeePageKey> = new Set(
     org?.settings?.employee_visible_pages && org.settings.employee_visible_pages.length > 0
       ? org.settings.employee_visible_pages
@@ -202,19 +220,20 @@ export function AdminSettingsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
+    <div className="container mx-auto max-w-5xl px-4 py-6 space-y-5">
       <div className="flex items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
+        <div className="flex size-12 items-center justify-center rounded-lg bg-orange-500 text-white">
           <SettingsIcon className="size-6" />
         </div>
         <div>
           <h1 className="font-display text-3xl">Şirket Ayarları</h1>
           <p className="text-sm text-muted">
-            Çalışanların hangi sayfaları görebileceğini buradan kontrol et.
+            Şirket deneyimi, güvenlik davranışı ve bağlantılı yönetim alanları.
           </p>
         </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
       <div className="card space-y-4">
         <div className="flex items-start gap-2">
           <ShieldCheck className="size-5 text-orange-500 mt-0.5 shrink-0" />
@@ -324,6 +343,104 @@ export function AdminSettingsPage() {
           </button>
         </div>
       </div>
+
+      <aside className="space-y-4">
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <Plug className="size-5 text-orange-600" />
+            <h2 className="font-display text-lg">Bağlantılı Alanlar</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            <QuickLink
+              to="/admin/team"
+              icon={<Users className="size-4" />}
+              title="Ekip"
+              desc="Kullanıcı, rol ve şifre"
+            />
+            <QuickLink
+              to="/admin/departments"
+              icon={<Tags className="size-4" />}
+              title="Departman"
+              desc="Organizasyon sınıfları"
+            />
+            <QuickLink
+              to="/admin/locations"
+              icon={<MapPin className="size-4" />}
+              title="Lokasyon"
+              desc="NFC, QR ve geofence"
+            />
+            <QuickLink
+              to="/admin/integrations"
+              icon={<Webhook className="size-4" />}
+              title="API & Entegrasyon"
+              desc="Key, webhook ve servisler"
+            />
+          </div>
+        </div>
+
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-5 text-orange-600" />
+            <h2 className="font-display text-lg">Sistem Özeti</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <MiniStat label="API key" value={integrationStatus?.counts.active_api_keys ?? '—'} />
+            <MiniStat label="Webhook" value={integrationStatus?.counts.active_webhooks ?? '—'} />
+          </div>
+          <div className="space-y-2 text-sm">
+            <ServiceRow label="Database" ok={integrationStatus?.services.database} />
+            <ServiceRow label="Supabase" ok={integrationStatus?.services.supabase} />
+            <ServiceRow label="Resend" ok={integrationStatus?.services.resend} />
+            <ServiceRow label="Web Push" ok={integrationStatus?.services.web_push} />
+          </div>
+        </div>
+      </aside>
+      </div>
+    </div>
+  );
+}
+
+function QuickLink({
+  to,
+  icon,
+  title,
+  desc,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-3 rounded-md border border-orange-100 bg-white p-3 text-sm hover:border-orange-300 hover:bg-orange-50"
+    >
+      <span className="flex size-8 items-center justify-center rounded-md bg-orange-50 text-orange-600">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-medium text-ink">{title}</span>
+        <span className="block text-xs text-muted">{desc}</span>
+      </span>
+    </Link>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-md bg-cream p-3">
+      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="font-display text-xl">{value}</div>
+    </div>
+  );
+}
+
+function ServiceRow({ label, ok }: { label: string; ok?: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-md bg-cream px-3 py-2">
+      <span className="text-muted">{label}</span>
+      <span className={ok ? 'text-success' : 'text-warning'}>{ok ? 'hazır' : 'eksik'}</span>
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   MapPin,
-  Key,
   Users,
   ShieldCheck,
   Activity,
@@ -76,8 +75,7 @@ export function AdminHomePage() {
             </div>
             <h1 className="font-display text-3xl mt-1">Hoş geldin, {user?.full_name}</h1>
             <p className="text-sm opacity-90 mt-1">
-              Şirketinin Damga sistemini buradan yönet — lokasyonlar, API anahtarları,
-              webhook'lar.
+              Şirketinin Damga sistemini buradan yönet — ekip, lokasyon, vardiya ve entegrasyonlar.
             </p>
           </div>
           <div className="text-6xl opacity-30">🪪</div>
@@ -122,16 +120,10 @@ export function AdminHomePage() {
           desc="Satış, Sevk, Muhasebe, Diğer + yeni departman ekle (renk + slug)."
         />
         <AdminCard
-          to="/admin/api-keys"
-          icon={<Key className="size-6" />}
-          title="API Anahtarları"
-          desc="Bordro, Slack, TahminIO entegrasyonları için API key + scope yönetimi."
-        />
-        <AdminCard
           to="/admin/integrations"
           icon={<Webhook className="size-6" />}
-          title="Entegrasyonlar"
-          desc="API key, webhook, endpoint ve mail servis durumlarını tek ekrandan kontrol et."
+          title="API & Entegrasyonlar"
+          desc="API key, webhook, endpoint ve mail servis durumlarını tek kompakt panelden yönet."
         />
         <AdminCard
           to="/manager/reports"
@@ -273,13 +265,13 @@ function AdminCard({
   return (
     <Link
       to={to}
-      className="card group flex items-start gap-3 hover:border-orange-400 hover:shadow-md transition relative"
+      className="card !p-4 group flex items-start gap-3 hover:border-orange-400 hover:shadow-md transition relative"
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition">
         {icon}
       </div>
       <div className="flex-1">
-        <div className="font-display font-semibold text-lg flex items-center gap-2">
+        <div className="font-display font-semibold text-base flex items-center gap-2">
           {title}
           {typeof badge === 'number' && badge > 0 && (
             <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-danger text-white text-[10px] font-semibold animate-pulse">
@@ -287,7 +279,7 @@ function AdminCard({
             </span>
           )}
         </div>
-        <div className="text-sm text-muted">{desc}</div>
+        <div className="text-xs text-muted">{desc}</div>
       </div>
       <ChevronRight className="size-5 text-muted group-hover:text-orange-500 transition self-center" />
     </Link>

@@ -16,7 +16,6 @@ import { ManagerTeamPage } from '@/pages/manager-team';
 import { ManagerReportsPage } from '@/pages/manager-reports';
 import { AdminHomePage } from '@/pages/admin-home';
 import { AdminLocationsPage } from '@/pages/admin-locations';
-import { AdminApiKeysPage } from '@/pages/admin-api-keys';
 import { AdminTeamPage } from '@/pages/admin-team';
 import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { AdminApplicationsPage } from '@/pages/admin-applications';
@@ -201,7 +200,7 @@ function AppInner() {
           path="admin/api-keys"
           element={
             <RoleGate roles={['admin', 'owner']}>
-              <AdminApiKeysPage />
+              <Navigate to="/admin/integrations" replace />
             </RoleGate>
           }
         />
