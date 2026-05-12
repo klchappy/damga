@@ -428,16 +428,30 @@ export function AdminIntegrationsPage() {
 
       <StatusPanel status={statusQuery.data} />
 
-      <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_390px] gap-4">
-        <div className="card space-y-4">
+      <section className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-4 items-start">
+        <div className="card space-y-3">
+          <SectionTitle icon={<Plus className="size-5" />} title="Yeni Dış Servis" />
+          <ExternalIntegrationForm draft={newExternal} onChange={setNewExternal} />
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => createExternal.mutate(newExternal)}
+            disabled={createExternal.isPending || newExternal.name.trim().length < 2}
+          >
+            <Plus className="size-4" />
+            Bağlantıyı Kaydet
+          </button>
+        </div>
+
+        <div className="card space-y-3">
           <SectionTitle icon={<LinkIcon className="size-5" />} title="Dış Servis Bağlantıları" />
-          <p className="text-sm text-muted">
+          <p className="text-xs text-muted">
             AI API gibi DAMGA'nın kullanacağı dış servis bilgilerini buradan yönet. Secret
             değerler kaydedildikten sonra tekrar gösterilmez; değiştirmek için yeni değer girilir.
           </p>
           {externalIntegrations.length === 0 ? (
-            <div className="rounded-md border border-dashed border-orange-200 p-4 text-sm text-muted">
-              Henüz dış servis bağlantısı yok. Sağdaki formdan AI API veya özel servis ekleyebilirsin.
+            <div className="rounded-md border border-dashed border-orange-200 p-3 text-sm text-muted">
+              Henüz dış servis bağlantısı yok. Soldaki formdan AI API veya özel servis ekleyebilirsin.
             </div>
           ) : (
             <div className="space-y-3">
@@ -445,7 +459,7 @@ export function AdminIntegrationsPage() {
                 const isEditing = editingExternalId === row.id;
                 const draft = externalDrafts[row.id] ?? externalToDraft(row);
                 return (
-                  <div key={row.id} className="rounded-lg border border-orange-100 p-4 space-y-3">
+                  <div key={row.id} className="rounded-lg border border-orange-100 p-3 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -531,19 +545,6 @@ export function AdminIntegrationsPage() {
           )}
         </div>
 
-        <div className="card space-y-4">
-          <SectionTitle icon={<Plus className="size-5" />} title="Yeni Dış Servis" />
-          <ExternalIntegrationForm draft={newExternal} onChange={setNewExternal} />
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={() => createExternal.mutate(newExternal)}
-            disabled={createExternal.isPending || newExternal.name.trim().length < 2}
-          >
-            <Plus className="size-4" />
-            Bağlantıyı Kaydet
-          </button>
-        </div>
       </section>
 
       {createdSecret && (
@@ -562,12 +563,26 @@ export function AdminIntegrationsPage() {
         />
       )}
 
-      <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4">
-        <div className="card space-y-4">
+      <section className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-4 items-start">
+        <div className="card space-y-3">
+          <SectionTitle icon={<Plus className="size-5" />} title="Yeni API Key" />
+          <ApiKeyForm draft={newKey} onChange={setNewKey} />
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => createKey.mutate(newKey)}
+            disabled={createKey.isPending || newKey.name.trim().length < 2 || newKey.scopes.length === 0}
+          >
+            <Plus className="size-4" />
+            Oluştur
+          </button>
+        </div>
+
+        <div className="card space-y-3">
           <SectionTitle icon={<Key className="size-5" />} title="API Key Yonetimi" />
           {apiKeys.length === 0 ? (
-            <div className="rounded-md border border-dashed border-orange-200 p-4 text-sm text-muted">
-              Henuz API key yok. Harici sistemleri baglamak icin sagdaki formdan olustur.
+            <div className="rounded-md border border-dashed border-orange-200 p-3 text-sm text-muted">
+              Henüz API key yok. Harici sistemleri bağlamak için soldaki formdan oluştur.
             </div>
           ) : (
             <div className="space-y-3">
@@ -575,7 +590,7 @@ export function AdminIntegrationsPage() {
                 const isEditing = editingKeyId === row.id;
                 const draft = keyDrafts[row.id] ?? keyToDraft(row);
                 return (
-                  <div key={row.id} className="rounded-lg border border-orange-100 p-4 space-y-3">
+                  <div key={row.id} className="rounded-lg border border-orange-100 p-3 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium">{row.name}</div>
@@ -643,27 +658,28 @@ export function AdminIntegrationsPage() {
           )}
         </div>
 
-        <div className="card space-y-4">
-          <SectionTitle icon={<Plus className="size-5" />} title="Yeni API Key" />
-          <ApiKeyForm draft={newKey} onChange={setNewKey} />
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-4 items-start">
+        <div className="card space-y-3">
+          <SectionTitle icon={<Plus className="size-5" />} title="Yeni Webhook" />
+          <WebhookForm draft={newWebhook} onChange={setNewWebhook} />
           <button
             type="button"
             className="btn-primary w-full"
-            onClick={() => createKey.mutate(newKey)}
-            disabled={createKey.isPending || newKey.name.trim().length < 2 || newKey.scopes.length === 0}
+            onClick={() => createWebhook.mutate(newWebhook)}
+            disabled={createWebhook.isPending || !newWebhook.url || newWebhook.events.length === 0}
           >
             <Plus className="size-4" />
-            Olustur
+            Oluştur
           </button>
         </div>
-      </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4">
-        <div className="card space-y-4">
+        <div className="card space-y-3">
           <SectionTitle icon={<Webhook className="size-5" />} title="Webhook Yonetimi" />
           {webhooks.length === 0 ? (
-            <div className="rounded-md border border-dashed border-orange-200 p-4 text-sm text-muted">
-              Henuz webhook yok. Damga olaylarini baska sistemlere aktarmak icin endpoint ekle.
+            <div className="rounded-md border border-dashed border-orange-200 p-3 text-sm text-muted">
+              Henüz webhook yok. Damga olaylarını başka sistemlere aktarmak için soldan endpoint ekle.
             </div>
           ) : (
             <div className="space-y-3">
@@ -671,7 +687,7 @@ export function AdminIntegrationsPage() {
                 const isEditing = editingWebhookId === row.id;
                 const draft = webhookDrafts[row.id] ?? webhookToDraft(row);
                 return (
-                  <div key={row.id} className="rounded-lg border border-orange-100 p-4 space-y-3">
+                  <div key={row.id} className="rounded-lg border border-orange-100 p-3 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-mono text-xs break-all">{row.url}</div>
@@ -752,19 +768,6 @@ export function AdminIntegrationsPage() {
           )}
         </div>
 
-        <div className="card space-y-4">
-          <SectionTitle icon={<Plus className="size-5" />} title="Yeni Webhook" />
-          <WebhookForm draft={newWebhook} onChange={setNewWebhook} />
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={() => createWebhook.mutate(newWebhook)}
-            disabled={createWebhook.isPending || !newWebhook.url || newWebhook.events.length === 0}
-          >
-            <Plus className="size-4" />
-            Olustur
-          </button>
-        </div>
       </section>
     </div>
   );
@@ -823,28 +826,30 @@ function StatusPanel({ status }: { status?: IntegrationStatus }) {
 function ApiKeyForm({ draft, onChange }: { draft: ApiKeyDraft; onChange: (draft: ApiKeyDraft) => void }) {
   return (
     <div className="space-y-3">
-      <label className="block">
-        <span className="label">Isim</span>
-        <input
-          className="input mt-1"
-          value={draft.name}
-          onChange={(e) => onChange({ ...draft, name: e.target.value })}
-          placeholder="Bordro entegrasyonu"
-        />
-      </label>
-      <label className="block">
-        <span className="label">Dakika limiti</span>
-        <input
-          className="input mt-1"
-          type="number"
-          min={1}
-          max={10_000}
-          value={draft.rate_limit_per_min}
-          onChange={(e) =>
-            onChange({ ...draft, rate_limit_per_min: Number(e.target.value) || 1 })
-          }
-        />
-      </label>
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_120px] gap-2">
+        <label className="block">
+          <span className="label">İsim</span>
+          <input
+            className="input mt-1"
+            value={draft.name}
+            onChange={(e) => onChange({ ...draft, name: e.target.value })}
+            placeholder="Bordro entegrasyonu"
+          />
+        </label>
+        <label className="block">
+          <span className="label">Dakika limiti</span>
+          <input
+            className="input mt-1"
+            type="number"
+            min={1}
+            max={10_000}
+            value={draft.rate_limit_per_min}
+            onChange={(e) =>
+              onChange({ ...draft, rate_limit_per_min: Number(e.target.value) || 1 })
+            }
+          />
+        </label>
+      </div>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -858,6 +863,7 @@ function ApiKeyForm({ draft, onChange }: { draft: ApiKeyDraft; onChange: (draft:
         selected={draft.scopes}
         onChange={(scopes) => onChange({ ...draft, scopes })}
         info={API_SCOPE_INFO}
+        compact
       />
     </div>
   );
@@ -888,6 +894,7 @@ function WebhookForm({ draft, onChange }: { draft: WebhookDraft; onChange: (draf
         selected={draft.events}
         onChange={(events) => onChange({ ...draft, events })}
         info={WEBHOOK_EVENT_INFO}
+        compact
       />
     </div>
   );
@@ -920,35 +927,36 @@ function ExternalIntegrationForm({
   };
 
   return (
-    <div className="space-y-3">
-      <label className="block">
-        <span className="label">Servis tipi</span>
-        <select
-          className="input mt-1"
-          value={draft.service_type}
-          onChange={(event) => changeType(event.target.value as ServiceType)}
-        >
-          {Object.entries(SERVICE_TYPE_INFO).map(([key, item]) => (
-            <option key={key} value={key}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="block">
+          <span className="label">Servis tipi</span>
+          <select
+            className="input mt-1"
+            value={draft.service_type}
+            onChange={(event) => changeType(event.target.value as ServiceType)}
+          >
+            {Object.entries(SERVICE_TYPE_INFO).map(([key, item]) => (
+              <option key={key} value={key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="label">Bağlantı adı</span>
+          <input
+            className="input mt-1"
+            value={draft.name}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            placeholder={preset.label}
+          />
+        </label>
+      </div>
 
       <InfoLine>{preset.desc}</InfoLine>
 
-      <label className="block">
-        <span className="label">Bağlantı adı</span>
-        <input
-          className="input mt-1"
-          value={draft.name}
-          onChange={(event) => onChange({ ...draft, name: event.target.value })}
-          placeholder={preset.label}
-        />
-      </label>
-
-      <div className="grid grid-cols-1 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="block">
           <span className="label">API base URL</span>
           <input
@@ -1045,27 +1053,28 @@ function ExternalIntegrationForm({
         </label>
       </div>
 
-      <label className="block">
-        <span className="label">Not</span>
-        <textarea
-          className="input mt-1 resize-none"
-          rows={2}
-          value={draft.config.notes}
-          onChange={(event) =>
-            onChange({ ...draft, config: { ...draft.config, notes: event.target.value } })
-          }
-          placeholder="Bu bağlantı hangi akışta kullanılacak?"
-        />
-      </label>
-
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={draft.is_active}
-          onChange={(event) => onChange({ ...draft, is_active: event.target.checked })}
-        />
-        Aktif
-      </label>
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_80px] gap-2 items-end">
+        <label className="block">
+          <span className="label">Not</span>
+          <textarea
+            className="input mt-1 resize-none"
+            rows={2}
+            value={draft.config.notes}
+            onChange={(event) =>
+              onChange({ ...draft, config: { ...draft.config, notes: event.target.value } })
+            }
+            placeholder="Bu bağlantı hangi akışta kullanılacak?"
+          />
+        </label>
+        <label className="flex h-11 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={draft.is_active}
+            onChange={(event) => onChange({ ...draft, is_active: event.target.checked })}
+          />
+          Aktif
+        </label>
+      </div>
     </div>
   );
 }
@@ -1075,11 +1084,13 @@ function CheckboxGrid({
   selected,
   onChange,
   info,
+  compact,
 }: {
   items: string[];
   selected: string[];
   onChange: (items: string[]) => void;
   info?: Record<string, { label: string; desc: string }>;
+  compact?: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1103,8 +1114,13 @@ function CheckboxGrid({
             <span className="mt-0.5 block font-mono text-[10px] text-muted break-all">
               {item}
             </span>
-            {info?.[item]?.desc && (
+            {info?.[item]?.desc && !compact && (
               <span className="mt-1 block text-[11px] leading-snug text-muted">
+                {info[item].desc}
+              </span>
+            )}
+            {info?.[item]?.desc && compact && (
+              <span className="mt-0.5 block truncate text-[11px] text-muted" title={info[item].desc}>
                 {info[item].desc}
               </span>
             )}
