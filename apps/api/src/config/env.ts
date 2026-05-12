@@ -34,6 +34,10 @@ const envSchema = z.object({
     .string()
     .min(32, 'NFC_SIGNING_SECRET en az 32 karakter olmalı')
     .default('damga-dev-default-secret-change-in-prod-please'),
+  INTEGRATION_ENCRYPTION_KEY: z
+    .string()
+    .min(32, 'INTEGRATION_ENCRYPTION_KEY en az 32 karakter olmalı')
+    .optional(),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
@@ -65,6 +69,7 @@ const fallback = {
   SUPPORT_EMAIL: 'destek@deploi.net',
   KVKK_EMAIL: 'kvkk@deploi.net',
   NFC_SIGNING_SECRET: 'damga-dev-default-secret-change-in-prod-please',
+  INTEGRATION_ENCRYPTION_KEY: undefined,
   RATE_LIMIT_WINDOW_MS: 60_000,
   RATE_LIMIT_MAX: 120,
   VAPID_SUBJECT: 'mailto:noreply@deploi.net',

@@ -18,18 +18,36 @@ const serviceTypeSchema = z.enum([
   'custom',
 ]);
 
+const configValueSchema = z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]);
+const blockedConfigKeyPattern = /(api[_-]?key|secret|token|password|credential|private[_-]?key)/i;
+const configSchema = z
+  .record(z.string().min(1).max(64), configValueSchema)
+  .refine((value) => Object.keys(value).length <= 50, 'En fazla 50 config alanı saklanabilir')
+  .refine(
+    (value) => Object.keys(value).every((key) => !blockedConfigKeyPattern.test(key)),
+    'Secret veya token değerleri config içinde değil secrets içinde gönderilmelidir',
+  );
+const secretFieldNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_.:-]+$/, 'Secret alan adı sadece harf, rakam, _, ., :, - içerebilir');
+const secretsSchema = z
+  .record(secretFieldNameSchema, z.string().min(1).max(20_000))
+  .refine((value) => Object.keys(value).length <= 20, 'En fazla 20 secret alanı saklanabilir');
+
 const externalIntegrationSchema = z.object({
   service_type: serviceTypeSchema,
   name: z.string().min(2).max(100),
   base_url: z.string().url().optional().nullable(),
   docs_url: z.string().url().optional().nullable(),
-  config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
-  secrets: z.record(z.string(), z.string().min(1)).default({}),
+  config: configSchema.default({}),
+  secrets: secretsSchema.default({}),
   is_active: z.boolean().default(true),
 });
 
 const updateExternalIntegrationSchema = externalIntegrationSchema.partial().extend({
-  secrets: z.record(z.string(), z.string().min(1)).optional(),
+  secrets: secretsSchema.optional(),
 });
 
 integrationsRouter.get(
@@ -132,7 +150,7 @@ integrationsRouter.post(
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
       const input = externalIntegrationSchema.parse(req.body);
       const encryptedSecrets = encryptSecrets(input.secrets);
-      const secretFields = Object.keys(input.secrets);
+      const secretFields = Object.keys(encryptedSecrets);
 
       const [created] = await getDb()
         .insert(externalIntegrations)
@@ -270,7 +288,10 @@ function encryptSecrets(secrets: Record<string, string>) {
 }
 
 function encryptSecret(value: string) {
-  const key = crypto.createHash('sha256').update(env.NFC_SIGNING_SECRET).digest();
+  const keyMaterial =
+    env.INTEGRATION_ENCRYPTION_KEY ??
+    `damga.integration.v1:${env.NFC_SIGNING_SECRET}`;
+  const key = crypto.createHash('sha256').update(keyMaterial).digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);

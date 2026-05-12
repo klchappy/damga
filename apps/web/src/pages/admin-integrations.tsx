@@ -363,7 +363,7 @@ export function AdminIntegrationsPage() {
 
   const createExternal = useMutation({
     mutationFn: async (draft: ExternalIntegrationDraft) =>
-      api.post('/integrations/external', externalDraftPayload(draft, true)),
+      api.post('/integrations/external', externalDraftPayload(draft)),
     onSuccess: () => {
       setNewExternal(defaultExternalDraft);
       invalidateAll(qc);
@@ -374,7 +374,7 @@ export function AdminIntegrationsPage() {
 
   const updateExternal = useMutation({
     mutationFn: async ({ id, draft }: { id: string; draft: ExternalIntegrationDraft }) =>
-      api.patch(`/integrations/external/${id}`, externalDraftPayload(draft, false)),
+      api.patch(`/integrations/external/${id}`, externalDraftPayload(draft)),
     onSuccess: () => {
       setEditingExternalId(null);
       invalidateAll(qc);
@@ -1253,11 +1253,11 @@ function externalToDraft(row: ExternalIntegrationRow): ExternalIntegrationDraft 
   };
 }
 
-function externalDraftPayload(draft: ExternalIntegrationDraft, includeEmptySecrets: boolean) {
+function externalDraftPayload(draft: ExternalIntegrationDraft) {
   const secrets = Object.fromEntries(
-    Object.entries(draft.secrets).filter(([, value]) =>
-      includeEmptySecrets ? value.trim().length > 0 : value.trim().length > 0,
-    ),
+    Object.entries(draft.secrets)
+      .map(([key, value]) => [key, value.trim()] as const)
+      .filter(([, value]) => value.length > 0),
   );
 
   return {
