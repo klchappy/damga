@@ -5,7 +5,10 @@ import {
   Activity,
   CheckCircle2,
   Copy,
+  Edit3,
+  Info,
   Key,
+  Link as LinkIcon,
   Mail,
   Plug,
   Plus,
@@ -32,6 +35,98 @@ const WEBHOOK_EVENTS = [
   'event.disputed',
   'event.edited',
 ] as const;
+
+const API_SCOPE_INFO: Record<string, { label: string; desc: string }> = {
+  'events:read': {
+    label: 'Damga geçmişini okur',
+    desc: 'Giriş, çıkış, mola ve doğrulama kayıtlarını dış sisteme verir.',
+  },
+  'events:write': {
+    label: 'Damga kaydı oluşturur',
+    desc: 'Yetkili sistemlerin DAMGA adına olay kaydı göndermesini sağlar.',
+  },
+  'leaves:read': {
+    label: 'İzinleri okur',
+    desc: 'İzin talepleri, tarihleri ve onay durumlarını dış sisteme verir.',
+  },
+  'leaves:write': {
+    label: 'İzinleri yönetir',
+    desc: 'Harici sistem üzerinden izin talebi oluşturma veya güncelleme izni verir.',
+  },
+  'users:read': {
+    label: 'Kullanıcıları okur',
+    desc: 'Çalışan, rol, departman ve temel profil bilgilerini dış sisteme verir.',
+  },
+  'users:write': {
+    label: 'Kullanıcıları yönetir',
+    desc: 'Harici sistemden çalışan bilgisi oluşturma veya güncelleme izni verir.',
+  },
+  'locations:read': {
+    label: 'Lokasyonları okur',
+    desc: 'Şube, konum ve doğrulama alanı bilgilerini dış sisteme verir.',
+  },
+  'locations:write': {
+    label: 'Lokasyonları yönetir',
+    desc: 'Harici sistemden şube veya lokasyon ayarı güncellemeye izin verir.',
+  },
+  'webhooks:manage': {
+    label: 'Webhookları yönetir',
+    desc: 'Dış sisteme olay bildirimi gönderen webhook ayarlarını yönetebilir.',
+  },
+  'reports:read': {
+    label: 'Raporları okur',
+    desc: 'Devam, performans ve operasyon raporlarını dış sisteme verir.',
+  },
+};
+
+const WEBHOOK_EVENT_INFO: Record<string, { label: string; desc: string }> = {
+  'check_in.created': { label: 'Giriş oluşturuldu', desc: 'Çalışan giriş yaptığında bildirim gönderir.' },
+  'check_out.created': { label: 'Çıkış oluşturuldu', desc: 'Çalışan çıkış yaptığında bildirim gönderir.' },
+  'leave.created': { label: 'İzin talebi', desc: 'Yeni izin talebi oluşturulduğunda bildirim gönderir.' },
+  'leave.approved': { label: 'İzin onaylandı', desc: 'İzin onaylandığında dış sisteme bilgi verir.' },
+  'leave.rejected': { label: 'İzin reddedildi', desc: 'İzin reddedildiğinde dış sisteme bilgi verir.' },
+  'mood.created': { label: 'Mood kaydı', desc: 'Çalışan duygu durumu kaydı gönderdiğinde bildirim üretir.' },
+  'announcement.published': { label: 'Duyuru yayınlandı', desc: 'Yeni duyuru yayınlandığında dış sistemi bilgilendirir.' },
+  'user.created': { label: 'Kullanıcı oluşturuldu', desc: 'Yeni çalışan eklendiğinde bildirim gönderir.' },
+  'user.deactivated': { label: 'Kullanıcı pasifleştirildi', desc: 'Çalışan pasife alındığında bildirim gönderir.' },
+  'event.disputed': { label: 'Kayıt itirazlı', desc: 'Damga kaydı incelemeye düştüğünde bildirim gönderir.' },
+  'event.edited': { label: 'Kayıt düzenlendi', desc: 'Damga kaydı değiştirildiğinde dış sistemi bilgilendirir.' },
+};
+
+const SERVICE_TYPE_INFO = {
+  ai: {
+    label: 'AI API',
+    desc: 'OpenAI, Anthropic veya benzeri yapay zeka servis bağlantısı.',
+    placeholders: { base_url: 'https://api.openai.com/v1', docs_url: 'https://platform.openai.com/docs' },
+  },
+  email: {
+    label: 'E-posta servisi',
+    desc: 'Resend, Sendgrid veya SMTP tabanlı mail servisi bağlantısı.',
+    placeholders: { base_url: 'https://api.resend.com', docs_url: 'https://resend.com/docs' },
+  },
+  storage: {
+    label: 'Dosya depolama',
+    desc: 'S3, Supabase Storage veya benzeri dosya saklama servisi.',
+    placeholders: { base_url: 'https://example.supabase.co/storage/v1', docs_url: 'https://supabase.com/docs' },
+  },
+  accounting: {
+    label: 'Muhasebe',
+    desc: 'Logo, Mikro, Paraşüt veya özel muhasebe entegrasyon bilgisi.',
+    placeholders: { base_url: 'https://api.example.com', docs_url: 'https://docs.example.com' },
+  },
+  payroll: {
+    label: 'Bordro',
+    desc: 'Puantaj ve personel verisi aktarılacak bordro sistemi bağlantısı.',
+    placeholders: { base_url: 'https://payroll.example.com/api', docs_url: 'https://payroll.example.com/docs' },
+  },
+  custom: {
+    label: 'Özel servis',
+    desc: 'Müşteriye veya kendi projene ait özel HTTP API bağlantısı.',
+    placeholders: { base_url: 'https://api.example.com', docs_url: 'https://docs.example.com' },
+  },
+} as const;
+
+type ServiceType = keyof typeof SERVICE_TYPE_INFO;
 
 interface IntegrationStatus {
   endpoints: {
@@ -75,6 +170,20 @@ interface WebhookRow {
   created_at: string;
 }
 
+interface ExternalIntegrationRow {
+  id: string;
+  service_type: ServiceType;
+  name: string;
+  base_url: string | null;
+  docs_url: string | null;
+  config: Record<string, string | number | boolean | null>;
+  secret_fields: string[];
+  has_secrets: Record<string, boolean>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 type ApiKeyDraft = {
   name: string;
   scopes: string[];
@@ -85,6 +194,24 @@ type ApiKeyDraft = {
 type WebhookDraft = {
   url: string;
   events: string[];
+  is_active: boolean;
+};
+
+type ExternalIntegrationDraft = {
+  service_type: ServiceType;
+  name: string;
+  base_url: string;
+  docs_url: string;
+  config: {
+    provider: string;
+    model: string;
+    auth_header: string;
+    notes: string;
+  };
+  secrets: {
+    api_key: string;
+    client_secret: string;
+  };
   is_active: boolean;
 };
 
@@ -101,16 +228,37 @@ const defaultWebhookDraft: WebhookDraft = {
   is_active: true,
 };
 
+const defaultExternalDraft: ExternalIntegrationDraft = {
+  service_type: 'ai',
+  name: 'AI API',
+  base_url: 'https://api.openai.com/v1',
+  docs_url: 'https://platform.openai.com/docs',
+  config: {
+    provider: 'OpenAI',
+    model: '',
+    auth_header: 'Authorization: Bearer <API_KEY>',
+    notes: '',
+  },
+  secrets: {
+    api_key: '',
+    client_secret: '',
+  },
+  is_active: true,
+};
+
 export function AdminIntegrationsPage() {
   const qc = useQueryClient();
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdWebhookSecret, setCreatedWebhookSecret] = useState<string | null>(null);
   const [newKey, setNewKey] = useState<ApiKeyDraft>(defaultKeyDraft);
   const [newWebhook, setNewWebhook] = useState<WebhookDraft>(defaultWebhookDraft);
+  const [newExternal, setNewExternal] = useState<ExternalIntegrationDraft>(defaultExternalDraft);
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
   const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
+  const [editingExternalId, setEditingExternalId] = useState<string | null>(null);
   const [keyDrafts, setKeyDrafts] = useState<Record<string, ApiKeyDraft>>({});
   const [webhookDrafts, setWebhookDrafts] = useState<Record<string, WebhookDraft>>({});
+  const [externalDrafts, setExternalDrafts] = useState<Record<string, ExternalIntegrationDraft>>({});
 
   const statusQuery = useQuery<IntegrationStatus>({
     queryKey: ['admin', 'integrations', 'status'],
@@ -125,6 +273,11 @@ export function AdminIntegrationsPage() {
   const webhooksQuery = useQuery<{ items: WebhookRow[] }>({
     queryKey: ['admin', 'webhooks'],
     queryFn: async () => (await api.get('/webhooks')).data,
+  });
+
+  const externalQuery = useQuery<{ items: ExternalIntegrationRow[] }>({
+    queryKey: ['admin', 'external-integrations'],
+    queryFn: async () => (await api.get('/integrations/external')).data,
   });
 
   const createKey = useMutation({
@@ -208,9 +361,45 @@ export function AdminIntegrationsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const loading = statusQuery.isLoading || apiKeysQuery.isLoading || webhooksQuery.isLoading;
+  const createExternal = useMutation({
+    mutationFn: async (draft: ExternalIntegrationDraft) =>
+      api.post('/integrations/external', externalDraftPayload(draft, true)),
+    onSuccess: () => {
+      setNewExternal(defaultExternalDraft);
+      invalidateAll(qc);
+      toast.success('Dış servis bağlantısı eklendi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const updateExternal = useMutation({
+    mutationFn: async ({ id, draft }: { id: string; draft: ExternalIntegrationDraft }) =>
+      api.patch(`/integrations/external/${id}`, externalDraftPayload(draft, false)),
+    onSuccess: () => {
+      setEditingExternalId(null);
+      invalidateAll(qc);
+      toast.success('Dış servis bağlantısı güncellendi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteExternal = useMutation({
+    mutationFn: async (id: string) => api.delete(`/integrations/external/${id}`),
+    onSuccess: () => {
+      invalidateAll(qc);
+      toast.success('Dış servis bağlantısı silindi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const loading =
+    statusQuery.isLoading ||
+    apiKeysQuery.isLoading ||
+    webhooksQuery.isLoading ||
+    externalQuery.isLoading;
   const apiKeys = apiKeysQuery.data?.items ?? [];
   const webhooks = webhooksQuery.data?.items ?? [];
+  const externalIntegrations = externalQuery.data?.items ?? [];
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -238,6 +427,124 @@ export function AdminIntegrationsPage() {
       </div>
 
       <StatusPanel status={statusQuery.data} />
+
+      <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_390px] gap-4">
+        <div className="card space-y-4">
+          <SectionTitle icon={<LinkIcon className="size-5" />} title="Dış Servis Bağlantıları" />
+          <p className="text-sm text-muted">
+            AI API gibi DAMGA'nın kullanacağı dış servis bilgilerini buradan yönet. Secret
+            değerler kaydedildikten sonra tekrar gösterilmez; değiştirmek için yeni değer girilir.
+          </p>
+          {externalIntegrations.length === 0 ? (
+            <div className="rounded-md border border-dashed border-orange-200 p-4 text-sm text-muted">
+              Henüz dış servis bağlantısı yok. Sağdaki formdan AI API veya özel servis ekleyebilirsin.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {externalIntegrations.map((row) => {
+                const isEditing = editingExternalId === row.id;
+                const draft = externalDrafts[row.id] ?? externalToDraft(row);
+                return (
+                  <div key={row.id} className="rounded-lg border border-orange-100 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium">{row.name}</div>
+                          <span className="chip bg-orange-50 text-orange-700 text-[10px]">
+                            {SERVICE_TYPE_INFO[row.service_type]?.label ?? row.service_type}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted">
+                          {SERVICE_TYPE_INFO[row.service_type]?.desc}
+                        </div>
+                        {row.base_url && <div className="mt-1 font-mono text-xs break-all">{row.base_url}</div>}
+                        {row.secret_fields.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {row.secret_fields.map((field) => (
+                              <span key={field} className="chip bg-success/10 text-success text-[10px]">
+                                {field} kayıtlı
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <StatusBadge active={row.is_active} />
+                    </div>
+
+                    {isEditing && (
+                      <ExternalIntegrationForm
+                        draft={draft}
+                        onChange={(next) =>
+                          setExternalDrafts({ ...externalDrafts, [row.id]: next })
+                        }
+                        editMode
+                      />
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-primary text-sm"
+                            onClick={() => updateExternal.mutate({ id: row.id, draft })}
+                            disabled={updateExternal.isPending || draft.name.trim().length < 2}
+                          >
+                            <Save className="size-4" />
+                            Kaydet
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-outline text-sm"
+                            onClick={() => setEditingExternalId(null)}
+                          >
+                            Vazgeç
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-outline text-sm"
+                          onClick={() => {
+                            setExternalDrafts({ ...externalDrafts, [row.id]: externalToDraft(row) });
+                            setEditingExternalId(row.id);
+                          }}
+                        >
+                          <Edit3 className="size-4" />
+                          Düzenle
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-ghost text-sm text-danger"
+                        onClick={() => confirm(`${row.name} silinsin mi?`) && deleteExternal.mutate(row.id)}
+                        disabled={deleteExternal.isPending}
+                      >
+                        <Trash2 className="size-4" />
+                        Sil
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card space-y-4">
+          <SectionTitle icon={<Plus className="size-5" />} title="Yeni Dış Servis" />
+          <ExternalIntegrationForm draft={newExternal} onChange={setNewExternal} />
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => createExternal.mutate(newExternal)}
+            disabled={createExternal.isPending || newExternal.name.trim().length < 2}
+          >
+            <Plus className="size-4" />
+            Bağlantıyı Kaydet
+          </button>
+        </div>
+      </section>
 
       {createdSecret && (
         <SecretBox
@@ -550,6 +857,7 @@ function ApiKeyForm({ draft, onChange }: { draft: ApiKeyDraft; onChange: (draft:
         items={[...API_SCOPES]}
         selected={draft.scopes}
         onChange={(scopes) => onChange({ ...draft, scopes })}
+        info={API_SCOPE_INFO}
       />
     </div>
   );
@@ -579,7 +887,185 @@ function WebhookForm({ draft, onChange }: { draft: WebhookDraft; onChange: (draf
         items={[...WEBHOOK_EVENTS]}
         selected={draft.events}
         onChange={(events) => onChange({ ...draft, events })}
+        info={WEBHOOK_EVENT_INFO}
       />
+    </div>
+  );
+}
+
+function ExternalIntegrationForm({
+  draft,
+  onChange,
+  editMode,
+}: {
+  draft: ExternalIntegrationDraft;
+  onChange: (draft: ExternalIntegrationDraft) => void;
+  editMode?: boolean;
+}) {
+  const preset = SERVICE_TYPE_INFO[draft.service_type];
+
+  const changeType = (serviceType: ServiceType) => {
+    const nextPreset = SERVICE_TYPE_INFO[serviceType];
+    onChange({
+      ...draft,
+      service_type: serviceType,
+      name: draft.name || nextPreset.label,
+      base_url: nextPreset.placeholders.base_url,
+      docs_url: nextPreset.placeholders.docs_url,
+      config: {
+        ...draft.config,
+        provider: serviceType === 'ai' ? draft.config.provider || 'OpenAI' : draft.config.provider,
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="label">Servis tipi</span>
+        <select
+          className="input mt-1"
+          value={draft.service_type}
+          onChange={(event) => changeType(event.target.value as ServiceType)}
+        >
+          {Object.entries(SERVICE_TYPE_INFO).map(([key, item]) => (
+            <option key={key} value={key}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <InfoLine>{preset.desc}</InfoLine>
+
+      <label className="block">
+        <span className="label">Bağlantı adı</span>
+        <input
+          className="input mt-1"
+          value={draft.name}
+          onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          placeholder={preset.label}
+        />
+      </label>
+
+      <div className="grid grid-cols-1 gap-2">
+        <label className="block">
+          <span className="label">API base URL</span>
+          <input
+            className="input mt-1"
+            value={draft.base_url}
+            onChange={(event) => onChange({ ...draft, base_url: event.target.value })}
+            placeholder={preset.placeholders.base_url}
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            İsteklerin gönderileceği ana API adresi.
+          </p>
+        </label>
+        <label className="block">
+          <span className="label">Doküman / yönetim linki</span>
+          <input
+            className="input mt-1"
+            value={draft.docs_url}
+            onChange={(event) => onChange({ ...draft, docs_url: event.target.value })}
+            placeholder={preset.placeholders.docs_url}
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            Sonradan kontrol etmek için servis dokümanı veya panel adresi.
+          </p>
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="block">
+          <span className="label">Provider</span>
+          <input
+            className="input mt-1"
+            value={draft.config.provider}
+            onChange={(event) =>
+              onChange({ ...draft, config: { ...draft.config, provider: event.target.value } })
+            }
+            placeholder="OpenAI"
+          />
+        </label>
+        <label className="block">
+          <span className="label">Model / servis adı</span>
+          <input
+            className="input mt-1"
+            value={draft.config.model}
+            onChange={(event) =>
+              onChange({ ...draft, config: { ...draft.config, model: event.target.value } })
+            }
+            placeholder="gpt-4.1-mini"
+          />
+        </label>
+      </div>
+
+      <label className="block">
+        <span className="label">Auth header formatı</span>
+        <input
+          className="input mt-1"
+          value={draft.config.auth_header}
+          onChange={(event) =>
+            onChange({ ...draft, config: { ...draft.config, auth_header: event.target.value } })
+          }
+          placeholder="Authorization: Bearer <API_KEY>"
+        />
+        <p className="mt-1 text-[11px] text-muted">
+          DAMGA'nın bu servise bağlanırken anahtarı hangi header formatıyla kullanacağını açıklar.
+        </p>
+      </label>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="block">
+          <span className="label">API key / token</span>
+          <input
+            className="input mt-1"
+            type="password"
+            value={draft.secrets.api_key}
+            onChange={(event) =>
+              onChange({ ...draft, secrets: { ...draft.secrets, api_key: event.target.value } })
+            }
+            placeholder={editMode ? 'Değiştirmek için yeni değer gir' : 'sk-...'}
+          />
+        </label>
+        <label className="block">
+          <span className="label">Client secret</span>
+          <input
+            className="input mt-1"
+            type="password"
+            value={draft.secrets.client_secret}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                secrets: { ...draft.secrets, client_secret: event.target.value },
+              })
+            }
+            placeholder={editMode ? 'Opsiyonel yeni değer' : 'Opsiyonel'}
+          />
+        </label>
+      </div>
+
+      <label className="block">
+        <span className="label">Not</span>
+        <textarea
+          className="input mt-1 resize-none"
+          rows={2}
+          value={draft.config.notes}
+          onChange={(event) =>
+            onChange({ ...draft, config: { ...draft.config, notes: event.target.value } })
+          }
+          placeholder="Bu bağlantı hangi akışta kullanılacak?"
+        />
+      </label>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={draft.is_active}
+          onChange={(event) => onChange({ ...draft, is_active: event.target.checked })}
+        />
+        Aktif
+      </label>
     </div>
   );
 }
@@ -588,16 +1074,19 @@ function CheckboxGrid({
   items,
   selected,
   onChange,
+  info,
 }: {
   items: string[];
   selected: string[];
   onChange: (items: string[]) => void;
+  info?: Record<string, { label: string; desc: string }>;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
       {items.map((item) => (
-        <label key={item} className="flex items-center gap-2 rounded-md border border-orange-100 p-2 text-xs">
+        <label key={item} className="flex items-start gap-2 rounded-md border border-orange-100 p-2 text-xs">
           <input
+            className="mt-0.5"
             type="checkbox"
             checked={selected.includes(item)}
             onChange={(e) => {
@@ -607,9 +1096,30 @@ function CheckboxGrid({
               onChange([...new Set(next)]);
             }}
           />
-          <span className="font-mono break-all">{item}</span>
+          <span className="min-w-0">
+            <span className="block font-medium text-ink">
+              {info?.[item]?.label ?? item}
+            </span>
+            <span className="mt-0.5 block font-mono text-[10px] text-muted break-all">
+              {item}
+            </span>
+            {info?.[item]?.desc && (
+              <span className="mt-1 block text-[11px] leading-snug text-muted">
+                {info[item].desc}
+              </span>
+            )}
+          </span>
         </label>
       ))}
+    </div>
+  );
+}
+
+function InfoLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2 rounded-md border border-orange-100 bg-orange-50/60 p-2 text-xs text-muted">
+      <Info className="mt-0.5 size-3.5 shrink-0 text-orange-600" />
+      <span>{children}</span>
     </div>
   );
 }
@@ -707,10 +1217,54 @@ function webhookToDraft(row: WebhookRow): WebhookDraft {
   };
 }
 
+function externalToDraft(row: ExternalIntegrationRow): ExternalIntegrationDraft {
+  return {
+    service_type: row.service_type,
+    name: row.name,
+    base_url: row.base_url ?? '',
+    docs_url: row.docs_url ?? '',
+    config: {
+      provider: String(row.config.provider ?? ''),
+      model: String(row.config.model ?? ''),
+      auth_header: String(row.config.auth_header ?? 'Authorization: Bearer <API_KEY>'),
+      notes: String(row.config.notes ?? ''),
+    },
+    secrets: {
+      api_key: '',
+      client_secret: '',
+    },
+    is_active: row.is_active,
+  };
+}
+
+function externalDraftPayload(draft: ExternalIntegrationDraft, includeEmptySecrets: boolean) {
+  const secrets = Object.fromEntries(
+    Object.entries(draft.secrets).filter(([, value]) =>
+      includeEmptySecrets ? value.trim().length > 0 : value.trim().length > 0,
+    ),
+  );
+
+  return {
+    service_type: draft.service_type,
+    name: draft.name.trim(),
+    base_url: draft.base_url.trim() || null,
+    docs_url: draft.docs_url.trim() || null,
+    config: {
+      provider: draft.config.provider.trim(),
+      model: draft.config.model.trim(),
+      auth_header: draft.config.auth_header.trim(),
+      notes: draft.config.notes.trim(),
+    },
+    secrets,
+    is_active: draft.is_active,
+  };
+}
+
 function invalidateAll(qc: QueryClientLike) {
   void qc.invalidateQueries({ queryKey: ['admin', 'integrations'] });
   void qc.invalidateQueries({ queryKey: ['admin', 'api-keys'] });
   void qc.invalidateQueries({ queryKey: ['admin', 'webhooks'] });
+  void qc.invalidateQueries({ queryKey: ['admin', 'external-integrations'] });
 }
 
 type QueryClientLike = Pick<ReturnType<typeof useQueryClient>, 'invalidateQueries'>;

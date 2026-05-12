@@ -114,6 +114,39 @@ export const webhookDeliveries = pgTable(
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 
 /**
+ * external_integrations — Damga'nın dış servisleri kullanması için saklanan bağlantılar.
+ * Örn: AI API, muhasebe, bordro, özel HTTP servisleri. Secret alanlar şifrelenmiş
+ * JSON içinde tutulur ve API yanıtlarında raw değer olarak dönmez.
+ */
+export const externalIntegrations = pgTable(
+  'external_integrations',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    org_id: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    service_type: text('service_type').notNull(),
+    name: text('name').notNull(),
+    base_url: text('base_url'),
+    docs_url: text('docs_url'),
+    config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+    encrypted_secrets: jsonb('encrypted_secrets').notNull().default(sql`'{}'::jsonb`),
+    secret_fields: text('secret_fields').array().notNull().default(sql`ARRAY[]::text[]`),
+    is_active: boolean('is_active').notNull().default(true),
+    created_by: uuid('created_by').references(() => users.id),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    orgIdx: index('idx_external_integrations_org').on(table.org_id),
+    typeIdx: index('idx_external_integrations_type').on(table.service_type),
+  }),
+);
+
+export type ExternalIntegration = typeof externalIntegrations.$inferSelect;
+export type NewExternalIntegration = typeof externalIntegrations.$inferInsert;
+
+/**
  * audit_log — admin/manager işlemlerinin denetim izi.
  */
 export const auditLog = pgTable(

@@ -113,6 +113,13 @@
       "when": 1778485119758,
       "tag": "0015_thankful_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1778587200000,
+      "tag": "0016_external_integrations",
+      "breakpoints": true
     }
   ]
 }

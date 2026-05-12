@@ -1,11 +1,36 @@
 import { Router } from 'express';
-import { and, count, eq } from 'drizzle-orm';
-import { getDb, apiKeys, webhooks } from '@damga/db';
+import crypto from 'node:crypto';
+import { and, count, desc, eq } from 'drizzle-orm';
+import { getDb, apiKeys, webhooks, externalIntegrations } from '@damga/db';
+import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 import { env, isConfigured } from '../config/env';
 
 export const integrationsRouter = Router();
+
+const serviceTypeSchema = z.enum([
+  'ai',
+  'email',
+  'storage',
+  'accounting',
+  'payroll',
+  'custom',
+]);
+
+const externalIntegrationSchema = z.object({
+  service_type: serviceTypeSchema,
+  name: z.string().min(2).max(100),
+  base_url: z.string().url().optional().nullable(),
+  docs_url: z.string().url().optional().nullable(),
+  config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
+  secrets: z.record(z.string(), z.string().min(1)).default({}),
+  is_active: z.boolean().default(true),
+});
+
+const updateExternalIntegrationSchema = externalIntegrationSchema.partial().extend({
+  secrets: z.record(z.string(), z.string().min(1)).optional(),
+});
 
 integrationsRouter.get(
   '/integrations/status',
@@ -60,3 +85,199 @@ integrationsRouter.get(
     }
   },
 );
+
+integrationsRouter.get(
+  '/integrations/external',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+
+      const rows = await getDb()
+        .select({
+          id: externalIntegrations.id,
+          service_type: externalIntegrations.service_type,
+          name: externalIntegrations.name,
+          base_url: externalIntegrations.base_url,
+          docs_url: externalIntegrations.docs_url,
+          config: externalIntegrations.config,
+          secret_fields: externalIntegrations.secret_fields,
+          is_active: externalIntegrations.is_active,
+          created_at: externalIntegrations.created_at,
+          updated_at: externalIntegrations.updated_at,
+        })
+        .from(externalIntegrations)
+        .where(eq(externalIntegrations.org_id, req.authOrgId))
+        .orderBy(desc(externalIntegrations.created_at));
+
+      res.json({
+        items: rows.map((row) => ({
+          ...row,
+          has_secrets: Object.fromEntries((row.secret_fields ?? []).map((field) => [field, true])),
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+integrationsRouter.post(
+  '/integrations/external',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const input = externalIntegrationSchema.parse(req.body);
+      const encryptedSecrets = encryptSecrets(input.secrets);
+      const secretFields = Object.keys(input.secrets);
+
+      const [created] = await getDb()
+        .insert(externalIntegrations)
+        .values({
+          org_id: req.authOrgId,
+          service_type: input.service_type,
+          name: input.name,
+          base_url: input.base_url ?? null,
+          docs_url: input.docs_url ?? null,
+          config: input.config,
+          encrypted_secrets: encryptedSecrets,
+          secret_fields: secretFields,
+          is_active: input.is_active,
+          created_by: req.authUserId,
+        })
+        .returning({
+          id: externalIntegrations.id,
+          service_type: externalIntegrations.service_type,
+          name: externalIntegrations.name,
+          base_url: externalIntegrations.base_url,
+          docs_url: externalIntegrations.docs_url,
+          config: externalIntegrations.config,
+          secret_fields: externalIntegrations.secret_fields,
+          is_active: externalIntegrations.is_active,
+          created_at: externalIntegrations.created_at,
+          updated_at: externalIntegrations.updated_at,
+        });
+
+      res.status(201).json({
+        integration: {
+          ...created,
+          has_secrets: Object.fromEntries(secretFields.map((field) => [field, true])),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+integrationsRouter.patch(
+  '/integrations/external/:id',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const input = updateExternalIntegrationSchema.parse(req.body);
+
+      const [current] = await getDb()
+        .select({
+          id: externalIntegrations.id,
+          encrypted_secrets: externalIntegrations.encrypted_secrets,
+          secret_fields: externalIntegrations.secret_fields,
+        })
+        .from(externalIntegrations)
+        .where(and(eq(externalIntegrations.id, id), eq(externalIntegrations.org_id, req.authOrgId)));
+      if (!current) throw new HttpError(404, 'Entegrasyon bulunamadi');
+
+      const patch: Partial<typeof externalIntegrations.$inferInsert> = {
+        updated_at: new Date(),
+      };
+      if (input.service_type !== undefined) patch.service_type = input.service_type;
+      if (input.name !== undefined) patch.name = input.name;
+      if (input.base_url !== undefined) patch.base_url = input.base_url ?? null;
+      if (input.docs_url !== undefined) patch.docs_url = input.docs_url ?? null;
+      if (input.config !== undefined) patch.config = input.config;
+      if (input.is_active !== undefined) patch.is_active = input.is_active;
+      if (input.secrets !== undefined && Object.keys(input.secrets).length > 0) {
+        patch.encrypted_secrets = {
+          ...(current.encrypted_secrets as Record<string, string>),
+          ...encryptSecrets(input.secrets),
+        };
+        patch.secret_fields = [
+          ...new Set([...(current.secret_fields ?? []), ...Object.keys(input.secrets)]),
+        ];
+      }
+
+      const [updated] = await getDb()
+        .update(externalIntegrations)
+        .set(patch)
+        .where(and(eq(externalIntegrations.id, id), eq(externalIntegrations.org_id, req.authOrgId)))
+        .returning({
+          id: externalIntegrations.id,
+          service_type: externalIntegrations.service_type,
+          name: externalIntegrations.name,
+          base_url: externalIntegrations.base_url,
+          docs_url: externalIntegrations.docs_url,
+          config: externalIntegrations.config,
+          secret_fields: externalIntegrations.secret_fields,
+          is_active: externalIntegrations.is_active,
+          created_at: externalIntegrations.created_at,
+          updated_at: externalIntegrations.updated_at,
+        });
+
+      res.json({
+        integration: {
+          ...updated,
+          has_secrets: Object.fromEntries((updated?.secret_fields ?? []).map((field) => [field, true])),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+integrationsRouter.delete(
+  '/integrations/external/:id',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const [deleted] = await getDb()
+        .delete(externalIntegrations)
+        .where(and(eq(externalIntegrations.id, id), eq(externalIntegrations.org_id, req.authOrgId)))
+        .returning({ id: externalIntegrations.id });
+      if (!deleted) throw new HttpError(404, 'Entegrasyon bulunamadi');
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+function encryptSecrets(secrets: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(secrets)
+      .filter(([, value]) => value.trim().length > 0)
+      .map(([key, value]) => [key, encryptSecret(value)]),
+  );
+}
+
+function encryptSecret(value: string) {
+  const key = crypto.createHash('sha256').update(env.NFC_SIGNING_SECRET).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    encrypted.toString('base64url'),
+  ].join('.');
+}
