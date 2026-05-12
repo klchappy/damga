@@ -33,6 +33,7 @@ import { MyShiftsPage } from '@/pages/my-shifts';
 import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
 import { ManagerAnalyticsPage } from '@/pages/manager-analytics';
 import { AdminBulkImportPage } from '@/pages/admin-bulk-import';
+import { AdminIntegrationsPage } from '@/pages/admin-integrations';
 import { EmployeePageGate } from '@/components/employee-page-gate';
 import { LeavesMinePage } from '@/pages/leaves-mine';
 import { HistoryPage } from '@/pages/history';
@@ -201,6 +202,14 @@ function AppInner() {
           element={
             <RoleGate roles={['admin', 'owner']}>
               <AdminApiKeysPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/integrations"
+          element={
+            <RoleGate roles={['admin', 'owner']}>
+              <AdminIntegrationsPage />
             </RoleGate>
           }
         />

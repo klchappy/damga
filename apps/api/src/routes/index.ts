@@ -22,6 +22,7 @@ import { shiftsRouter } from './shifts';
 import { notificationsRouter } from './notifications';
 import { analyticsRouter } from './analytics';
 import { platformRouter } from './platform';
+import { integrationsRouter } from './integrations';
 import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
@@ -52,6 +53,7 @@ apiRouter.use(shiftsRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(analyticsRouter);
 apiRouter.use(platformRouter);
+apiRouter.use(integrationsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({
@@ -108,8 +110,9 @@ apiRouter.get('/', (_req, res) => {
         'GET /leaves, POST /leaves, PATCH /leaves/:id/approve|reject',
         'GET /moods/today, /moods/team, POST /moods',
         'POST /statuses, DELETE /statuses/current, GET /statuses/team',
-        'GET /api-keys, POST /api-keys, DELETE /api-keys/:id',
+        'GET /api-keys, POST /api-keys, PATCH/DELETE /api-keys/:id',
         'GET /webhooks, POST /webhooks, /webhooks/:id/deliveries|test',
+        'GET /integrations/status',
         'GET /reports/attendance, /reports/payroll, /export/events',
         'GET /reports/monthly-summary (BORDRO 3-1: attendance+izin+overtime tek CSV)',
         'GET /reports/audit-export (KVKK: hash chain doğrulamalı tüm event log)',

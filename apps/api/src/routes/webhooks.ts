@@ -1,13 +1,18 @@
 import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
+import { z } from 'zod';
 import { createWebhookSchema } from '@damga/shared';
 import { generateWebhookSecret } from '@damga/verification';
 import { getDb, webhooks, webhookDeliveries } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { dispatchWebhook } from '../modules/webhook-delivery';
+import { deliverWebhook } from '../modules/webhook-delivery';
 
 export const webhooksRouter = Router();
+
+const updateWebhookSchema = createWebhookSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
 
 webhooksRouter.get(
   '/webhooks',
@@ -79,6 +84,31 @@ webhooksRouter.delete(
   },
 );
 
+webhooksRouter.patch(
+  '/webhooks/:id',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const id = String(req.params.id ?? '').trim();
+      const input = updateWebhookSchema.parse(req.body);
+
+      const [w] = await getDb()
+        .update(webhooks)
+        .set(input)
+        .where(and(eq(webhooks.id, id), eq(webhooks.org_id, req.authOrgId)))
+        .returning();
+
+      if (!w) throw new HttpError(404, 'Bulunamadi');
+      const { secret: _secret, ...safe } = w;
+      res.json({ webhook: safe });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 webhooksRouter.get(
   '/webhooks/:id/deliveries',
   requireAuth,
@@ -119,10 +149,9 @@ webhooksRouter.post(
         .from(webhooks)
         .where(and(eq(webhooks.id, id), eq(webhooks.org_id, req.authOrgId)));
       if (!w) throw new HttpError(404, "Bulunamadı");
-      void dispatchWebhook({
-        orgId: req.authOrgId,
-        eventType: 'test.ping',
-        payload: { message: 'Damga webhook test', from: 'api' },
+      void deliverWebhook(w.id, w.url, w.secret, 'test.ping', {
+        message: 'Damga webhook test',
+        from: 'api',
       });
       res.json({ ok: true, dispatched: true });
     } catch (err) {

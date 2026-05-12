@@ -128,6 +128,12 @@ export function AdminHomePage() {
           desc="Bordro, Slack, TahminIO entegrasyonları için API key + scope yönetimi."
         />
         <AdminCard
+          to="/admin/integrations"
+          icon={<Webhook className="size-6" />}
+          title="Entegrasyonlar"
+          desc="API key, webhook, endpoint ve mail servis durumlarını tek ekrandan kontrol et."
+        />
+        <AdminCard
           to="/manager/reports"
           icon={<Database className="size-6" />}
           title="Raporlar"

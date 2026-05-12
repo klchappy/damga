@@ -23,13 +23,13 @@ export async function dispatchWebhook(args: {
   );
 
   for (const w of matching) {
-    void deliver(w.id, w.url, w.secret, args.eventType, args.payload).catch((e) =>
+    void deliverWebhook(w.id, w.url, w.secret, args.eventType, args.payload).catch((e) =>
       logger.warn({ e, webhookId: w.id }, 'webhook delivery error'),
     );
   }
 }
 
-async function deliver(
+export async function deliverWebhook(
   webhookId: string,
   url: string,
   secret: string,
@@ -82,7 +82,7 @@ async function deliver(
       // Exponential backoff: 5sn, 30sn
       const delay = attempt * attempt * 5_000;
       setTimeout(() => {
-        void deliver(webhookId, url, secret, eventType, payload, attempt + 1).catch(
+        void deliverWebhook(webhookId, url, secret, eventType, payload, attempt + 1).catch(
           (e) => logger.warn({ e, webhookId }, 'retry failed'),
         );
       }, delay);
@@ -114,7 +114,7 @@ async function deliver(
     if (attempt < 3) {
       const delay = attempt * attempt * 5_000;
       setTimeout(() => {
-        void deliver(webhookId, url, secret, eventType, payload, attempt + 1).catch(
+        void deliverWebhook(webhookId, url, secret, eventType, payload, attempt + 1).catch(
           (e) => logger.warn({ e, webhookId }, 'retry failed'),
         );
       }, delay);
