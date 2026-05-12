@@ -107,7 +107,9 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     const header = req.headers.authorization ?? '';
     const apiKeyHeader = req.headers['x-api-key'];
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
-    const apiKeyRaw = (apiKeyHeader as string) || (token?.startsWith('dmg_live_') ? token : null);
+    const apiKeyRaw =
+      (apiKeyHeader as string) ||
+      (token?.startsWith('dmg_live_') || token?.startsWith('dmg_svc_') ? token : null);
 
     // 1) API key auth — iki tür: dmg_live_ (org-admin) veya dmg_svc_ (service-to-service)
     if (apiKeyRaw && (apiKeyRaw.startsWith('dmg_live_') || apiKeyRaw.startsWith('dmg_svc_'))) {
