@@ -1,42 +1,47 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'sonner';
-import { useAuthBoot, useAuthStore } from '@/hooks/use-auth';
-import { AppLayout } from '@/components/layout';
-import { DamgaSplash } from '@/components/splash';
-import { SignInPage } from '@/pages/sign-in';
-import { SignUpPage } from '@/pages/sign-up';
-import { SignUpOrgPage } from '@/pages/sign-up-org';
-import { ApplyOrgPage } from '@/pages/apply-org';
-import { PendingPage } from '@/pages/pending';
-import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
-import { EmployeeHomePage } from '@/pages/employee-home';
-import { ManagerReportsPage } from '@/pages/manager-reports';
-import { AdminLocationsPage } from '@/pages/admin-locations';
-import { AdminTeamPage } from '@/pages/admin-team';
-import { AdminDepartmentsPage } from '@/pages/admin-departments';
-import { AdminApplicationsPage } from '@/pages/admin-applications';
-import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
-import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
-import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
-import { GamificationPage } from '@/pages/gamification';
-import { AdminRedemptionsPage } from '@/pages/admin-redemptions';
-import { AdminShiftsPage } from '@/pages/admin-shifts';
-import { ManagerSchedulePage } from '@/pages/manager-schedule';
-import { AdminOvertimePage } from '@/pages/admin-overtime';
-import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
-import { AdminBulkImportPage } from '@/pages/admin-bulk-import';
-import { AdminIntegrationsPage } from '@/pages/admin-integrations';
-import { EmployeePageGate } from '@/components/employee-page-gate';
-import { MenuPage } from '@/pages/menu';
-import { MenuFeedbackPage } from '@/pages/menu-feedback';
-import { QLandingPage } from '@/pages/q-landing';
-import { AnnouncementsPage } from '@/pages/announcements';
-import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from '@/pages/legal';
-import { ManagerWorkforcePage } from '@/pages/manager-workforce';
-import { MyRecordsPage } from '@/pages/my-records';
-import { SettingsHubPage } from '@/pages/settings-hub';
-import { CookieBanner } from '@/components/cookie-banner';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
+import { useAuthBoot, useAuthStore } from "@/hooks/use-auth";
+import { AppLayout } from "@/components/layout";
+import { DamgaSplash } from "@/components/splash";
+import { SignInPage } from "@/pages/sign-in";
+import { SignUpPage } from "@/pages/sign-up";
+import { SignUpOrgPage } from "@/pages/sign-up-org";
+import { ApplyOrgPage } from "@/pages/apply-org";
+import { PendingPage } from "@/pages/pending";
+import {
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  AuthCallbackPage,
+} from "@/pages/auth-misc";
+import { EmployeeHomePage } from "@/pages/employee-home";
+import { ManagerReportsPage } from "@/pages/manager-reports";
+import { AdminLocationsPage } from "@/pages/admin-locations";
+import { AdminTeamPage } from "@/pages/admin-team";
+import { AdminDepartmentsPage } from "@/pages/admin-departments";
+import { AdminApplicationsPage } from "@/pages/admin-applications";
+import { AdminPendingUsersPage } from "@/pages/admin-pending-users";
+import { AdminPendingReviewsPage } from "@/pages/admin-pending-reviews";
+import { AdminLiveFeedPage } from "@/pages/admin-live-feed";
+import { GamificationPage } from "@/pages/gamification";
+import { AdminRedemptionsPage } from "@/pages/admin-redemptions";
+import { AdminShiftsPage } from "@/pages/admin-shifts";
+import { ManagerSchedulePage } from "@/pages/manager-schedule";
+import { AdminOvertimePage } from "@/pages/admin-overtime";
+import { MyShiftSwapsPage } from "@/pages/my-shift-swaps";
+import { AdminBulkImportPage } from "@/pages/admin-bulk-import";
+import { AdminIntegrationsPage } from "@/pages/admin-integrations";
+import { EmployeePageGate } from "@/components/employee-page-gate";
+import { MenuPage } from "@/pages/menu";
+import { MenuFeedbackPage } from "@/pages/menu-feedback";
+import { QLandingPage } from "@/pages/q-landing";
+import { AnnouncementsPage } from "@/pages/announcements";
+import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
+import { ManagerWorkforcePage } from "@/pages/manager-workforce";
+import { MyRecordsPage } from "@/pages/my-records";
+import { SettingsHubPage } from "@/pages/settings-hub";
+import { CookieBanner } from "@/components/cookie-banner";
+import { useMobileDevice } from "@/hooks/use-mobile-device";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,12 +63,18 @@ function RoleGate({
   roles,
   children,
 }: {
-  roles: Array<'employee' | 'manager' | 'admin' | 'owner'>;
+  roles: Array<"employee" | "manager" | "admin" | "owner">;
   children: React.ReactNode;
 }) {
   const user = useAuthStore((s) => s.user);
   if (!user) return null;
   if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function DesktopOnlyRoute({ children }: { children: React.ReactNode }) {
+  const isMobile = useMobileDevice();
+  if (isMobile) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -103,8 +114,22 @@ function AppInner() {
             </EmployeePageGate>
           }
         />
-        <Route path="profile" element={<Navigate to="/settings" replace />} />
-        <Route path="settings" element={<SettingsHubPage />} />
+        <Route
+          path="profile"
+          element={
+            <DesktopOnlyRoute>
+              <Navigate to="/settings" replace />
+            </DesktopOnlyRoute>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <DesktopOnlyRoute>
+              <SettingsHubPage />
+            </DesktopOnlyRoute>
+          }
+        />
         <Route
           path="leaves"
           element={
@@ -124,9 +149,11 @@ function AppInner() {
         <Route
           path="menu/feedback"
           element={
-            <EmployeePageGate page="menu">
-              <MenuFeedbackPage />
-            </EmployeePageGate>
+            <DesktopOnlyRoute>
+              <EmployeePageGate page="menu">
+                <MenuFeedbackPage />
+              </EmployeePageGate>
+            </DesktopOnlyRoute>
           }
         />
         <Route
@@ -137,46 +164,69 @@ function AppInner() {
             </EmployeePageGate>
           }
         />
-        <Route path="gamification" element={<GamificationPage />} />
+        <Route
+          path="gamification"
+          element={
+            <DesktopOnlyRoute>
+              <GamificationPage />
+            </DesktopOnlyRoute>
+          }
+        />
         <Route
           path="leaderboard"
-          element={<Navigate to="/gamification?tab=ranks" replace />}
+          element={
+            <DesktopOnlyRoute>
+              <Navigate to="/gamification?tab=ranks" replace />
+            </DesktopOnlyRoute>
+          }
         />
         <Route
           path="rewards"
-          element={<Navigate to="/gamification?tab=store" replace />}
+          element={
+            <DesktopOnlyRoute>
+              <Navigate to="/gamification?tab=store" replace />
+            </DesktopOnlyRoute>
+          }
         />
 
         {/* Manager+ */}
         <Route
           path="manager"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <Navigate to="/manager/workforce" replace />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/manager/workforce" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="manager/workforce"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerWorkforcePage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <ManagerWorkforcePage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="manager/team"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <Navigate to="/manager/workforce" replace />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/manager/workforce" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="manager/reports"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerReportsPage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <ManagerReportsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
@@ -185,147 +235,202 @@ function AppInner() {
         <Route
           path="admin"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <Navigate to="/settings?tab=admin" replace />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/settings?tab=admin" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/locations"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminLocationsPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminLocationsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/api-keys"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <Navigate to="/admin/integrations" replace />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/admin/integrations" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/integrations"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminIntegrationsPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminIntegrationsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/team"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminTeamPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminTeamPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/departments"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminDepartmentsPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminDepartmentsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/applications"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminApplicationsPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminApplicationsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/settings"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <Navigate to="/settings?tab=admin" replace />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/settings?tab=admin" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/pending-users"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminPendingUsersPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminPendingUsersPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/pending-reviews"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <AdminPendingReviewsPage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminPendingReviewsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/live-feed"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <AdminLiveFeedPage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminLiveFeedPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/redemptions"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <AdminRedemptionsPage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminRedemptionsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/shifts"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminShiftsPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminShiftsPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="manager/schedule"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerSchedulePage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <ManagerSchedulePage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="admin/overtime"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <AdminOvertimePage />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminOvertimePage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route path="me/records" element={<MyRecordsPage />} />
-        <Route path="me/shifts" element={<Navigate to="/me/records?tab=shifts" replace />} />
-        <Route path="me/shift-swaps" element={<MyShiftSwapsPage />} />
+        <Route
+          path="me/shifts"
+          element={<Navigate to="/me/records?tab=shifts" replace />}
+        />
+        <Route
+          path="me/shift-swaps"
+          element={
+            <DesktopOnlyRoute>
+              <MyShiftSwapsPage />
+            </DesktopOnlyRoute>
+          }
+        />
         <Route
           path="me/monthly-market"
-          element={<Navigate to="/gamification?tab=monthly" replace />}
+          element={
+            <DesktopOnlyRoute>
+              <Navigate to="/gamification?tab=monthly" replace />
+            </DesktopOnlyRoute>
+          }
         />
         <Route
           path="admin/bulk-import"
           element={
-            <RoleGate roles={['admin', 'owner']}>
-              <AdminBulkImportPage />
+            <RoleGate roles={["admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <AdminBulkImportPage />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
         <Route
           path="manager/analytics"
           element={
-            <RoleGate roles={['manager', 'admin', 'owner']}>
-              <Navigate to="/manager/workforce?tab=analytics" replace />
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <Navigate to="/manager/workforce?tab=analytics" replace />
+              </DesktopOnlyRoute>
             </RoleGate>
           }
         />
-        <Route path="platform" element={<Navigate to="/settings?tab=platform" replace />} />
+        <Route
+          path="platform"
+          element={
+            <DesktopOnlyRoute>
+              <Navigate to="/settings?tab=platform" replace />
+            </DesktopOnlyRoute>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" />} />
@@ -343,7 +448,7 @@ export default function App() {
           position="top-right"
           theme="light"
           toastOptions={{
-            style: { fontFamily: 'DM Sans, system-ui, sans-serif' },
+            style: { fontFamily: "DM Sans, system-ui, sans-serif" },
           }}
         />
       </BrowserRouter>
