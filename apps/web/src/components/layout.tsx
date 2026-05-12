@@ -77,6 +77,7 @@ export function AppLayout() {
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
             {isManager && <NavItem to="/manager/workforce">Ekip & Performans</NavItem>}
+            {isManager && <NavItem to="/manager/reports">Raporlar</NavItem>}
             {(can('profile') || isAdmin || isPlatformAdmin) && <NavItem to="/settings">Ayarlar</NavItem>}
           </nav>
 
@@ -123,6 +124,11 @@ export function AppLayout() {
             {isManager && (
               <NavItem to="/manager/workforce" onClick={() => setOpen(false)}>
                 Ekip & Performans
+              </NavItem>
+            )}
+            {isManager && (
+              <NavItem to="/manager/reports" onClick={() => setOpen(false)}>
+                Raporlar
               </NavItem>
             )}
             {(can('profile') || isAdmin || isPlatformAdmin) && (
