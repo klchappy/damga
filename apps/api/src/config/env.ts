@@ -24,7 +24,10 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1).optional(),
 
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default('Damga <noreply@damga.deploi.net>'),
+  EMAIL_FROM: z.string().default('Damga <noreply@deploi.net>'),
+  CONTACT_EMAIL: z.string().email().default('damga@deploi.net'),
+  SUPPORT_EMAIL: z.string().email().default('destek@deploi.net'),
+  KVKK_EMAIL: z.string().email().default('kvkk@deploi.net'),
 
   /** NFC + QR HMAC imzalama secret'ı — production'da MUTLAKA değiştir */
   NFC_SIGNING_SECRET: z
@@ -38,7 +41,7 @@ const envSchema = z.object({
   /** Web Push (VAPID) — production'da MUTLAKA set'le */
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
-  VAPID_SUBJECT: z.string().default('mailto:noreply@damga.deploi.net'),
+  VAPID_SUBJECT: z.string().default('mailto:noreply@deploi.net'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -57,11 +60,14 @@ const fallback = {
   CLIENT_URL: 'http://localhost:5273',
   SERVER_URL: 'http://localhost:4100',
   DATABASE_URL: '',
-  EMAIL_FROM: 'Damga <noreply@damga.deploi.net>',
+  EMAIL_FROM: 'Damga <noreply@deploi.net>',
+  CONTACT_EMAIL: 'damga@deploi.net',
+  SUPPORT_EMAIL: 'destek@deploi.net',
+  KVKK_EMAIL: 'kvkk@deploi.net',
   NFC_SIGNING_SECRET: 'damga-dev-default-secret-change-in-prod-please',
   RATE_LIMIT_WINDOW_MS: 60_000,
   RATE_LIMIT_MAX: 120,
-  VAPID_SUBJECT: 'mailto:noreply@damga.deploi.net',
+  VAPID_SUBJECT: 'mailto:noreply@deploi.net',
 };
 
 export const env = (parsed.success

@@ -72,8 +72,8 @@ export function KvkkPage() {
         İşvereniniz (sözleşmeli organizasyon, "Şirket"), Damga uygulaması üzerinden topladığı
         çalışan giriş/çıkış verileri için <strong>veri sorumlusu</strong>dur. Damga (Hizmet
         Sağlayıcı) veri işleyen sıfatıyla hareket eder. İletişim:
-        <a href="mailto:kvkk@damga.deploi.net" className="text-orange-600 hover:underline">
-          {' '}kvkk@damga.deploi.net
+        <a href="mailto:kvkk@deploi.net" className="text-orange-600 hover:underline">
+          {' '}kvkk@deploi.net
         </a>
       </p>
 
@@ -124,7 +124,7 @@ export function KvkkPage() {
         <li>Zarara uğramışsanız tazminat talep etme</li>
       </ul>
       <p>
-        Haklarınızı kullanmak için: <strong>kvkk@damga.deploi.net</strong> adresine
+        Haklarınızı kullanmak için: <strong>kvkk@deploi.net</strong> adresine
         kimliğinizi tevsik edici belgelerle başvurabilirsiniz. 30 gün içinde yanıt alacaksınız.
       </p>
 
@@ -158,7 +158,7 @@ export function TermsPage() {
         <li>Damga'yı kullanarak 18 yaşından büyük olduğunuzu kabul edersiniz</li>
         <li>Hesap bilgilerinizin gizliliğinden siz sorumlusunuz</li>
         <li>Şifrenizi, NFC tag'larınızı ve API key'lerinizi paylaşmayın</li>
-        <li>Yetkisiz erişim fark ederseniz derhal bildirin: kvkk@damga.deploi.net</li>
+        <li>Yetkisiz erişim fark ederseniz derhal bildirin: kvkk@deploi.net</li>
       </ul>
 
       <h2 className="font-display text-xl mt-6 mb-2">3. Ücretlendirme</h2>
@@ -215,7 +215,7 @@ export function TermsPage() {
       </p>
 
       <h2 className="font-display text-xl mt-6 mb-2">10. İletişim</h2>
-      <p className="font-mono text-xs">destek@damga.deploi.net</p>
+      <p className="font-mono text-xs">destek@deploi.net</p>
     </Layout>
   );
 }
@@ -271,7 +271,7 @@ export function PrivacyPage() {
 
       <h2 className="font-display text-xl mt-6 mb-2">İletişim</h2>
       <p>
-        Gizlilik konularında: <strong>privacy@damga.deploi.net</strong>
+        Gizlilik konularında: <strong>kvkk@deploi.net</strong>
       </p>
     </Layout>
   );

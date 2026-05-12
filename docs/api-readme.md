@@ -260,8 +260,8 @@ OpenAPI 3.0 spec: [`openapi.yaml`](./openapi.yaml) — Postman/Insomnia import e
 
 ## 8. Destek
 
-- E-posta: `destek@damga.deploi.net`
-- KVKK / yasal: `kvkk@damga.deploi.net`
+- E-posta: `destek@deploi.net`
+- KVKK / yasal: `kvkk@deploi.net`
 - Webhook doğrulama: [`webhook-verify.md`](./webhook-verify.md)
 
 API hata raporlaması yaparken: `code` + tam request URL + `X-Request-Id` header'ını ekle (eklenmişse).
