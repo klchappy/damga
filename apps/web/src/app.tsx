@@ -11,15 +11,11 @@ import { ApplyOrgPage } from '@/pages/apply-org';
 import { PendingPage } from '@/pages/pending';
 import { ForgotPasswordPage, ResetPasswordPage, AuthCallbackPage } from '@/pages/auth-misc';
 import { EmployeeHomePage } from '@/pages/employee-home';
-import { ManagerHomePage } from '@/pages/manager-home';
-import { ManagerTeamPage } from '@/pages/manager-team';
 import { ManagerReportsPage } from '@/pages/manager-reports';
-import { AdminHomePage } from '@/pages/admin-home';
 import { AdminLocationsPage } from '@/pages/admin-locations';
 import { AdminTeamPage } from '@/pages/admin-team';
 import { AdminDepartmentsPage } from '@/pages/admin-departments';
 import { AdminApplicationsPage } from '@/pages/admin-applications';
-import { AdminSettingsPage } from '@/pages/admin-settings';
 import { AdminPendingUsersPage } from '@/pages/admin-pending-users';
 import { AdminPendingReviewsPage } from '@/pages/admin-pending-reviews';
 import { AdminLiveFeedPage } from '@/pages/admin-live-feed';
@@ -28,21 +24,18 @@ import { AdminRedemptionsPage } from '@/pages/admin-redemptions';
 import { AdminShiftsPage } from '@/pages/admin-shifts';
 import { ManagerSchedulePage } from '@/pages/manager-schedule';
 import { AdminOvertimePage } from '@/pages/admin-overtime';
-import { MyShiftsPage } from '@/pages/my-shifts';
 import { MyShiftSwapsPage } from '@/pages/my-shift-swaps';
-import { ManagerAnalyticsPage } from '@/pages/manager-analytics';
 import { AdminBulkImportPage } from '@/pages/admin-bulk-import';
 import { AdminIntegrationsPage } from '@/pages/admin-integrations';
 import { EmployeePageGate } from '@/components/employee-page-gate';
-import { LeavesMinePage } from '@/pages/leaves-mine';
-import { HistoryPage } from '@/pages/history';
-import { ProfilePage } from '@/pages/profile';
 import { MenuPage } from '@/pages/menu';
 import { MenuFeedbackPage } from '@/pages/menu-feedback';
 import { QLandingPage } from '@/pages/q-landing';
 import { AnnouncementsPage } from '@/pages/announcements';
 import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from '@/pages/legal';
-import { PlatformPage } from '@/pages/platform';
+import { ManagerWorkforcePage } from '@/pages/manager-workforce';
+import { MyRecordsPage } from '@/pages/my-records';
+import { SettingsHubPage } from '@/pages/settings-hub';
 import { CookieBanner } from '@/components/cookie-banner';
 
 const queryClient = new QueryClient({
@@ -106,16 +99,17 @@ function AppInner() {
           path="history"
           element={
             <EmployeePageGate page="history">
-              <HistoryPage />
+              <Navigate to="/me/records" replace />
             </EmployeePageGate>
           }
         />
-        <Route path="profile" element={<ProfilePage />} />
+        <Route path="profile" element={<Navigate to="/settings" replace />} />
+        <Route path="settings" element={<SettingsHubPage />} />
         <Route
           path="leaves"
           element={
             <EmployeePageGate page="leaves">
-              <LeavesMinePage />
+              <Navigate to="/me/records?tab=leaves" replace />
             </EmployeePageGate>
           }
         />
@@ -158,7 +152,15 @@ function AppInner() {
           path="manager"
           element={
             <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerHomePage />
+              <Navigate to="/manager/workforce" replace />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="manager/workforce"
+          element={
+            <RoleGate roles={['manager', 'admin', 'owner']}>
+              <ManagerWorkforcePage />
             </RoleGate>
           }
         />
@@ -166,7 +168,7 @@ function AppInner() {
           path="manager/team"
           element={
             <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerTeamPage />
+              <Navigate to="/manager/workforce" replace />
             </RoleGate>
           }
         />
@@ -184,7 +186,7 @@ function AppInner() {
           path="admin"
           element={
             <RoleGate roles={['admin', 'owner']}>
-              <AdminHomePage />
+              <Navigate to="/settings?tab=admin" replace />
             </RoleGate>
           }
         />
@@ -240,7 +242,7 @@ function AppInner() {
           path="admin/settings"
           element={
             <RoleGate roles={['admin', 'owner']}>
-              <AdminSettingsPage />
+              <Navigate to="/settings?tab=admin" replace />
             </RoleGate>
           }
         />
@@ -300,7 +302,8 @@ function AppInner() {
             </RoleGate>
           }
         />
-        <Route path="me/shifts" element={<MyShiftsPage />} />
+        <Route path="me/records" element={<MyRecordsPage />} />
+        <Route path="me/shifts" element={<Navigate to="/me/records?tab=shifts" replace />} />
         <Route path="me/shift-swaps" element={<MyShiftSwapsPage />} />
         <Route
           path="me/monthly-market"
@@ -318,11 +321,11 @@ function AppInner() {
           path="manager/analytics"
           element={
             <RoleGate roles={['manager', 'admin', 'owner']}>
-              <ManagerAnalyticsPage />
+              <Navigate to="/manager/workforce?tab=analytics" replace />
             </RoleGate>
           }
         />
-        <Route path="platform" element={<PlatformPage />} />
+        <Route path="platform" element={<Navigate to="/settings?tab=platform" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" />} />

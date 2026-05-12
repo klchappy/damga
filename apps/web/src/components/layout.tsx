@@ -32,12 +32,9 @@ export function AppLayout() {
   });
   const isPlatformAdmin = platformMe?.is_platform_admin === true;
 
-  // Çalışan görünür sayfa kümesi — admin/manager hepsini görür.
-  // Admin /admin/settings'ten bunu açıp kapatabilir.
   const visibleSet = useMemo(() => {
     if (!user) return new Set<EmployeePageKey>();
     if (user.role !== 'employee') {
-      // Manager+ tüm temel sayfaları görür
       return new Set<EmployeePageKey>([
         'home',
         'history',
@@ -54,6 +51,7 @@ export function AppLayout() {
   }, [user, org]);
 
   const can = (key: EmployeePageKey) => visibleSet.has(key);
+  const canRecords = !!user;
 
   const handleLogout = async () => {
     await signOut();
@@ -76,16 +74,11 @@ export function AppLayout() {
 
           <nav className="hidden md:flex items-center gap-1 flex-wrap">
             {can('home') && <NavItem to="/">Bugün</NavItem>}
-            {can('history') && <NavItem to="/history">Geçmiş</NavItem>}
-            <NavItem to="/me/shifts">Vardiyam</NavItem>
-            {can('leaves') && <NavItem to="/leaves">İzin</NavItem>}
+            {canRecords && <NavItem to="/me/records">Kayıtlarım</NavItem>}
             {can('menu') && <NavItem to="/menu">Menü</NavItem>}
             {can('announcements') && <NavItem to="/announcements">Duyuru</NavItem>}
-            <NavItem to="/gamification">Performans</NavItem>
-            {isManager && <NavItem to="/manager">Ekip</NavItem>}
-            {isAdmin && <NavItem to="/admin">Admin</NavItem>}
-            {isPlatformAdmin && <NavItem to="/platform">Platform</NavItem>}
-            {can('profile') && <NavItem to="/profile">Profil</NavItem>}
+            {isManager && <NavItem to="/manager/workforce">Ekip & Performans</NavItem>}
+            {(can('profile') || isAdmin || isPlatformAdmin) && <NavItem to="/settings">Ayarlar</NavItem>}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -93,7 +86,7 @@ export function AppLayout() {
               <div className="hidden sm:flex flex-col items-end text-right">
                 <span className="text-sm font-medium">{user.full_name}</span>
                 <span className="text-xs text-muted">
-                  {user.role} · L{user.level} · 🪙 {user.total_xp}
+                  {user.role} · L{user.level} · XP {user.total_xp}
                 </span>
               </div>
             )}
@@ -113,17 +106,9 @@ export function AppLayout() {
                 Bugün
               </NavItem>
             )}
-            {can('history') && (
-              <NavItem to="/history" onClick={() => setOpen(false)}>
-                Geçmişim
-              </NavItem>
-            )}
-            <NavItem to="/me/shifts" onClick={() => setOpen(false)}>
-              Vardiyalarım
-            </NavItem>
-            {can('leaves') && (
-              <NavItem to="/leaves" onClick={() => setOpen(false)}>
-                İzinlerim
+            {canRecords && (
+              <NavItem to="/me/records" onClick={() => setOpen(false)}>
+                Kayıtlarım
               </NavItem>
             )}
             {can('menu') && (
@@ -136,27 +121,14 @@ export function AppLayout() {
                 Duyurular
               </NavItem>
             )}
-            <NavItem to="/gamification" onClick={() => setOpen(false)}>
-              Performans
-            </NavItem>
             {isManager && (
-              <NavItem to="/manager" onClick={() => setOpen(false)}>
-                Ekip
+              <NavItem to="/manager/workforce" onClick={() => setOpen(false)}>
+                Ekip & Performans
               </NavItem>
             )}
-            {isAdmin && (
-              <NavItem to="/admin" onClick={() => setOpen(false)}>
-                Admin
-              </NavItem>
-            )}
-            {isPlatformAdmin && (
-              <NavItem to="/platform" onClick={() => setOpen(false)}>
-                Platform
-              </NavItem>
-            )}
-            {can('profile') && (
-              <NavItem to="/profile" onClick={() => setOpen(false)}>
-                Profil
+            {(can('profile') || isAdmin || isPlatformAdmin) && (
+              <NavItem to="/settings" onClick={() => setOpen(false)}>
+                Ayarlar
               </NavItem>
             )}
           </nav>
@@ -167,9 +139,7 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      {/* Bugünkü mood yoksa + cooldown geçtiyse otomatik açılır */}
       <MoodPromptAuto />
-      {/* Browser bildirim izni — sessiz, tek seferlik chip */}
       <NotificationPermissionGate />
 
       <footer className="border-t border-orange-100 bg-cream py-4 text-center text-xs text-muted">
