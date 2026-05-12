@@ -205,6 +205,7 @@ async function performAttendance(
     device_id: input.device_id ?? null,
     client_time: new Date(input.client_time),
     location: {
+      id: location.id,
       latitude: location.latitude,
       longitude: location.longitude,
       geofence_radius_m: location.geofence_radius_m,

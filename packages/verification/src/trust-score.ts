@@ -41,6 +41,7 @@ export interface TrustInput {
 
   // Lokasyon (whitelist verileri)
   location?: {
+    id?: string;
     latitude: number;
     longitude: number;
     geofence_radius_m: number;
@@ -97,7 +98,8 @@ export function computeTrustScore(input: TrustInput): TrustResult {
       if (
         input.location &&
         nfcResult.payload &&
-        input.location.nfc_tag_ids.includes(nfcResult.payload.tag_id)
+        input.location.nfc_tag_ids.includes(nfcResult.payload.tag_id) &&
+        (!input.location.id || nfcResult.payload.location_id === input.location.id)
       ) {
         score += TRUST_POINTS.NFC;
         methods.push('nfc');
@@ -120,7 +122,7 @@ export function computeTrustScore(input: TrustInput): TrustResult {
       if (
         input.location &&
         qrResult.payload &&
-        qrResult.payload.location_id // location_id eşleşmesi DB'de kontrol edilir
+        (!input.location.id || qrResult.payload.location_id === input.location.id)
       ) {
         score += TRUST_POINTS.QR;
         methods.push('qr');

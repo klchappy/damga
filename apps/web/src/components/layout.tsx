@@ -10,7 +10,6 @@ import {
 } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { MoodPromptAuto } from '@/components/mood-prompt';
 import { NotificationPermissionGate } from '@/components/notification-permission';
 import { NotificationBell } from '@/components/notification-bell';
 
@@ -139,7 +138,6 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <MoodPromptAuto />
       <NotificationPermissionGate />
 
       <footer className="border-t border-orange-100 bg-cream py-4 text-center text-xs text-muted">
