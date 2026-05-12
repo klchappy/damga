@@ -20,6 +20,42 @@ const monthQuery = z.object({
   format: z.enum(['json', 'csv']).default('json'),
 });
 
+const trDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Istanbul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const trTime = new Intl.DateTimeFormat('tr-TR', {
+  timeZone: 'Europe/Istanbul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+function csvEsc(v: string | number | boolean | null | undefined): string {
+  const s = v == null ? '' : String(v);
+  if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function monthDays(yyyy: number, mm: number): string[] {
+  const days: string[] = [];
+  const count = new Date(yyyy, mm, 0).getDate();
+  for (let d = 1; d <= count; d += 1) {
+    days.push(`${yyyy}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  return days;
+}
+
+function minutesBetween(start: Date | null, end: Date | null): number {
+  if (!start || !end || end <= start) return 0;
+  return Math.round((end.getTime() - start.getTime()) / 60000);
+}
+
 /**
  * GET /v1/reports/attendance?month=2026-05&format=csv
  * Aylık devam raporu — kullanıcı başına çalışılan iş günü sayısı,
@@ -321,6 +357,245 @@ reportsRouter.get(
         total_users: items.length,
         total_worked_days: items.reduce((s, i) => s + i.worked_days, 0),
         total_overtime_minutes: items.reduce((s, i) => s + i.overtime_minutes, 0),
+        items,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /v1/reports/timesheet?month=YYYY-MM&format=csv|json
+ *
+ * Puantaj çıktısı: her kullanıcı için ayın her günü ayrı satır.
+ * CSV kolonları muhasebe/İK aktarımı için günlük giriş-çıkış, süre, izin ve durum bilgisini taşır.
+ */
+reportsRouter.get(
+  '/reports/timesheet',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  requireScope('reports:read'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const q = monthQuery.parse(req.query);
+      const [yyyy, mm] = q.month.split('-').map(Number) as [number, number];
+      const start = new Date(Date.UTC(yyyy, mm - 1, 1));
+      const end = new Date(Date.UTC(yyyy, mm, 0, 23, 59, 59));
+      const startStr = `${yyyy}-${String(mm).padStart(2, '0')}-01`;
+      const endStr = `${yyyy}-${String(mm).padStart(2, '0')}-${new Date(yyyy, mm, 0).getDate()}`;
+      const days = monthDays(yyyy, mm);
+
+      const people = await getDb()
+        .select({
+          id: users.id,
+          full_name: users.full_name,
+          email: users.email,
+          department: users.department,
+          title: users.title,
+          is_active: users.is_active,
+        })
+        .from(users)
+        .where(eq(users.org_id, req.authOrgId))
+        .orderBy(asc(users.full_name));
+
+      const eventRows = await getDb()
+        .select({
+          user_id: attendanceEvents.user_id,
+          type: attendanceEvents.type,
+          server_time: attendanceEvents.server_time,
+          verification_score: attendanceEvents.verification_score,
+          review_status: attendanceEvents.review_status,
+        })
+        .from(attendanceEvents)
+        .where(
+          and(
+            eq(attendanceEvents.org_id, req.authOrgId),
+            gte(attendanceEvents.server_time, start),
+            lte(attendanceEvents.server_time, end),
+          ),
+        )
+        .orderBy(asc(attendanceEvents.server_time));
+
+      const leaveRows = await getDb()
+        .select({
+          user_id: leaves.user_id,
+          type: leaves.type,
+          start_date: leaves.start_date,
+          end_date: leaves.end_date,
+          half_day: leaves.half_day,
+        })
+        .from(leaves)
+        .where(
+          and(
+            eq(leaves.org_id, req.authOrgId),
+            eq(leaves.status, 'approved'),
+            lte(leaves.start_date, endStr),
+            gte(leaves.end_date, startStr),
+          ),
+        );
+
+      const shiftRows = await getDb()
+        .select({
+          user_id: shiftAssignments.user_id,
+          shift_date: shiftAssignments.shift_date,
+          status: shiftAssignments.status,
+          template_name: shiftTemplates.name,
+          start_time: shiftTemplates.start_time,
+          end_time: shiftTemplates.end_time,
+          override_start: shiftAssignments.override_start,
+          override_end: shiftAssignments.override_end,
+        })
+        .from(shiftAssignments)
+        .leftJoin(shiftTemplates, eq(shiftTemplates.id, shiftAssignments.shift_template_id))
+        .where(
+          and(
+            eq(shiftAssignments.org_id, req.authOrgId),
+            gte(shiftAssignments.shift_date, startStr),
+            lte(shiftAssignments.shift_date, endStr),
+          ),
+        );
+
+      const eventsByUserDay = new Map<
+        string,
+        { checkIns: Date[]; checkOuts: Date[]; scores: number[]; pending: number; rejected: number }
+      >();
+      for (const event of eventRows) {
+        const day = trDate.format(event.server_time);
+        const key = `${event.user_id}|${day}`;
+        const bucket =
+          eventsByUserDay.get(key) ??
+          { checkIns: [], checkOuts: [], scores: [], pending: 0, rejected: 0 };
+        if (event.type === 'check_in') bucket.checkIns.push(event.server_time);
+        if (event.type === 'check_out') bucket.checkOuts.push(event.server_time);
+        bucket.scores.push(event.verification_score);
+        if (event.review_status === 'pending_review') bucket.pending += 1;
+        if (event.review_status === 'rejected') bucket.rejected += 1;
+        eventsByUserDay.set(key, bucket);
+      }
+
+      const leavesByUserDay = new Map<string, string>();
+      for (const leave of leaveRows) {
+        for (const day of days) {
+          if (day >= leave.start_date && day <= leave.end_date) {
+            leavesByUserDay.set(
+              `${leave.user_id}|${day}`,
+              `${leave.type}${leave.half_day ? ' (yarım gün)' : ''}`,
+            );
+          }
+        }
+      }
+
+      const shiftsByUserDay = new Map<string, string>();
+      for (const shift of shiftRows) {
+        const startTime = shift.override_start ?? shift.start_time ?? '';
+        const endTime = shift.override_end ?? shift.end_time ?? '';
+        shiftsByUserDay.set(
+          `${shift.user_id}|${shift.shift_date}`,
+          `${shift.template_name ?? 'Vardiya'} ${startTime}-${endTime}`.trim(),
+        );
+      }
+
+      const items = people.flatMap((person) =>
+        days.map((day) => {
+          const key = `${person.id}|${day}`;
+          const ev = eventsByUserDay.get(key);
+          const firstIn = ev?.checkIns[0] ?? null;
+          const lastOut = ev?.checkOuts.at(-1) ?? null;
+          const leaveType = leavesByUserDay.get(key) ?? '';
+          const workedMinutes = minutesBetween(firstIn, lastOut);
+          const avgTrust =
+            ev && ev.scores.length > 0
+              ? Math.round(ev.scores.reduce((s, score) => s + score, 0) / ev.scores.length)
+              : null;
+          const status = leaveType
+            ? 'İzinli'
+            : firstIn
+              ? lastOut
+                ? 'Tamamlandı'
+                : 'Çıkış eksik'
+              : 'Kayıt yok';
+          return {
+            date: day,
+            user_id: person.id,
+            full_name: person.full_name,
+            email: person.email,
+            department: person.department ?? '',
+            title: person.title ?? '',
+            user_status: person.is_active ? 'Aktif' : 'Pasif',
+            shift: shiftsByUserDay.get(key) ?? '',
+            check_in: firstIn ? trTime.format(firstIn) : '',
+            check_out: lastOut ? trTime.format(lastOut) : '',
+            worked_minutes: workedMinutes,
+            worked_hours: (workedMinutes / 60).toFixed(2),
+            leave_type: leaveType,
+            day_status: status,
+            avg_trust: avgTrust ?? '',
+            pending_review_count: ev?.pending ?? 0,
+            rejected_event_count: ev?.rejected ?? 0,
+          };
+        }),
+      );
+
+      if (q.format === 'csv') {
+        const headers = [
+          'Tarih',
+          'Ad Soyad',
+          'E-posta',
+          'Departman',
+          'Ünvan',
+          'Kullanıcı Durumu',
+          'Vardiya',
+          'Giriş',
+          'Çıkış',
+          'Çalışma (dk)',
+          'Çalışma (sa)',
+          'İzin',
+          'Gün Durumu',
+          'Ortalama Trust',
+          'İnceleme Bekleyen',
+          'Reddedilen Event',
+        ];
+        const lines = [
+          headers.map(csvEsc).join(','),
+          ...items.map((i) =>
+            [
+              i.date,
+              i.full_name,
+              i.email,
+              i.department,
+              i.title,
+              i.user_status,
+              i.shift,
+              i.check_in,
+              i.check_out,
+              i.worked_minutes,
+              i.worked_hours,
+              i.leave_type,
+              i.day_status,
+              i.avg_trust,
+              i.pending_review_count,
+              i.rejected_event_count,
+            ]
+              .map(csvEsc)
+              .join(','),
+          ),
+        ];
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="puantaj-${q.month}.csv"`,
+        );
+        res.send('ï»¿' + lines.join('\n'));
+        return;
+      }
+
+      res.json({
+        month: q.month,
+        total_users: people.length,
+        total_rows: items.length,
+        total_worked_minutes: items.reduce((s, i) => s + i.worked_minutes, 0),
         items,
       });
     } catch (err) {

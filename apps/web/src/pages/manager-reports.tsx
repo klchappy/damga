@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Loader2,
   ClipboardList,
+  CalendarDays,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/hooks/use-auth';
@@ -106,7 +107,14 @@ export function ManagerReportsPage() {
       </div>
 
       {/* CSV indirme butonları */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <ExportCard
+          icon={<CalendarDays className="size-5" />}
+          title="Puantaj"
+          desc="Gün gün giriş/çıkış, çalışma süresi, izin ve vardiya bilgisi"
+          onClick={() => downloadCsv('timesheet', 'puantaj')}
+          loading={downloading === 'timesheet'}
+        />
         <ExportCard
           icon={<FileSpreadsheet className="size-5" />}
           title="Bordro 3-1"
