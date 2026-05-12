@@ -31,6 +31,12 @@ export const adminUpdateUserSchema = z.object({
   role: z.enum(['employee', 'manager', 'admin', 'owner']).optional(),
   department: z.string().max(60).nullable().optional(),
   title: z.string().max(120).nullable().optional(),
+  phone: z
+    .string()
+    .regex(/^\+\d{10,15}$/, 'Telefon +905xx... (E.164) formatında olmalı')
+    .nullable()
+    .optional()
+    .or(z.literal('')),
   hired_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   annual_leave_quota_days: z.number().int().min(0).max(365).optional(),
   is_active: z.boolean().optional(),

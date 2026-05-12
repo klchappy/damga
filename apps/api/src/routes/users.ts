@@ -274,6 +274,7 @@ usersRouter.patch(
       if (input.role !== undefined) updates.role = input.role;
       if (input.department !== undefined) updates.department = input.department;
       if (input.title !== undefined) updates.title = input.title;
+      if (input.phone !== undefined) updates.phone = input.phone || null;
       if (input.hired_at !== undefined) updates.hired_at = input.hired_at;
       if (input.annual_leave_quota_days !== undefined)
         updates.annual_leave_quota_days = input.annual_leave_quota_days;

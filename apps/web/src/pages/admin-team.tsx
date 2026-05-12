@@ -162,6 +162,7 @@ export function AdminTeamPage() {
                         <td className="py-2 px-2">
                           <div className="font-medium">{u.full_name}</div>
                           <div className="text-xs text-muted">{u.email}</div>
+                          {u.phone && <div className="text-xs text-muted">{u.phone}</div>}
                         </td>
                         <td className="py-2 px-2">
                           <span className={`chip ${ROLE_BADGE[u.role]}`}>
@@ -274,6 +275,7 @@ export function AdminTeamPage() {
                         <td className="py-2 px-2">
                           <div className="font-medium">{u.full_name}</div>
                           <div className="text-xs text-muted">{u.email}</div>
+                          {u.phone && <div className="text-xs text-muted">{u.phone}</div>}
                         </td>
                         <td className="py-2 px-2">
                           <span className={`chip ${ROLE_BADGE[u.role]}`}>
@@ -1041,15 +1043,28 @@ function EditUserModal({
     role: user.role,
     department: user.department ?? 'Diğer',
     title: user.title ?? '',
+    phone: user.phone ?? '',
     hired_at: user.hired_at ?? '',
     annual_leave_quota_days: user.annual_leave_quota_days,
     is_active: user.is_active,
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    const phone = form.phone.trim();
+    if (phone && !/^\+\d{10,15}$/.test(phone)) {
+      e.phone = 'Telefon +905xx... formatÄ±nda olmalÄ±';
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const mut = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = { ...form };
       if (!payload.title) payload.title = null;
+      payload.phone = form.phone.trim() || null;
       if (!payload.hired_at) payload.hired_at = null;
       return (await api.patch(`/users/${user.id}`, payload)).data;
     },
@@ -1124,6 +1139,21 @@ function EditUserModal({
           />
         </div>
 
+        <div>
+          <label className="label">Telefon (opsiyonel)</label>
+          <input
+            type="tel"
+            className="input mt-1"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            placeholder="+905xxxxxxxxx"
+          />
+          <p className="mt-1 text-[10px] text-muted">
+            SMS/WhatsApp şifre gönderimi ve telefonla giriş için kullanılır.
+          </p>
+          {errors.phone && <p className="mt-1 text-xs text-danger">{errors.phone}</p>}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">İşe Giriş</label>
@@ -1163,7 +1193,10 @@ function EditUserModal({
 
         <div className="flex gap-2 pt-3">
           <button
-            onClick={() => mut.mutate()}
+            onClick={() => {
+              if (!validate()) return;
+              mut.mutate();
+            }}
             disabled={mut.isPending}
             className="btn-primary flex-1"
           >
