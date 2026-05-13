@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { generateServiceKey } from '@damga/verification';
 import { getDb, apiKeys, auditLog } from '@damga/db';
-import { requireSupabaseAuth } from '../middleware/auth';
+import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 
 export const platformRouter = Router();
@@ -36,6 +36,63 @@ const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
 };
 
 const platformGuard = [requireSupabaseAuth, requirePlatformAdmin];
+
+const ticketStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']);
+const ticketPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+
+const createSupportTicketSchema = z.object({
+  subject: z.string().trim().min(3).max(160),
+  message: z.string().trim().min(5).max(4000),
+  category: z.string().trim().min(2).max(40).default('general'),
+  priority: ticketPrioritySchema.default('normal'),
+});
+
+const updateSupportTicketSchema = z.object({
+  status: ticketStatusSchema.optional(),
+  priority: ticketPrioritySchema.optional(),
+  assigned_to_email: z.string().trim().email().nullable().optional(),
+  platform_notes: z.string().trim().max(4000).nullable().optional(),
+});
+
+let supportTicketsTableReady = false;
+
+async function ensureSupportTicketsTable(): Promise<void> {
+  if (supportTicketsTableReady) return;
+  const db = getDb();
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS public.support_tickets (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id uuid REFERENCES public.orgs(id) ON DELETE SET NULL,
+      requester_user_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
+      requester_email text NOT NULL,
+      requester_name text,
+      subject text NOT NULL,
+      message text NOT NULL,
+      category text NOT NULL DEFAULT 'general',
+      priority text NOT NULL DEFAULT 'normal',
+      status text NOT NULL DEFAULT 'open',
+      assigned_to_email text,
+      platform_notes text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      resolved_at timestamptz
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_org_status
+    ON public.support_tickets(org_id, status)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_status_created
+    ON public.support_tickets(status, created_at DESC)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_requester
+    ON public.support_tickets(requester_user_id)
+  `);
+  await db.execute(sql`ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY`);
+  supportTicketsTableReady = true;
+}
 
 // ─── GET /platform/me — kullanıcı platform admin mi ────────────────────
 
@@ -67,12 +124,54 @@ platformRouter.get('/platform/orgs', ...platformGuard, async (_req, res, next) =
             COALESCE(o.org_type, 'damga_only') AS org_type,
             o.created_at::text,
             (SELECT count(*)::int FROM public.users WHERE org_id = o.id AND is_active) AS user_count,
+            (SELECT count(*)::int FROM public.users WHERE org_id = o.id AND is_pending) AS pending_user_count,
+            (SELECT count(*)::int FROM public.users WHERE org_id = o.id AND role = 'owner' AND is_active) AS owner_count,
+            (SELECT count(*)::int FROM public.users WHERE org_id = o.id AND role = 'admin' AND is_active) AS admin_count,
+            (SELECT count(*)::int FROM public.users WHERE org_id = o.id AND role = 'manager' AND is_active) AS manager_count,
+            COALESCE(
+              (SELECT string_agg(email, ', ' ORDER BY email) FROM public.users WHERE org_id = o.id AND role = 'owner' AND is_active),
+              ''
+            ) AS owner_emails,
             (SELECT count(*)::int FROM public.locations WHERE org_id = o.id) AS location_count,
             (SELECT count(*)::int FROM public.departments WHERE org_id = o.id) AS department_count,
             (SELECT count(*)::int FROM public.attendance_events WHERE org_id = o.id) AS check_in_count,
             (SELECT max(created_at)::text FROM public.attendance_events WHERE org_id = o.id) AS last_activity
           FROM public.orgs o
           ORDER BY o.created_at DESC`,
+    );
+    res.json({ items: r.rows, count: r.rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /platform/orgs/:id/users - org bazında kullanıcı erişimleri
+platformRouter.get('/platform/orgs/:id/users', ...platformGuard, async (req, res, next) => {
+  try {
+    const orgId = z.string().uuid().parse(req.params.id);
+    const r = await getDb().execute(
+      sql`SELECT
+            u.id,
+            u.email,
+            u.phone,
+            u.full_name,
+            u.role,
+            u.is_active,
+            u.is_pending,
+            u.created_at::text,
+            u.last_login_at::text,
+            (SELECT max(created_at)::text FROM public.attendance_events WHERE user_id = u.id) AS last_activity
+          FROM public.users u
+          WHERE u.org_id = ${orgId}
+          ORDER BY
+            CASE u.role
+              WHEN 'owner' THEN 1
+              WHEN 'admin' THEN 2
+              WHEN 'manager' THEN 3
+              ELSE 4
+            END,
+            u.is_active DESC,
+            u.full_name ASC`,
     );
     res.json({ items: r.rows, count: r.rows.length });
   } catch (err) {
@@ -206,10 +305,199 @@ platformRouter.delete('/platform/service-keys/:id', ...platformGuard, async (req
   }
 });
 
+// ─── Support Tickets ───────────────────────────────────────────────────
+
+// POST /support/tickets - org kullanıcısı destek talebi açar
+platformRouter.post('/support/tickets', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUser || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
+    await ensureSupportTicketsTable();
+    const input = createSupportTicketSchema.parse(req.body);
+
+    const r = await getDb().execute(
+      sql`INSERT INTO public.support_tickets (
+            org_id,
+            requester_user_id,
+            requester_email,
+            requester_name,
+            subject,
+            message,
+            category,
+            priority
+          )
+          VALUES (
+            ${req.authOrgId},
+            ${req.authUser.id},
+            ${req.authUser.email},
+            ${req.authUser.full_name},
+            ${input.subject},
+            ${input.message},
+            ${input.category},
+            ${input.priority}
+          )
+          RETURNING id, created_at::text`,
+    );
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: req.authOrgId,
+        actor_user_id: req.authUser.id,
+        action: 'support.ticket_created',
+        target_type: 'support_ticket',
+        target_id: String((r.rows[0] as { id?: string } | undefined)?.id ?? ''),
+        details: { subject: input.subject, category: input.category, priority: input.priority },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.status(201).json({ item: r.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /platform/support-tickets - platform admin destek kuyruğu
+platformRouter.get('/platform/support-tickets', ...platformGuard, async (req, res, next) => {
+  try {
+    await ensureSupportTicketsTable();
+    const query = z
+      .object({
+        status: z
+          .enum(['active', 'all', 'open', 'in_progress', 'waiting', 'resolved', 'closed'])
+          .default('active'),
+        org_id: z.string().uuid().optional(),
+      })
+      .parse(req.query);
+
+    const statusWhere =
+      query.status === 'active'
+        ? sql`t.status IN ('open', 'in_progress', 'waiting')`
+        : query.status === 'all'
+          ? sql`true`
+          : sql`t.status = ${query.status}`;
+    const orgWhere = query.org_id ? sql`t.org_id = ${query.org_id}` : sql`true`;
+
+    const r = await getDb().execute(
+      sql`SELECT
+            t.id,
+            t.org_id,
+            o.name AS org_name,
+            o.slug AS org_slug,
+            t.requester_user_id,
+            t.requester_email,
+            t.requester_name,
+            t.subject,
+            t.message,
+            t.category,
+            t.priority,
+            t.status,
+            t.assigned_to_email,
+            t.platform_notes,
+            t.created_at::text,
+            t.updated_at::text,
+            t.resolved_at::text
+          FROM public.support_tickets t
+          LEFT JOIN public.orgs o ON o.id = t.org_id
+          WHERE ${statusWhere} AND ${orgWhere}
+          ORDER BY
+            CASE t.status
+              WHEN 'open' THEN 1
+              WHEN 'in_progress' THEN 2
+              WHEN 'waiting' THEN 3
+              WHEN 'resolved' THEN 4
+              ELSE 5
+            END,
+            CASE t.priority
+              WHEN 'urgent' THEN 1
+              WHEN 'high' THEN 2
+              WHEN 'normal' THEN 3
+              ELSE 4
+            END,
+            t.created_at DESC
+          LIMIT 100`,
+    );
+    res.json({ items: r.rows, count: r.rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /platform/support-tickets/:id - platform admin talep yönetimi
+platformRouter.patch('/platform/support-tickets/:id', ...platformGuard, async (req, res, next) => {
+  try {
+    await ensureSupportTicketsTable();
+    const id = z.string().uuid().parse(req.params.id);
+    const input = updateSupportTicketSchema.parse(req.body);
+
+    const existingResult = await getDb().execute(
+      sql`SELECT id, status, priority, assigned_to_email, platform_notes
+          FROM public.support_tickets
+          WHERE id = ${id}`,
+    );
+    const existing = existingResult.rows[0] as
+      | {
+          id: string;
+          status: string;
+          priority: string;
+          assigned_to_email: string | null;
+          platform_notes: string | null;
+        }
+      | undefined;
+    if (!existing) throw new HttpError(404, 'Destek talebi bulunamadı');
+
+    const nextStatus = input.status ?? existing.status;
+    const nextPriority = input.priority ?? existing.priority;
+    const nextAssigned =
+      input.assigned_to_email === undefined ? existing.assigned_to_email : input.assigned_to_email;
+    const nextNotes =
+      input.platform_notes === undefined ? existing.platform_notes : input.platform_notes;
+    const resolvedAt =
+      nextStatus === 'resolved' || nextStatus === 'closed' ? new Date().toISOString() : null;
+
+    const r = await getDb().execute(
+      sql`UPDATE public.support_tickets
+          SET
+            status = ${nextStatus},
+            priority = ${nextPriority},
+            assigned_to_email = ${nextAssigned},
+            platform_notes = ${nextNotes},
+            resolved_at = ${resolvedAt},
+            updated_at = now()
+          WHERE id = ${id}
+          RETURNING id, status, priority, assigned_to_email, platform_notes, updated_at::text, resolved_at::text`,
+    );
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.support_ticket_updated',
+        target_type: 'support_ticket',
+        target_id: id,
+        details: {
+          platform_admin: req.supabaseAuth?.email ?? 'unknown',
+          status: nextStatus,
+          priority: nextPriority,
+        },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.json({ item: r.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── GET /platform/stats — platform geneli istatistikler ───────────────
 
 platformRouter.get('/platform/stats', ...platformGuard, async (_req, res, next) => {
   try {
+    await ensureSupportTicketsTable();
     const summary = await getDb().execute(
       sql`SELECT
             (SELECT count(*)::int FROM public.orgs) AS org_count,
@@ -217,7 +505,9 @@ platformRouter.get('/platform/stats', ...platformGuard, async (_req, res, next) 
             (SELECT count(*)::int FROM public.locations) AS total_locations,
             (SELECT count(*)::int FROM public.departments) AS total_departments,
             (SELECT count(*)::int FROM public.attendance_events) AS total_check_ins,
-            (SELECT count(*)::int FROM public.attendance_events WHERE created_at >= now() - interval '24 hours') AS check_ins_24h`,
+            (SELECT count(*)::int FROM public.attendance_events WHERE created_at >= now() - interval '24 hours') AS check_ins_24h,
+            (SELECT count(*)::int FROM public.support_tickets WHERE status IN ('open', 'in_progress', 'waiting')) AS support_active,
+            (SELECT count(*)::int FROM public.support_tickets WHERE created_at >= now() - interval '24 hours') AS support_24h`,
     );
 
     const planBreakdown = await getDb().execute(
