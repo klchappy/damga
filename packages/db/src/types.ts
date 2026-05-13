@@ -78,6 +78,9 @@ export interface OrgSettings {
   allow_manual_entry?: boolean;
   /** Employee rolünün görebileceği sayfa anahtarları. undefined → DEFAULT_EMPLOYEE_PAGES */
   employee_visible_pages?: EmployeePageKey[];
+  /** Opsiyonel şirket davet kodları. Kodla kayıt olan kullanıcı doğrudan bu org'a employee olarak bağlanır. */
+  invite_code?: string;
+  invite_codes?: string[];
   /**
    * true ise her damgada (anomali olmasa bile) otomatik selfie çekilir ve event'e
    * eklenir. Bu durumda event 'approved' kalabilir; selfie sadece kanıt olarak saklanır.

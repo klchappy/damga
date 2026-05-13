@@ -59,5 +59,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          query: ['@tanstack/react-query', 'axios'],
+          supabase: ['@supabase/supabase-js'],
+          ui: ['lucide-react', 'sonner'],
+          scanner: ['@zxing/browser', '@zxing/library'],
+        },
+      },
+    },
   },
 });

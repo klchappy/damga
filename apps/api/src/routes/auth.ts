@@ -55,7 +55,7 @@ authRouter.post('/magic-link', authLimiter, async (req, res, next) => {
  * Sign-up — sadece "Hesap Oluştur" akışı (çalışan).
  *
  * 3 mod:
- *  1. invite_code   → ileride: davetli olarak mevcut org'a katılır.
+ *  1. invite_code   → org ayarlarındaki davet kodu eşleşirse mevcut org'a katılır.
  *  2. org_name      → eski "şirket aç" akışı; ARTIK KAPALI. Org açmak için /v1/auth/apply-org
  *                     üzerinden başvuru yapılır → admin onayı sonrası owner kullanıcı oluşturulur.
  *  3. (ikisi de yok) → kullanıcı pending olarak oluşturulur (org_id=null, is_pending=true).
@@ -84,8 +84,25 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
     let isPending = false;
 
     if (input.invite_code) {
-      // TODO: invite_code parse et + org bul (invitation tablosu eklenecek)
-      throw new HttpError(501, 'Davet kodu sistemi henüz aktif değil', 'NOT_IMPLEMENTED');
+      const inviteCode = input.invite_code.trim().toLowerCase();
+      const [invitedOrg] = await db
+        .select({ id: orgs.id })
+        .from(orgs)
+        .where(sql`
+          lower(coalesce(${orgs.settings}->>'invite_code', '')) = ${inviteCode}
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(coalesce(${orgs.settings}->'invite_codes', '[]'::jsonb)) AS code(value)
+            WHERE lower(code.value) = ${inviteCode}
+          )
+        `)
+        .limit(1);
+      if (!invitedOrg) {
+        throw new HttpError(400, 'Davet kodu geçersiz veya artık aktif değil', 'INVALID_INVITE_CODE');
+      }
+      orgId = invitedOrg.id;
+      role = 'employee';
+      isPending = false;
     } else if (input.org_name) {
       // Eski akış kapatıldı — başvuru sistemine yönlendir
       throw new HttpError(
@@ -203,11 +220,16 @@ authRouter.post('/sign-up-org', requireSupabaseAuth, async (req, res, next) => {
 
     // Slug auto-generate (TR karakter normalize)
     const trMap: Record<string, string> = {
-      ı: 'i', ğ: 'g', ü: 'u', ş: 's', ö: 'o', ç: 'c',
+      '\u0131': 'i',
+      '\u011f': 'g',
+      '\u00fc': 'u',
+      '\u015f': 's',
+      '\u00f6': 'o',
+      '\u00e7': 'c',
     };
     const baseSlug = input.org_name
       .toLocaleLowerCase('tr-TR')
-      .replace(/[ığüşöç]/g, (m) => trMap[m] ?? m)
+      .replace(/[\u0131\u011f\u00fc\u015f\u00f6\u00e7]/g, (m) => trMap[m] ?? m)
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 40) || 'sirket';
