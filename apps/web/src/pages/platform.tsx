@@ -128,6 +128,18 @@ interface Campaign {
   notes: string | null;
 }
 
+interface ServiceKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  rate_limit_per_min: number;
+  last_used_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 const PLAN_COLOR: Record<string, string> = {
   free: 'bg-stone-100 text-stone-700',
   starter: 'bg-blue-100 text-blue-700',
@@ -176,6 +188,12 @@ export function PlatformPage() {
     discount_percent: 0,
     notes: '',
   });
+  const [serviceKeyDraft, setServiceKeyDraft] = useState({
+    name: '',
+    scopes: 'events:read,reports:read',
+    rate_limit_per_min: 100,
+  });
+  const [newServiceKey, setNewServiceKey] = useState<string | null>(null);
 
   const { data: me, isLoading: meLoading } = useQuery<PlatformMe>({
     queryKey: ['platform-me'],
@@ -234,6 +252,12 @@ export function PlatformPage() {
     enabled: isPlatformAdmin,
   });
 
+  const { data: serviceKeysData } = useQuery<{ items: ServiceKey[] }>({
+    queryKey: ['platform-service-keys'],
+    queryFn: async () => (await api.get('/platform/service-keys')).data,
+    enabled: isPlatformAdmin,
+  });
+
   const updateTicketMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: SupportTicket['status'] }) =>
       (await api.patch(`/platform/support-tickets/${id}`, { status })).data,
@@ -281,6 +305,38 @@ export function PlatformPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const createServiceKeyMutation = useMutation({
+    mutationFn: async () => {
+      const scopes = serviceKeyDraft.scopes
+        .split(',')
+        .map((scope) => scope.trim())
+        .filter(Boolean);
+      return (
+        await api.post('/platform/service-keys', {
+          name: serviceKeyDraft.name,
+          scopes,
+          rate_limit_per_min: Number(serviceKeyDraft.rate_limit_per_min) || 100,
+        })
+      ).data as { secret_key: string };
+    },
+    onSuccess: async (data) => {
+      setNewServiceKey(data.secret_key);
+      setServiceKeyDraft({ name: '', scopes: 'events:read,reports:read', rate_limit_per_min: 100 });
+      await queryClient.invalidateQueries({ queryKey: ['platform-service-keys'] });
+      toast.success('Service key olusturuldu');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteServiceKeyMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/platform/service-keys/${id}`)).data,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['platform-service-keys'] });
+      toast.success('Service key iptal edildi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   if (meLoading) {
     return (
       <div className="container mx-auto max-w-6xl px-4 py-12 text-center">
@@ -309,6 +365,7 @@ export function PlatformPage() {
   const accessUsers = usersData?.items ?? [];
   const billingPlans = billingData?.items ?? [];
   const campaigns = campaignsData?.items ?? [];
+  const serviceKeys = serviceKeysData?.items ?? [];
   const selectedOrgTickets = selectedOrg
     ? tickets.filter((ticket) => ticket.org_id === selectedOrg.id)
     : [];
@@ -506,6 +563,124 @@ export function PlatformPage() {
               ))}
               {campaigns.length === 0 && <p className="text-xs text-muted">Kampanya yok.</p>}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg flex items-center gap-2">
+              <Shield className="size-5 text-orange-600" />
+              Service-to-service Keyler
+            </h2>
+            <p className="text-xs text-muted">
+              Farkli sistemlerin Damga API'sine kontrollu baglanmasi icin ana admin keyleri.
+            </p>
+          </div>
+          <span className="text-xs text-muted">{serviceKeys.length} kayit</span>
+        </div>
+
+        {newServiceKey && (
+          <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
+            <div className="font-semibold text-emerald-800">Yeni key sadece bir kez gosterilir</div>
+            <div className="mt-2 break-all rounded-md bg-white p-2 font-mono text-xs text-ink">
+              {newServiceKey}
+            </div>
+            <button
+              type="button"
+              className="mt-2 text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+              onClick={() => setNewServiceKey(null)}
+            >
+              Gizle
+            </button>
+          </div>
+        )}
+
+        <div className="grid gap-3 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="rounded-lg border border-orange-100 bg-white p-3 space-y-2">
+            <input
+              className="input h-9 text-sm"
+              placeholder="Key adi"
+              value={serviceKeyDraft.name}
+              onChange={(event) =>
+                setServiceKeyDraft({ ...serviceKeyDraft, name: event.target.value })
+              }
+            />
+            <input
+              className="input h-9 text-sm"
+              placeholder="Scope listesi"
+              value={serviceKeyDraft.scopes}
+              onChange={(event) =>
+                setServiceKeyDraft({ ...serviceKeyDraft, scopes: event.target.value })
+              }
+            />
+            <label className="text-[10px] uppercase tracking-wider text-muted">
+              Dakikalik limit
+              <input
+                className="input mt-1 h-9 text-sm"
+                type="number"
+                min={1}
+                max={10000}
+                value={serviceKeyDraft.rate_limit_per_min}
+                onChange={(event) =>
+                  setServiceKeyDraft({
+                    ...serviceKeyDraft,
+                    rate_limit_per_min: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={createServiceKeyMutation.isPending || !serviceKeyDraft.name.trim()}
+              onClick={() => createServiceKeyMutation.mutate()}
+            >
+              Service Key Olustur
+            </button>
+            <p className="text-[11px] text-muted">
+              Kullanim: Authorization Bearer key + X-Damga-Org header. Middleware sadece Damga org'larini kabul eder.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {serviceKeys.map((key) => (
+              <div
+                key={key.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-100 bg-white p-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{key.name}</span>
+                    <Badge tone={key.is_active ? 'green' : 'stone'}>
+                      {key.is_active ? 'aktif' : 'pasif'}
+                    </Badge>
+                    <span className="font-mono text-[10px] text-muted">{key.key_prefix}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span>{key.scopes.join(', ')}</span>
+                    <span>{key.rate_limit_per_min}/dk</span>
+                    <span>Son kullanim: {key.last_used_at ? formatDate(key.last_used_at) : '-'}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost px-2 py-1 text-xs text-danger"
+                  disabled={deleteServiceKeyMutation.isPending}
+                  onClick={() => deleteServiceKeyMutation.mutate(key.id)}
+                >
+                  Iptal Et
+                </button>
+              </div>
+            ))}
+            {serviceKeys.length === 0 && (
+              <EmptyState
+                icon={<Shield className="size-5" />}
+                title="Service key yok"
+                text="Farkli sistemlerle API uzerinden baglanti kuracagin zaman buradan key uret."
+              />
+            )}
           </div>
         </div>
       </section>

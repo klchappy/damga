@@ -152,6 +152,22 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
             'MISSING_ORG_ID',
           );
         }
+        const orgCheck = await db.execute(
+          sql`
+            select 1
+            from public.orgs
+            where id = ${queryOrgId}
+              and COALESCE(org_type, 'damga_only') = 'damga_only'
+            limit 1
+          `,
+        );
+        if (orgCheck.rows.length === 0) {
+          throw new HttpError(
+            403,
+            'Service key sadece Damga organizasyonlari icin kullanilabilir',
+            'ORG_NOT_ALLOWED',
+          );
+        }
         req.authOrgId = queryOrgId;
         req.isServiceKey = true;
       } else {
