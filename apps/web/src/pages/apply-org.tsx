@@ -33,6 +33,8 @@ export function ApplyOrgPage() {
       employee_count_estimate: '11-50',
       applicant_full_name: '',
       applicant_email: '',
+      password: '',
+      password_confirm: '',
       applicant_phone: '',
       applicant_title: '',
       notes: '',
@@ -209,6 +211,33 @@ export function ApplyOrgPage() {
                 />
                 {errors.applicant_phone && (
                   <p className="mt-1 text-xs text-danger">{errors.applicant_phone.message}</p>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Åifre *</label>
+                <input
+                  type="password"
+                  className="input mt-1"
+                  placeholder="En az 8 karakter"
+                  autoComplete="new-password"
+                  {...register('password')}
+                />
+                {errors.password && (
+                  <p className="mt-1 text-xs text-danger">{errors.password.message}</p>
+                )}
+              </div>
+              <div>
+                <label className="label">Åifre Tekrar *</label>
+                <input
+                  type="password"
+                  className="input mt-1"
+                  autoComplete="new-password"
+                  {...register('password_confirm')}
+                />
+                {errors.password_confirm && (
+                  <p className="mt-1 text-xs text-danger">{errors.password_confirm.message}</p>
                 )}
               </div>
             </div>

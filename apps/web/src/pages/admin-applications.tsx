@@ -95,12 +95,16 @@ export function AdminApplicationsPage() {
       if (data.action === 'approved') {
         toast.success('✅ Başvuru onaylandı — owner hesabı oluşturuldu');
         // Owner'a paylaşılacak şifre belirleme link'ini admin'e göster
-        setShareData({
-          name: data.applicant_full_name ?? 'Yeni owner',
-          email: data.applicant_email,
-          link: data.password_reset_link ?? null,
-          error: data.password_reset_error ?? null,
-        });
+        if (data.password_reset_link || data.password_reset_error) {
+          setShareData({
+            name: data.applicant_full_name ?? 'Yeni owner',
+            email: data.applicant_email,
+            link: data.password_reset_link ?? null,
+            error: data.password_reset_error ?? null,
+          });
+        } else {
+          setShareData(null);
+        }
       } else {
         toast.success('Başvuru reddedildi');
       }

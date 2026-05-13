@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { applyOrgSchema, reviewApplicationSchema, assignUserOrgSchema } from '@damga/shared';
 import {
@@ -23,6 +24,7 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
   try {
     const input = applyOrgSchema.parse(req.body);
     const db = getDb();
+    const email = input.applicant_email.toLowerCase();
 
     // Aynı email ile zaten pending başvuru var mı?
     const dup = await db
@@ -30,7 +32,7 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
       .from(organizationApplications)
       .where(
         and(
-          eq(organizationApplications.applicant_email, input.applicant_email),
+          eq(organizationApplications.applicant_email, email),
           eq(organizationApplications.status, 'pending'),
         ),
       );
@@ -42,6 +44,50 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
       );
     }
 
+    const existingUsers = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (existingUsers.length > 0) {
+      throw new HttpError(
+        409,
+        'Bu e-posta ile zaten bir Damga kullanıcısı var. Giriş yapmayı veya şifre sıfırlamayı dene.',
+        'USER_ALREADY_EXISTS',
+      );
+    }
+
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data: existingAuthUsers } = await supabaseAdmin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+    const existingAuth = existingAuthUsers?.users.find((u) => u.email?.toLowerCase() === email);
+
+    let authUserId: string;
+    if (existingAuth) {
+      const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existingAuth.id, {
+        password: input.password,
+        email_confirm: true,
+        user_metadata: { full_name: input.applicant_full_name },
+      });
+      if (updateErr) {
+        throw new HttpError(500, `Auth kullanıcısı güncellenemedi: ${updateErr.message}`);
+      }
+      authUserId = existingAuth.id;
+    } else {
+      const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: input.password,
+        email_confirm: true,
+        user_metadata: { full_name: input.applicant_full_name },
+      });
+      if (authErr || !authData.user) {
+        throw new HttpError(500, `Auth kullanıcısı oluşturulamadı: ${authErr?.message}`);
+      }
+      authUserId = authData.user.id;
+    }
+
     const [app] = await db
       .insert(organizationApplications)
       .values({
@@ -50,13 +96,14 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
         industry: input.industry || null,
         employee_count_estimate: input.employee_count_estimate ?? null,
         applicant_full_name: input.applicant_full_name,
-        applicant_email: input.applicant_email.toLowerCase(),
+        applicant_email: email,
         applicant_phone: input.applicant_phone || null,
         applicant_title: input.applicant_title || null,
         notes: input.notes || null,
         status: 'pending',
         ip_address: maskIp(req.ip ?? ''),
         user_agent: req.headers['user-agent']?.slice(0, 200) ?? null,
+        metadata: { auth_user_id: authUserId, credentials_created: true },
       })
       .returning();
 
@@ -180,12 +227,14 @@ applicationsRouter.post(
       ]);
 
       // Supabase Auth user oluştur (random şifre, magic link ile gelecek)
-      const { createClient } = await import('@supabase/supabase-js');
       const supabaseAdmin = createClient(
         process.env.SUPABASE_URL ?? '',
         process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
         { auth: { autoRefreshToken: false, persistSession: false } },
       );
+      const appMetadata = app.metadata as
+        | { auth_user_id?: string; credentials_created?: boolean }
+        | null;
 
       // Auth'ta var mı bak
       const { data: existing } = await supabaseAdmin.auth.admin.listUsers();
@@ -193,10 +242,11 @@ applicationsRouter.post(
         (u) => u.email?.toLowerCase() === app.applicant_email.toLowerCase(),
       );
 
-      let authUserId: string;
-      if (existingAuth) {
+      let authUserId: string | undefined = appMetadata?.auth_user_id;
+      if (!authUserId && existingAuth) {
         authUserId = existingAuth.id;
-      } else {
+      }
+      if (!authUserId) {
         // Random şifre — kullanıcı magic link / şifre reset ile girecek
         const tmpPassword = Math.random().toString(36).slice(2) + 'A1!';
         const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
@@ -210,6 +260,7 @@ applicationsRouter.post(
         }
         authUserId = authData.user.id;
       }
+      if (!authUserId) throw new HttpError(500, 'Auth kullanıcısı çözümlenemedi');
 
       // Damga DB user
       const [newUser] = await db
@@ -248,6 +299,11 @@ applicationsRouter.post(
           { err: resetError, email: app.applicant_email },
           'Owner şifre belirleme link üretilemedi — fallback gerekli',
         );
+      }
+
+      if (appMetadata?.credentials_created) {
+        resetLink = null;
+        resetError = null;
       }
 
       // Application'ı approved olarak işaretle
