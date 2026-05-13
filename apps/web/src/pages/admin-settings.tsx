@@ -10,7 +10,12 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Camera,
+  CalendarClock,
+  Clock3,
+  Gift,
   MapPin,
+  Radio,
+  Upload,
   Users,
   Tags,
   Plug,
@@ -380,6 +385,42 @@ export function AdminSettingsPage() {
               icon={<MapPin className="size-4" />}
               title="Lokasyon"
               desc="NFC, QR ve geofence"
+            />
+            <QuickLink
+              to="/manager/schedule"
+              icon={<CalendarClock className="size-4" />}
+              title="Vardiya Planı"
+              desc="Haftalık ekip çizelgesi"
+            />
+            <QuickLink
+              to="/admin/shifts"
+              icon={<Clock3 className="size-4" />}
+              title="Vardiya Şablonları"
+              desc="Saat ve mesai eşiği"
+            />
+            <QuickLink
+              to="/admin/overtime"
+              icon={<Clock3 className="size-4" />}
+              title="Fazla Mesai"
+              desc="Onay ve bordro çıktısı"
+            />
+            <QuickLink
+              to="/admin/live-feed"
+              icon={<Radio className="size-4" />}
+              title="Canlı Kayıtlar"
+              desc="Anlık damga akışı"
+            />
+            <QuickLink
+              to="/admin/redemptions"
+              icon={<Gift className="size-4" />}
+              title="Ödül Teslimleri"
+              desc="Market talepleri"
+            />
+            <QuickLink
+              to="/admin/bulk-import"
+              icon={<Upload className="size-4" />}
+              title="Toplu Aktarım"
+              desc="Menü ve izin import"
             />
             {isPlatformAdmin && (
               <QuickLink
