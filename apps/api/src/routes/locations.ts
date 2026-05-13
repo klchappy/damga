@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { eq, and, desc, count } from 'drizzle-orm';
 import {
-  PLAN_LIMITS,
   createLocationSchema,
   updateLocationSchema,
   createNfcTagSchema,
@@ -13,6 +12,7 @@ import { getDb, orgs, locations, locationNfcTags, locationQrCodes } from '@damga
 import { env } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { getPlanLimit } from '../lib/plan-limits';
 
 export const locationsRouter = Router();
 
@@ -47,7 +47,7 @@ locationsRouter.post(
         .select({ total: count() })
         .from(locations)
         .where(eq(locations.org_id, req.authOrgId));
-      const locationLimit = PLAN_LIMITS[plan]?.locations ?? 0;
+      const locationLimit = await getPlanLimit(plan, 'locations');
       if (Number.isFinite(locationLimit) && (usage?.total ?? 0) >= locationLimit) {
         throw new HttpError(
           402,

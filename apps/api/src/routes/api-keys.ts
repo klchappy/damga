@@ -2,11 +2,12 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { eq, and, desc, count } from 'drizzle-orm';
 import { z } from 'zod';
-import { API_SCOPES, PLAN_LIMITS, createApiKeySchema } from '@damga/shared';
+import { API_SCOPES, createApiKeySchema } from '@damga/shared';
 import { generateApiKey } from '@damga/verification';
 import { getDb, apiKeys, orgs } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
+import { getPlanLimit } from '../lib/plan-limits';
 
 export const apiKeysRouter = Router();
 
@@ -67,7 +68,7 @@ apiKeysRouter.post(
         .select({ total: count() })
         .from(apiKeys)
         .where(and(eq(apiKeys.org_id, req.authOrgId), eq(apiKeys.is_active, true)));
-      const keyLimit = PLAN_LIMITS[plan]?.api_keys ?? 0;
+      const keyLimit = await getPlanLimit(plan, 'api_keys');
       if (Number.isFinite(keyLimit) && (usage?.total ?? 0) >= keyLimit) {
         throw new HttpError(
           402,

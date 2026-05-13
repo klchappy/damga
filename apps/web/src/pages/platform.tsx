@@ -103,6 +103,31 @@ interface PlatformMe {
   admin: { id: string; email: string; full_name: string | null } | null;
 }
 
+interface BillingPlan {
+  plan: string;
+  label: string;
+  description: string;
+  price_try_monthly: number;
+  users_limit: number | null;
+  locations_limit: number | null;
+  api_keys_limit: number | null;
+  webhooks_limit: number | null;
+  features: string[];
+  is_public: boolean;
+  updated_at: string;
+}
+
+interface Campaign {
+  id: string;
+  code: string;
+  title: string;
+  discount_percent: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_active: boolean;
+  notes: string | null;
+}
+
 const PLAN_COLOR: Record<string, string> = {
   free: 'bg-stone-100 text-stone-700',
   starter: 'bg-blue-100 text-blue-700',
@@ -145,6 +170,12 @@ const PLAN_LIMITS: Record<string, { users: string; locations: string; api: strin
 export function PlatformPage() {
   const queryClient = useQueryClient();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [campaignDraft, setCampaignDraft] = useState({
+    code: '',
+    title: '',
+    discount_percent: 0,
+    notes: '',
+  });
 
   const { data: me, isLoading: meLoading } = useQuery<PlatformMe>({
     queryKey: ['platform-me'],
@@ -191,6 +222,18 @@ export function PlatformPage() {
     retry: false,
   });
 
+  const { data: billingData } = useQuery<{ items: BillingPlan[] }>({
+    queryKey: ['platform-billing-catalog'],
+    queryFn: async () => (await api.get('/platform/billing/catalog')).data,
+    enabled: isPlatformAdmin,
+  });
+
+  const { data: campaignsData } = useQuery<{ items: Campaign[] }>({
+    queryKey: ['platform-campaigns'],
+    queryFn: async () => (await api.get('/platform/billing/campaigns')).data,
+    enabled: isPlatformAdmin,
+  });
+
   const updateTicketMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: SupportTicket['status'] }) =>
       (await api.patch(`/platform/support-tickets/${id}`, { status })).data,
@@ -213,6 +256,27 @@ export function PlatformPage() {
         queryClient.invalidateQueries({ queryKey: ['platform-stats'] }),
       ]);
       toast.success('Şirket planı güncellendi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const updateCatalogMutation = useMutation({
+    mutationFn: async ({ plan, payload }: { plan: string; payload: Partial<BillingPlan> }) =>
+      (await api.patch(`/platform/billing/catalog/${plan}`, payload)).data,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['platform-billing-catalog'] });
+      toast.success('Plan kapsami guncellendi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const createCampaignMutation = useMutation({
+    mutationFn: async () =>
+      (await api.post('/platform/billing/campaigns', campaignDraft)).data,
+    onSuccess: async () => {
+      setCampaignDraft({ code: '', title: '', discount_percent: 0, notes: '' });
+      await queryClient.invalidateQueries({ queryKey: ['platform-campaigns'] });
+      toast.success('Kampanya eklendi');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -243,6 +307,8 @@ export function PlatformPage() {
   const tickets = ticketsData?.items ?? [];
   const applications = applicationsData?.items ?? [];
   const accessUsers = usersData?.items ?? [];
+  const billingPlans = billingData?.items ?? [];
+  const campaigns = campaignsData?.items ?? [];
   const selectedOrgTickets = selectedOrg
     ? tickets.filter((ticket) => ticket.org_id === selectedOrg.id)
     : [];
@@ -300,6 +366,149 @@ export function PlatformPage() {
           />
         </div>
       )}
+
+      <section className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg flex items-center gap-2">
+            <CreditCard className="size-5 text-orange-600" />
+            Uyelik Tipleri, Fiyat ve Kampanyalar
+          </h2>
+          <span className="text-xs text-muted">
+            Ana sistem admini fiyat ve kapsam belirler; sirketler bu plana gore limitlenir.
+          </span>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {billingPlans.map((plan) => (
+              <form
+                key={plan.plan}
+                className="rounded-lg border border-orange-100 bg-white p-3 space-y-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = new FormData(event.currentTarget);
+                  const nullableNumber = (key: string) => {
+                    const value = String(form.get(key) ?? '').trim();
+                    return value === '' ? null : Number(value);
+                  };
+                  updateCatalogMutation.mutate({
+                    plan: plan.plan,
+                    payload: {
+                      label: String(form.get('label') ?? plan.label),
+                      description: String(form.get('description') ?? ''),
+                      price_try_monthly: Number(form.get('price_try_monthly') ?? 0),
+                      users_limit: nullableNumber('users_limit'),
+                      locations_limit: nullableNumber('locations_limit'),
+                      api_keys_limit: nullableNumber('api_keys_limit'),
+                      webhooks_limit: nullableNumber('webhooks_limit'),
+                      features: String(form.get('features') ?? '')
+                        .split(',')
+                        .map((item) => item.trim())
+                        .filter(Boolean),
+                      is_public: form.get('is_public') === 'on',
+                    },
+                  });
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{plan.plan}</span>
+                  <Badge tone={plan.is_public ? 'green' : 'stone'}>
+                    {plan.is_public ? 'public' : 'gizli'}
+                  </Badge>
+                </div>
+                <input name="label" className="input h-9 text-sm" defaultValue={plan.label} />
+                <input
+                  name="description"
+                  className="input h-9 text-sm"
+                  defaultValue={plan.description}
+                  placeholder="Plan aciklamasi"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <MiniInput name="price_try_monthly" label="TL/ay" value={plan.price_try_monthly} />
+                  <MiniInput name="users_limit" label="Kullanici" value={plan.users_limit} />
+                  <MiniInput name="locations_limit" label="Lokasyon" value={plan.locations_limit} />
+                  <MiniInput name="api_keys_limit" label="API key" value={plan.api_keys_limit} />
+                  <MiniInput name="webhooks_limit" label="Webhook" value={plan.webhooks_limit} />
+                  <label className="flex items-center gap-2 rounded-md bg-cream px-2 text-xs">
+                    <input name="is_public" type="checkbox" defaultChecked={plan.is_public} />
+                    Goster
+                  </label>
+                </div>
+                <input
+                  name="features"
+                  className="input h-9 text-xs"
+                  defaultValue={(plan.features ?? []).join(', ')}
+                  placeholder="Ozellikler, virgulle"
+                />
+                <button
+                  type="submit"
+                  className="btn-secondary w-full py-1.5 text-xs"
+                  disabled={updateCatalogMutation.isPending}
+                >
+                  Kapsami Kaydet
+                </button>
+              </form>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-orange-100 bg-white p-3 space-y-3">
+            <div>
+              <h3 className="font-semibold">Kampanya Olustur</h3>
+              <p className="text-xs text-muted">Indirim kodu ve notlar ileride odeme akisi ile baglanacak.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="input h-9 text-sm"
+                placeholder="KOD"
+                value={campaignDraft.code}
+                onChange={(e) => setCampaignDraft({ ...campaignDraft, code: e.target.value.toUpperCase() })}
+              />
+              <input
+                className="input h-9 text-sm"
+                type="number"
+                min={0}
+                max={100}
+                value={campaignDraft.discount_percent}
+                onChange={(e) =>
+                  setCampaignDraft({ ...campaignDraft, discount_percent: Number(e.target.value) })
+                }
+              />
+            </div>
+            <input
+              className="input h-9 text-sm"
+              placeholder="Kampanya basligi"
+              value={campaignDraft.title}
+              onChange={(e) => setCampaignDraft({ ...campaignDraft, title: e.target.value })}
+            />
+            <textarea
+              className="input min-h-20 text-sm"
+              placeholder="Not"
+              value={campaignDraft.notes}
+              onChange={(e) => setCampaignDraft({ ...campaignDraft, notes: e.target.value })}
+            />
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={createCampaignMutation.isPending || !campaignDraft.code || !campaignDraft.title}
+              onClick={() => createCampaignMutation.mutate()}
+            >
+              Kampanyayi Ekle
+            </button>
+            <div className="space-y-2">
+              {campaigns.slice(0, 5).map((campaign) => (
+                <div key={campaign.id} className="rounded-md bg-cream p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong>{campaign.code}</strong>
+                    <span>{campaign.discount_percent}%</span>
+                  </div>
+                  <div className="text-muted">{campaign.title}</div>
+                </div>
+              ))}
+              {campaigns.length === 0 && <p className="text-xs text-muted">Kampanya yok.</p>}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -733,6 +942,22 @@ function MiniInfo({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
       <div className="mt-0.5 truncate text-sm font-semibold text-ink">{value}</div>
     </div>
+  );
+}
+
+function MiniInput({ name, label, value }: { name: string; label: string; value: number | null }) {
+  return (
+    <label className="text-[10px] uppercase tracking-wider text-muted">
+      {label}
+      <input
+        name={name}
+        type="number"
+        min={0}
+        className="input mt-1 h-8 text-sm"
+        defaultValue={value ?? ''}
+        placeholder="sinirsiz"
+      />
+    </label>
   );
 }
 

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { eq, and, desc, count } from 'drizzle-orm';
 import { z } from 'zod';
-import { PLAN_LIMITS, createWebhookSchema } from '@damga/shared';
+import { createWebhookSchema } from '@damga/shared';
 import { generateWebhookSecret } from '@damga/verification';
 import { getDb, orgs, webhooks, webhookDeliveries } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
 import { deliverWebhook } from '../modules/webhook-delivery';
+import { getPlanLimit } from '../lib/plan-limits';
 
 export const webhooksRouter = Router();
 
@@ -55,7 +56,7 @@ webhooksRouter.post(
         .select({ total: count() })
         .from(webhooks)
         .where(and(eq(webhooks.org_id, req.authOrgId), eq(webhooks.is_active, true)));
-      const webhookLimit = PLAN_LIMITS[plan]?.webhooks ?? 0;
+      const webhookLimit = await getPlanLimit(plan, 'webhooks');
       if (Number.isFinite(webhookLimit) && (usage?.total ?? 0) >= webhookLimit) {
         throw new HttpError(
           402,

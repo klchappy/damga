@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { eq, and, count } from 'drizzle-orm';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { PLAN_LIMITS, createUserSchema, adminUpdateUserSchema } from '@damga/shared';
+import { createUserSchema, adminUpdateUserSchema } from '@damga/shared';
 import { getDb, orgs, users } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
@@ -10,6 +10,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { logger } from '../config/logger';
 import { generateStrongPassword } from '../lib/password';
 import { buildPasswordMessage, sendSms, sendWhatsApp } from '../lib/notify';
+import { getPlanLimit } from '../lib/plan-limits';
 
 export const usersRouter = Router();
 
@@ -148,7 +149,7 @@ usersRouter.post(
         .select({ total: count() })
         .from(users)
         .where(and(eq(users.org_id, req.authOrgId), eq(users.is_active, true)));
-      const userLimit = PLAN_LIMITS[plan]?.users ?? 0;
+      const userLimit = await getPlanLimit(plan, 'users');
       if (Number.isFinite(userLimit) && (usage?.total ?? 0) >= userLimit) {
         throw new HttpError(
           402,
