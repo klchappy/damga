@@ -142,12 +142,24 @@ const PAGE_OPTIONS: PageOption[] = [
  */
 export function AdminSettingsPage() {
   const org = useAuthStore((s) => s.org);
+  const user = useAuthStore((s) => s.user);
   const setOrg = useAuthStore((s) => s.setOrg);
   const qc = useQueryClient();
+
+  const { data: platformMe } = useQuery<{ is_platform_admin: boolean }>({
+    queryKey: ['platform-me'],
+    queryFn: async () => (await api.get('/platform/me')).data,
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const isPlatformAdmin = platformMe?.is_platform_admin === true;
 
   const { data: integrationStatus } = useQuery<IntegrationStatus>({
     queryKey: ['admin', 'integrations', 'status'],
     queryFn: async () => (await api.get('/integrations/status')).data,
+    enabled: isPlatformAdmin,
+    retry: false,
   });
 
   const initialVisible: Set<EmployeePageKey> = new Set(
@@ -369,12 +381,14 @@ export function AdminSettingsPage() {
               title="Lokasyon"
               desc="NFC, QR ve geofence"
             />
-            <QuickLink
-              to="/admin/integrations"
-              icon={<Webhook className="size-4" />}
-              title="API & Entegrasyon"
-              desc="Key, webhook ve servisler"
-            />
+            {isPlatformAdmin && (
+              <QuickLink
+                to="/admin/integrations"
+                icon={<Webhook className="size-4" />}
+                title="API & Entegrasyon"
+                desc="Key, webhook ve servisler"
+              />
+            )}
           </div>
         </div>
 
@@ -384,15 +398,22 @@ export function AdminSettingsPage() {
             <h2 className="font-display text-lg">Sistem Özeti</h2>
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <MiniStat label="API key" value={integrationStatus?.counts.active_api_keys ?? '—'} />
-            <MiniStat label="Webhook" value={integrationStatus?.counts.active_webhooks ?? '—'} />
+            <MiniStat label="API key" value={isPlatformAdmin ? (integrationStatus?.counts.active_api_keys ?? '—') : 'ana admin'} />
+            <MiniStat label="Webhook" value={isPlatformAdmin ? (integrationStatus?.counts.active_webhooks ?? '—') : 'ana admin'} />
           </div>
-          <div className="space-y-2 text-sm">
-            <ServiceRow label="Database" ok={integrationStatus?.services.database} />
-            <ServiceRow label="Supabase" ok={integrationStatus?.services.supabase} />
-            <ServiceRow label="Resend" ok={integrationStatus?.services.resend} />
-            <ServiceRow label="Web Push" ok={integrationStatus?.services.web_push} />
-          </div>
+          {isPlatformAdmin ? (
+            <div className="space-y-2 text-sm">
+              <ServiceRow label="Database" ok={integrationStatus?.services.database} />
+              <ServiceRow label="Supabase" ok={integrationStatus?.services.supabase} />
+              <ServiceRow label="Resend" ok={integrationStatus?.services.resend} />
+              <ServiceRow label="Web Push" ok={integrationStatus?.services.web_push} />
+            </div>
+          ) : (
+            <div className="rounded-md bg-cream p-3 text-xs text-muted">
+              API, webhook ve dış servis bağlantıları sadece sistem ana admini tarafından yönetilir.
+              İhtiyaç olduğunda Destek Talebi oluştur.
+            </div>
+          )}
         </div>
       </aside>
       </div>

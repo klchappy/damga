@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { and, count, desc, eq } from 'drizzle-orm';
 import { getDb, apiKeys, webhooks, externalIntegrations } from '@damga/db';
 import { z } from 'zod';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 import { env, isConfigured } from '../config/env';
 
@@ -54,6 +54,7 @@ integrationsRouter.get(
   '/integrations/status',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -108,6 +109,7 @@ integrationsRouter.get(
   '/integrations/external',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -145,6 +147,7 @@ integrationsRouter.post(
   '/integrations/external',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
@@ -195,6 +198,7 @@ integrationsRouter.patch(
   '/integrations/external/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -263,6 +267,7 @@ integrationsRouter.delete(
   '/integrations/external/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');

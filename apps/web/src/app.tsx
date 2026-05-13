@@ -40,6 +40,7 @@ import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
 import { ManagerWorkforcePage } from "@/pages/manager-workforce";
 import { MyRecordsPage } from "@/pages/my-records";
 import { SettingsHubPage } from "@/pages/settings-hub";
+import { SupportPage } from "@/pages/support";
 import { CookieBanner } from "@/components/cookie-banner";
 import { useMobileDevice } from "@/hooks/use-mobile-device";
 
@@ -164,6 +165,7 @@ function AppInner() {
             </EmployeePageGate>
           }
         />
+        <Route path="support" element={<SupportPage />} />
         <Route
           path="gamification"
           element={

@@ -1,7 +1,7 @@
 import type { Response, RequestHandler } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDb, users, apiKeys } from '@damga/db';
 import type { User } from '@damga/db';
 import { env, isConfigured } from '../config/env';
@@ -265,6 +265,33 @@ export function requireRole(...roles: Array<'employee' | 'manager' | 'admin' | '
   };
   return handler;
 }
+
+/**
+ * Org kullanicisi olarak giris yapmis ama ayni zamanda platform sahibi olan kullanicilar.
+ * API/entegrasyon yonetimi gibi merkezi islemler icin ikinci kilit olarak kullanilir.
+ */
+export const requirePlatformAdminUser: RequestHandler = async (req, _res, next) => {
+  try {
+    const email = req.authUser?.email;
+    if (!email) {
+      throw new HttpError(401, 'Yetkilendirme gerekli', 'UNAUTHORIZED');
+    }
+
+    const r = await getDb().execute(
+      sql`select 1 from public.platform_admins where email = ${email} and is_active = true`,
+    );
+    if (r.rows.length === 0) {
+      throw new HttpError(
+        403,
+        'API ve entegrasyon islemleri sadece sistem ana admini tarafindan yapilabilir',
+        'NOT_PLATFORM_ADMIN',
+      );
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
 
 /** API key scope kontrolü */
 export function requireScope(scope: string): RequestHandler {

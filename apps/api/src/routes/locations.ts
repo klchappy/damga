@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import {
+  PLAN_LIMITS,
   createLocationSchema,
   updateLocationSchema,
   createNfcTagSchema,
@@ -8,7 +9,7 @@ import {
 } from '@damga/shared';
 import { signNfcTag, signQrCode, signQrCodeUrl } from '@damga/verification';
 import { randomBytes } from 'node:crypto';
-import { getDb, locations, locationNfcTags, locationQrCodes } from '@damga/db';
+import { getDb, orgs, locations, locationNfcTags, locationQrCodes } from '@damga/db';
 import { env } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -36,6 +37,24 @@ locationsRouter.post(
     try {
       if (!req.authOrgId) throw new HttpError(401, "Yetki yok");
       const input = createLocationSchema.parse(req.body);
+      const db = getDb();
+      const [orgPlan] = await db
+        .select({ plan: orgs.plan })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      const plan = orgPlan?.plan ?? 'free';
+      const [usage] = await db
+        .select({ total: count() })
+        .from(locations)
+        .where(eq(locations.org_id, req.authOrgId));
+      const locationLimit = PLAN_LIMITS[plan]?.locations ?? 0;
+      if (Number.isFinite(locationLimit) && (usage?.total ?? 0) >= locationLimit) {
+        throw new HttpError(
+          402,
+          `Bu plan en fazla ${locationLimit} lokasyona izin verir. Plan yukseltmesi icin destek talebi acin.`,
+          'PLAN_LIMIT_LOCATIONS',
+        );
+      }
       const [loc] = await getDb()
         .insert(locations)
         .values({ ...input, org_id: req.authOrgId })

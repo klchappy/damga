@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   CalendarDays,
   Home,
+  LifeBuoy,
   LogOut,
   Megaphone,
   Menu as MenuIcon,
@@ -100,6 +101,7 @@ export function AppLayout() {
               (can("profile") || isAdmin || isPlatformAdmin) && (
                 <NavItem to="/settings">Ayarlar</NavItem>
               )}
+            <NavItem to="/support">Destek</NavItem>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -165,6 +167,9 @@ export function AppLayout() {
                   Ayarlar
                 </NavItem>
               )}
+            <NavItem to="/support" onClick={() => setOpen(false)}>
+              Destek
+            </NavItem>
           </nav>
         )}
       </header>
@@ -218,6 +223,11 @@ export function AppLayout() {
         ·{" "}
         <Link to="/legal/cookies" className="hover:text-orange-600 underline">
           Çerezler
+        </Link>
+        {" "}·{" "}
+        <Link to="/support" className="inline-flex items-center gap-1 hover:text-orange-600 underline">
+          <LifeBuoy className="size-3" />
+          Destek
         </Link>
       </footer>
     </div>

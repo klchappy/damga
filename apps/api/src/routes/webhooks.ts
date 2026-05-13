@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { z } from 'zod';
-import { createWebhookSchema } from '@damga/shared';
+import { PLAN_LIMITS, createWebhookSchema } from '@damga/shared';
 import { generateWebhookSecret } from '@damga/verification';
-import { getDb, webhooks, webhookDeliveries } from '@damga/db';
+import { getDb, orgs, webhooks, webhookDeliveries } from '@damga/db';
 import { HttpError } from '../middleware/error';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
 import { deliverWebhook } from '../modules/webhook-delivery';
 
 export const webhooksRouter = Router();
@@ -18,6 +18,7 @@ webhooksRouter.get(
   '/webhooks',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -39,12 +40,31 @@ webhooksRouter.post(
   '/webhooks',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
       const input = createWebhookSchema.parse(req.body);
+      const db = getDb();
+      const [orgPlan] = await db
+        .select({ plan: orgs.plan })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      const plan = orgPlan?.plan ?? 'free';
+      const [usage] = await db
+        .select({ total: count() })
+        .from(webhooks)
+        .where(and(eq(webhooks.org_id, req.authOrgId), eq(webhooks.is_active, true)));
+      const webhookLimit = PLAN_LIMITS[plan]?.webhooks ?? 0;
+      if (Number.isFinite(webhookLimit) && (usage?.total ?? 0) >= webhookLimit) {
+        throw new HttpError(
+          402,
+          `Bu plan en fazla ${webhookLimit} aktif webhook'a izin verir. Plan yukseltmesi gerekir.`,
+          'PLAN_LIMIT_WEBHOOKS',
+        );
+      }
       const secret = generateWebhookSecret();
-      const [w] = await getDb()
+      const [w] = await db
         .insert(webhooks)
         .values({
           org_id: req.authOrgId,
@@ -68,6 +88,7 @@ webhooksRouter.delete(
   '/webhooks/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -88,6 +109,7 @@ webhooksRouter.patch(
   '/webhooks/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -113,6 +135,7 @@ webhooksRouter.get(
   '/webhooks/:id/deliveries',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -140,6 +163,7 @@ webhooksRouter.post(
   '/webhooks/:id/test',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');

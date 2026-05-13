@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Save,
   Send,
+  Shield,
   Trash2,
   Webhook,
   XCircle,
@@ -260,24 +261,36 @@ export function AdminIntegrationsPage() {
   const [webhookDrafts, setWebhookDrafts] = useState<Record<string, WebhookDraft>>({});
   const [externalDrafts, setExternalDrafts] = useState<Record<string, ExternalIntegrationDraft>>({});
 
+  const platformMeQuery = useQuery<{ is_platform_admin: boolean }>({
+    queryKey: ['platform-me'],
+    queryFn: async () => (await api.get('/platform/me')).data,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const isPlatformAdmin = platformMeQuery.data?.is_platform_admin === true;
+
   const statusQuery = useQuery<IntegrationStatus>({
     queryKey: ['admin', 'integrations', 'status'],
     queryFn: async () => (await api.get('/integrations/status')).data,
+    enabled: isPlatformAdmin,
   });
 
   const apiKeysQuery = useQuery<{ items: ApiKeyRow[] }>({
     queryKey: ['admin', 'api-keys'],
     queryFn: async () => (await api.get('/api-keys')).data,
+    enabled: isPlatformAdmin,
   });
 
   const webhooksQuery = useQuery<{ items: WebhookRow[] }>({
     queryKey: ['admin', 'webhooks'],
     queryFn: async () => (await api.get('/webhooks')).data,
+    enabled: isPlatformAdmin,
   });
 
   const externalQuery = useQuery<{ items: ExternalIntegrationRow[] }>({
     queryKey: ['admin', 'external-integrations'],
     queryFn: async () => (await api.get('/integrations/external')).data,
+    enabled: isPlatformAdmin,
   });
 
   const createKey = useMutation({
@@ -391,6 +404,29 @@ export function AdminIntegrationsPage() {
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  if (platformMeQuery.isLoading) {
+    return (
+      <div className="container mx-auto max-w-3xl px-4 py-12 text-center text-muted">
+        Entegrasyon yetkisi kontrol ediliyor...
+      </div>
+    );
+  }
+
+  if (!isPlatformAdmin) {
+    return (
+      <div className="container mx-auto max-w-3xl px-4 py-12">
+        <div className="card text-center">
+          <Shield className="mx-auto mb-3 size-10 text-orange-600" />
+          <h1 className="font-display text-xl">Sadece Sistem Ana Admini</h1>
+          <p className="mt-1 text-sm text-muted">
+            API anahtarı, webhook ve dış servis bağlantıları müşteriler tarafından doğrudan
+            yönetilmez. Bu işlemler için Destek Talebi açılır ve platform tarafından onaylanır.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const loading =
     statusQuery.isLoading ||

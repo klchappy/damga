@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { createUserSchema, adminUpdateUserSchema } from '@damga/shared';
-import { getDb, users } from '@damga/db';
+import { PLAN_LIMITS, createUserSchema, adminUpdateUserSchema } from '@damga/shared';
+import { getDb, orgs, users } from '@damga/db';
 import { env, isConfigured } from '../config/env';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -138,6 +138,24 @@ usersRouter.post(
       }
 
       const db = getDb();
+
+      const [orgPlan] = await db
+        .select({ plan: orgs.plan })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      const plan = orgPlan?.plan ?? 'free';
+      const [usage] = await db
+        .select({ total: count() })
+        .from(users)
+        .where(and(eq(users.org_id, req.authOrgId), eq(users.is_active, true)));
+      const userLimit = PLAN_LIMITS[plan]?.users ?? 0;
+      if (Number.isFinite(userLimit) && (usage?.total ?? 0) >= userLimit) {
+        throw new HttpError(
+          402,
+          `Bu plan en fazla ${userLimit} aktif kullaniciya izin verir. Plan yukseltmesi icin destek talebi acin.`,
+          'PLAN_LIMIT_USERS',
+        );
+      }
 
       // Aynı email var mı?
       const [existing] = await db

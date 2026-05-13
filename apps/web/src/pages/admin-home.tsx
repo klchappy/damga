@@ -24,6 +24,15 @@ import { api } from '@/lib/api';
 export function AdminHomePage() {
   const user = useAuthStore((s) => s.user);
 
+  const { data: platformMe } = useQuery<{ is_platform_admin: boolean }>({
+    queryKey: ['platform-me'],
+    queryFn: async () => (await api.get('/platform/me')).data,
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const isPlatformAdmin = platformMe?.is_platform_admin === true;
+
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: async () => {
@@ -119,12 +128,14 @@ export function AdminHomePage() {
           title="Departmanlar"
           desc="Satış, Sevk, Muhasebe, Diğer + yeni departman ekle (renk + slug)."
         />
-        <AdminCard
-          to="/admin/integrations"
-          icon={<Webhook className="size-6" />}
-          title="API & Entegrasyonlar"
-          desc="API key, webhook, endpoint ve mail servis durumlarını tek kompakt panelden yönet."
-        />
+        {isPlatformAdmin && (
+          <AdminCard
+            to="/admin/integrations"
+            icon={<Webhook className="size-6" />}
+            title="API & Entegrasyonlar"
+            desc="API key, webhook, endpoint ve mail servis durumlarını tek kompakt panelden yönet."
+          />
+        )}
         <AdminCard
           to="/manager/reports"
           icon={<Database className="size-6" />}

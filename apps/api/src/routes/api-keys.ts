@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { z } from 'zod';
-import { API_SCOPES, createApiKeySchema } from '@damga/shared';
+import { API_SCOPES, PLAN_LIMITS, createApiKeySchema } from '@damga/shared';
 import { generateApiKey } from '@damga/verification';
-import { getDb, apiKeys } from '@damga/db';
+import { getDb, apiKeys, orgs } from '@damga/db';
 import { HttpError } from '../middleware/error';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
 
 export const apiKeysRouter = Router();
 
@@ -22,6 +22,7 @@ apiKeysRouter.get(
   '/api-keys',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -51,13 +52,32 @@ apiKeysRouter.post(
   '/api-keys',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
       const input = createApiKeySchema.parse(req.body);
+      const db = getDb();
+      const [orgPlan] = await db
+        .select({ plan: orgs.plan })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      const plan = orgPlan?.plan ?? 'free';
+      const [usage] = await db
+        .select({ total: count() })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.org_id, req.authOrgId), eq(apiKeys.is_active, true)));
+      const keyLimit = PLAN_LIMITS[plan]?.api_keys ?? 0;
+      if (Number.isFinite(keyLimit) && (usage?.total ?? 0) >= keyLimit) {
+        throw new HttpError(
+          402,
+          `Bu plan en fazla ${keyLimit} aktif API key'e izin verir. Plan yukseltmesi gerekir.`,
+          'PLAN_LIMIT_API_KEYS',
+        );
+      }
       const { raw, prefix } = generateApiKey();
       const hash = await bcrypt.hash(raw, 12);
-      const [k] = await getDb()
+      const [k] = await db
         .insert(apiKeys)
         .values({
           org_id: req.authOrgId,
@@ -94,6 +114,7 @@ apiKeysRouter.delete(
   '/api-keys/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
@@ -114,6 +135,7 @@ apiKeysRouter.patch(
   '/api-keys/:id',
   requireAuth,
   requireRole('admin', 'owner'),
+  requirePlatformAdminUser,
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');

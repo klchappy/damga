@@ -40,6 +40,7 @@ const DAMGA_ORG_FILTER = sql`COALESCE(o.org_type, 'damga_only') = 'damga_only'`;
 
 const ticketStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']);
 const ticketPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+const planSchema = z.enum(['free', 'starter', 'pro', 'business', 'enterprise']);
 
 const createSupportTicketSchema = z.object({
   subject: z.string().trim().min(3).max(160),
@@ -53,6 +54,10 @@ const updateSupportTicketSchema = z.object({
   priority: ticketPrioritySchema.optional(),
   assigned_to_email: z.string().trim().email().nullable().optional(),
   platform_notes: z.string().trim().max(4000).nullable().optional(),
+});
+
+const updateOrgPlanSchema = z.object({
+  plan: planSchema,
 });
 
 let supportTicketsTableReady = false;
@@ -534,6 +539,49 @@ platformRouter.get('/platform/stats', ...platformGuard, async (_req, res, next) 
       summary: summary.rows[0] ?? {},
       plan_breakdown: planBreakdown.rows,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /platform/orgs/:id/plan - odeme/uyelik durumuna gore plan kontrolu
+platformRouter.patch('/platform/orgs/:id/plan', ...platformGuard, async (req, res, next) => {
+  try {
+    const orgId = z.string().uuid().parse(req.params.id);
+    const input = updateOrgPlanSchema.parse(req.body);
+
+    const existing = await getDb().execute(
+      sql`SELECT id, name, plan FROM public.orgs o WHERE o.id = ${orgId} AND ${DAMGA_ORG_FILTER}`,
+    );
+    const current = existing.rows[0] as { id: string; name: string; plan: string } | undefined;
+    if (!current) throw new HttpError(404, 'Organizasyon bulunamadi');
+
+    const r = await getDb().execute(
+      sql`UPDATE public.orgs
+          SET plan = ${input.plan}, updated_at = now()
+          WHERE id = ${orgId}
+          RETURNING id, name, slug, plan, updated_at::text`,
+    );
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: orgId,
+        actor_user_id: null,
+        action: 'platform.org_plan_updated',
+        target_type: 'org',
+        target_id: orgId,
+        details: {
+          platform_admin: req.supabaseAuth?.email ?? 'unknown',
+          previous_plan: current.plan,
+          next_plan: input.plan,
+        },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.json({ item: r.rows[0] });
   } catch (err) {
     next(err);
   }

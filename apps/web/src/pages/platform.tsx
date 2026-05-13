@@ -8,6 +8,7 @@ import {
   Building2,
   CheckCircle2,
   Clock3,
+  CreditCard,
   Globe,
   LifeBuoy,
   Loader2,
@@ -132,6 +133,15 @@ const PRIORITY_LABEL: Record<SupportTicket['priority'], string> = {
   urgent: 'Acil',
 };
 
+const PLAN_OPTIONS = ['free', 'starter', 'pro', 'business', 'enterprise'] as const;
+const PLAN_LIMITS: Record<string, { users: string; locations: string; api: string }> = {
+  free: { users: '3 kullanıcı', locations: '1 lokasyon', api: 'API kapalı' },
+  starter: { users: '10 kullanıcı', locations: '2 lokasyon', api: '1 API / webhook' },
+  pro: { users: '25 kullanıcı', locations: '5 lokasyon', api: '3 API / webhook' },
+  business: { users: '100 kullanıcı', locations: '20 lokasyon', api: '10 API / webhook' },
+  enterprise: { users: 'Sınırsız', locations: 'Sınırsız', api: 'Sınırsız' },
+};
+
 export function PlatformPage() {
   const queryClient = useQueryClient();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
@@ -194,6 +204,19 @@ export function PlatformPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const updatePlanMutation = useMutation({
+    mutationFn: async ({ orgId, plan }: { orgId: string; plan: string }) =>
+      (await api.patch(`/platform/orgs/${orgId}/plan`, { plan })).data,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['platform-orgs'] }),
+        queryClient.invalidateQueries({ queryKey: ['platform-stats'] }),
+      ]);
+      toast.success('Şirket planı güncellendi');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   if (meLoading) {
     return (
       <div className="container mx-auto max-w-6xl px-4 py-12 text-center">
@@ -220,6 +243,9 @@ export function PlatformPage() {
   const tickets = ticketsData?.items ?? [];
   const applications = applicationsData?.items ?? [];
   const accessUsers = usersData?.items ?? [];
+  const selectedOrgTickets = selectedOrg
+    ? tickets.filter((ticket) => ticket.org_id === selectedOrg.id)
+    : [];
 
   return (
     <div className="container mx-auto max-w-7xl px-4 py-5 space-y-4">
@@ -324,6 +350,86 @@ export function PlatformPage() {
       </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+        <div className="space-y-4 xl:col-span-2">
+        <section className="card">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg flex items-center gap-2">
+                <CreditCard className="size-5 text-orange-600" />
+                Şirket Kontrolü
+              </h2>
+              <p className="text-xs text-muted">
+                {selectedOrg ? 'Satıra tıklayınca seçili şirket burada yönetilir.' : 'Şirket seçilmedi'}
+              </p>
+            </div>
+            {selectedOrg && (
+              <Badge tone={selectedOrgTickets.length > 0 ? 'orange' : 'green'}>
+                {selectedOrgTickets.length} açık destek
+              </Badge>
+            )}
+          </div>
+
+          {selectedOrg ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-orange-100 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{selectedOrg.name}</div>
+                    <div className="text-[11px] text-muted">{selectedOrg.slug ?? selectedOrg.id}</div>
+                    <div className="mt-1 max-w-full truncate text-[11px] text-muted">
+                      Owner: {selectedOrg.owner_emails || 'atanmadı'}
+                    </div>
+                  </div>
+                  <Badge tone={selectedOrg.pending_user_count > 0 ? 'orange' : 'green'}>
+                    {selectedOrg.user_count} aktif / {selectedOrg.pending_user_count} bekleyen
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <MiniInfo label="Kullanıcı" value={`${selectedOrg.user_count} / ${PLAN_LIMITS[selectedOrg.plan]?.users ?? '-'}`} />
+                <MiniInfo label="Lokasyon" value={`${selectedOrg.location_count} / ${PLAN_LIMITS[selectedOrg.plan]?.locations ?? '-'}`} />
+                <MiniInfo label="API" value={PLAN_LIMITS[selectedOrg.plan]?.api ?? '-'} />
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-44 flex-1 text-xs font-medium text-muted">
+                  Üyelik tipi
+                  <select
+                    className="input mt-1 h-10 w-full text-sm"
+                    value={selectedOrg.plan}
+                    disabled={updatePlanMutation.isPending}
+                    onChange={(event) =>
+                      updatePlanMutation.mutate({
+                        orgId: selectedOrg.id,
+                        plan: event.target.value,
+                      })
+                    }
+                  >
+                    {PLAN_OPTIONS.map((plan) => (
+                      <option key={plan} value={plan}>
+                        {plan}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Link to="/admin/applications" className="btn-secondary h-10 px-3 text-xs">
+                  Başvurular
+                </Link>
+                <Link to="/admin/team" className="btn-secondary h-10 px-3 text-xs">
+                  Kendi Ekip Sayfan
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Building2 className="size-5" />}
+              title="Şirket seç"
+              text="Aşağıdaki şirket satırına tıklayınca plan, destek ve erişim bilgileri açılır."
+            />
+          )}
+        </section>
+
         <section className="card">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="font-display text-lg flex items-center gap-2">
@@ -373,6 +479,15 @@ export function PlatformPage() {
                         onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'resolved' })}
                       >
                         Çözüldü
+                      </button>
+                    )}
+                    {ticket.status !== 'closed' && (
+                      <button
+                        type="button"
+                        className="btn-ghost px-2 py-1 text-xs text-danger"
+                        onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'closed' })}
+                      >
+                        Reddet/Kapat
                       </button>
                     )}
                   </div>
@@ -447,6 +562,7 @@ export function PlatformPage() {
             </div>
           )}
         </section>
+        </div>
       </div>
 
       <section className="card">
@@ -607,6 +723,15 @@ function StatCard({
         {value.toLocaleString('tr-TR')}
       </div>
       {sub && <p className="mt-0.5 text-[11px] text-muted">{sub}</p>}
+    </div>
+  );
+}
+
+function MiniInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="mt-0.5 truncate text-sm font-semibold text-ink">{value}</div>
     </div>
   );
 }
