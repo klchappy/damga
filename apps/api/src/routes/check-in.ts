@@ -509,6 +509,17 @@ async function performAttendance(
 
   res.status(201).json({
     event_id: event.id,
+    type: event.type,
+    user: {
+      id: req.authUserId,
+      full_name: req.authUser?.full_name ?? null,
+      email: req.authUser?.email ?? null,
+      role: req.authUser?.role ?? null,
+    },
+    location: {
+      id: location.id,
+      name: location.name,
+    },
     server_time: event.server_time.toISOString(),
     verification_score: trust.score,
     decision: trust.decision,

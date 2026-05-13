@@ -15,6 +15,7 @@ import { api, getErrorMessage } from '@/lib/api';
 import { generateDeviceId } from '@/lib/utils';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { useNfc } from '@/hooks/use-nfc';
+import { useAuthStore } from '@/hooks/use-auth';
 import { QrScanner } from './qr-scanner';
 import { MoodPrompt } from './mood-prompt';
 import { SelfieCaptureModal } from './selfie-capture';
@@ -49,6 +50,7 @@ interface PrecheckState {
  * UI'da sadece "sıradaki aksiyon" gösterilir (Giriş veya Çıkış).
  */
 export function CheckInCard({ locationId, onSuccess }: Props) {
+  const user = useAuthStore((s) => s.user);
   const [method, setMethod] = useState<Method | null>(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [lastResult, setLastResult] =
@@ -92,17 +94,24 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
 
   // Bugünkü son event'i çek → "sıradaki aksiyon" hint'i için
   const { data: todayEvents, refetch: refetchToday } = useQuery({
-    queryKey: ['events', 'me', 'today'],
+    queryKey: ['events', 'me', 'today', user?.id],
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const end = new Date();
       end.setHours(23, 59, 59, 999);
+      const params = new URLSearchParams({
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+        limit: '20',
+      });
+      if (user?.id) params.set('user_id', user.id);
       const r = await api.get<{ items: Array<{ type: string; server_time: string }> }>(
-        `/events?date_from=${start.toISOString()}&date_to=${end.toISOString()}&limit=20`,
+        `/events?${params.toString()}`,
       );
       return r.data;
     },
+    enabled: !!user,
   });
 
   const todaySorted = (todayEvents?.items ?? []).slice().sort(
@@ -154,7 +163,7 @@ export function CheckInCard({ locationId, onSuccess }: Props) {
       const score = data.verification_score;
       const flags: string[] = data.flags ?? [];
       const methods: string[] = data.verification_methods ?? [];
-      const type = nextAction;
+      const type = (data.type ?? nextAction) as 'check_in' | 'check_out';
       setLastResult({
         score,
         flags,
