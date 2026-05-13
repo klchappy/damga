@@ -1,6 +1,7 @@
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { applyOrgSchema, reviewApplicationSchema, assignUserOrgSchema } from '@damga/shared';
 import {
   getDb,
@@ -10,11 +11,37 @@ import {
   departments,
 } from '@damga/db';
 import { HttpError } from '../middleware/error';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, requireSupabaseAuth } from '../middleware/auth';
 import { authLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
 
 export const applicationsRouter = Router();
+
+const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
+  try {
+    if (!req.supabaseAuth?.email) {
+      throw new HttpError(401, 'Yetki yok', 'UNAUTHORIZED');
+    }
+    const r = await getDb().execute(
+      sql`select 1 from public.platform_admins where email = ${req.supabaseAuth.email} and is_active = true`,
+    );
+    if (r.rows.length === 0) {
+      throw new HttpError(403, 'Sadece platform ana admini', 'NOT_PLATFORM_ADMIN');
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
+async function resolveReviewerUserId(authUserId: string | undefined): Promise<string | null> {
+  if (!authUserId) return null;
+  const [reviewer] = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.auth_user_id, authUserId));
+  return reviewer?.id ?? null;
+}
 
 /**
  * POST /v1/auth/apply-org — public
@@ -130,8 +157,8 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
  */
 applicationsRouter.get(
   '/admin/applications',
-  requireAuth,
-  requireRole('owner', 'admin'),
+  requireSupabaseAuth,
+  requirePlatformAdmin,
   async (req, res, next) => {
     try {
       const status = String(req.query.status ?? 'pending');
@@ -163,14 +190,14 @@ applicationsRouter.get(
  */
 applicationsRouter.post(
   '/admin/applications/:id/review',
-  requireAuth,
-  requireRole('owner', 'admin'),
+  requireSupabaseAuth,
+  requirePlatformAdmin,
   async (req, res, next) => {
     try {
-      if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
       const body = reviewApplicationSchema.parse(req.body);
       const db = getDb();
+      const reviewerUserId = await resolveReviewerUserId(req.supabaseAuth?.authUserId);
 
       const [app] = await db
         .select()
@@ -187,7 +214,7 @@ applicationsRouter.post(
           .set({
             status: 'rejected',
             rejection_reason: body.rejection_reason ?? null,
-            reviewed_by_user_id: req.authUserId,
+            reviewed_by_user_id: reviewerUserId,
             reviewed_at: new Date(),
           })
           .where(eq(organizationApplications.id, id));
@@ -313,7 +340,7 @@ applicationsRouter.post(
           status: 'approved',
           created_org_id: newOrg!.id,
           created_user_id: newUser!.id,
-          reviewed_by_user_id: req.authUserId,
+          reviewed_by_user_id: reviewerUserId,
           reviewed_at: new Date(),
         })
         .where(eq(organizationApplications.id, id));
