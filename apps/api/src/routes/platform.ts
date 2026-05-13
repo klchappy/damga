@@ -36,6 +36,7 @@ const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
 };
 
 const platformGuard = [requireSupabaseAuth, requirePlatformAdmin];
+const DAMGA_ORG_FILTER = sql`COALESCE(o.org_type, 'damga_only') IN ('damga_only', 'damga_lokma_combined')`;
 
 const ticketStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']);
 const ticketPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
@@ -137,6 +138,7 @@ platformRouter.get('/platform/orgs', ...platformGuard, async (_req, res, next) =
             (SELECT count(*)::int FROM public.attendance_events WHERE org_id = o.id) AS check_in_count,
             (SELECT max(created_at)::text FROM public.attendance_events WHERE org_id = o.id) AS last_activity
           FROM public.orgs o
+          WHERE ${DAMGA_ORG_FILTER}
           ORDER BY o.created_at DESC`,
     );
     res.json({ items: r.rows, count: r.rows.length });
@@ -149,6 +151,11 @@ platformRouter.get('/platform/orgs', ...platformGuard, async (_req, res, next) =
 platformRouter.get('/platform/orgs/:id/users', ...platformGuard, async (req, res, next) => {
   try {
     const orgId = z.string().uuid().parse(req.params.id);
+    const orgCheck = await getDb().execute(
+      sql`SELECT 1 FROM public.orgs o WHERE o.id = ${orgId} AND ${DAMGA_ORG_FILTER}`,
+    );
+    if (orgCheck.rows.length === 0) throw new HttpError(404, 'Organizasyon bulunamadı');
+
     const r = await getDb().execute(
       sql`SELECT
             u.id,
@@ -312,6 +319,11 @@ platformRouter.post('/support/tickets', requireAuth, async (req, res, next) => {
   try {
     if (!req.authUser || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
     await ensureSupportTicketsTable();
+    const orgCheck = await getDb().execute(
+      sql`SELECT 1 FROM public.orgs o WHERE o.id = ${req.authOrgId} AND ${DAMGA_ORG_FILTER}`,
+    );
+    if (orgCheck.rows.length === 0) throw new HttpError(403, 'Bu organizasyon Damga kapsamında değil');
+
     const input = createSupportTicketSchema.parse(req.body);
 
     const r = await getDb().execute(
@@ -400,7 +412,7 @@ platformRouter.get('/platform/support-tickets', ...platformGuard, async (req, re
             t.resolved_at::text
           FROM public.support_tickets t
           LEFT JOIN public.orgs o ON o.id = t.org_id
-          WHERE ${statusWhere} AND ${orgWhere}
+          WHERE ${statusWhere} AND ${orgWhere} AND (t.org_id IS NULL OR ${DAMGA_ORG_FILTER})
           ORDER BY
             CASE t.status
               WHEN 'open' THEN 1
@@ -500,19 +512,20 @@ platformRouter.get('/platform/stats', ...platformGuard, async (_req, res, next) 
     await ensureSupportTicketsTable();
     const summary = await getDb().execute(
       sql`SELECT
-            (SELECT count(*)::int FROM public.orgs) AS org_count,
-            (SELECT count(*)::int FROM public.users WHERE is_active) AS total_users,
-            (SELECT count(*)::int FROM public.locations) AS total_locations,
-            (SELECT count(*)::int FROM public.departments) AS total_departments,
-            (SELECT count(*)::int FROM public.attendance_events) AS total_check_ins,
-            (SELECT count(*)::int FROM public.attendance_events WHERE created_at >= now() - interval '24 hours') AS check_ins_24h,
-            (SELECT count(*)::int FROM public.support_tickets WHERE status IN ('open', 'in_progress', 'waiting')) AS support_active,
-            (SELECT count(*)::int FROM public.support_tickets WHERE created_at >= now() - interval '24 hours') AS support_24h`,
+            (SELECT count(*)::int FROM public.orgs o WHERE ${DAMGA_ORG_FILTER}) AS org_count,
+            (SELECT count(*)::int FROM public.users u JOIN public.orgs o ON o.id = u.org_id WHERE u.is_active AND ${DAMGA_ORG_FILTER}) AS total_users,
+            (SELECT count(*)::int FROM public.locations l JOIN public.orgs o ON o.id = l.org_id WHERE ${DAMGA_ORG_FILTER}) AS total_locations,
+            (SELECT count(*)::int FROM public.departments d JOIN public.orgs o ON o.id = d.org_id WHERE ${DAMGA_ORG_FILTER}) AS total_departments,
+            (SELECT count(*)::int FROM public.attendance_events e JOIN public.orgs o ON o.id = e.org_id WHERE ${DAMGA_ORG_FILTER}) AS total_check_ins,
+            (SELECT count(*)::int FROM public.attendance_events e JOIN public.orgs o ON o.id = e.org_id WHERE e.created_at >= now() - interval '24 hours' AND ${DAMGA_ORG_FILTER}) AS check_ins_24h,
+            (SELECT count(*)::int FROM public.support_tickets t LEFT JOIN public.orgs o ON o.id = t.org_id WHERE t.status IN ('open', 'in_progress', 'waiting') AND (t.org_id IS NULL OR ${DAMGA_ORG_FILTER})) AS support_active,
+            (SELECT count(*)::int FROM public.support_tickets t LEFT JOIN public.orgs o ON o.id = t.org_id WHERE t.created_at >= now() - interval '24 hours' AND (t.org_id IS NULL OR ${DAMGA_ORG_FILTER})) AS support_24h`,
     );
 
     const planBreakdown = await getDb().execute(
       sql`SELECT plan, count(*)::int as count
-          FROM public.orgs
+          FROM public.orgs o
+          WHERE ${DAMGA_ORG_FILTER}
           GROUP BY plan
           ORDER BY count DESC`,
     );
