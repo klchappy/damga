@@ -36,7 +36,7 @@ const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
 };
 
 const platformGuard = [requireSupabaseAuth, requirePlatformAdmin];
-const DAMGA_ORG_FILTER = sql`COALESCE(o.org_type, 'damga_only') IN ('damga_only', 'damga_lokma_combined')`;
+const DAMGA_ORG_FILTER = sql`COALESCE(o.org_type, 'damga_only') = 'damga_only'`;
 
 const ticketStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']);
 const ticketPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
