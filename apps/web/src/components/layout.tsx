@@ -95,9 +95,6 @@ export function AppLayout() {
               <NavItem to="/manager/workforce">Ekip & Performans</NavItem>
             )}
             {!showMobileShell && isManager && (
-              <NavItem to="/manager/workforce?tab=approvals">Onaylar</NavItem>
-            )}
-            {!showMobileShell && isManager && (
               <NavItem to="/manager/reports">Raporlar</NavItem>
             )}
             {!showMobileShell &&
@@ -157,11 +154,6 @@ export function AppLayout() {
             {!showMobileShell && isManager && (
               <NavItem to="/manager/workforce" onClick={() => setOpen(false)}>
                 Ekip & Performans
-              </NavItem>
-            )}
-            {!showMobileShell && isManager && (
-              <NavItem to="/manager/workforce?tab=approvals" onClick={() => setOpen(false)}>
-                Onaylar
               </NavItem>
             )}
             {!showMobileShell && isManager && (

@@ -58,7 +58,7 @@ const REASON_TR: Record<string, string> = {
  *  - Onay → event approved, hash chain bütünlüğü korunur
  *  - Red → event rejected (silinmez, "geçersiz" işaretlenir)
  */
-export function AdminPendingReviewsPage() {
+export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean }) {
   const qc = useQueryClient();
   const [viewing, setViewing] = useState<PendingReview | null>(null);
   const [decision, setDecision] = useState<'approve' | 'reject' | null>(null);
@@ -93,8 +93,8 @@ export function AdminPendingReviewsPage() {
   const items = data?.items ?? [];
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-6 space-y-5">
-      <div className="flex items-center gap-3">
+    <div className={compact ? 'space-y-3' : 'container mx-auto max-w-5xl px-4 py-6 space-y-5'}>
+      <div className={compact ? 'hidden' : 'flex items-center gap-3'}>
         <div className="flex size-12 items-center justify-center rounded-2xl bg-warning/15 text-warning">
           <ShieldCheck className="size-6" />
         </div>
@@ -107,18 +107,18 @@ export function AdminPendingReviewsPage() {
       </div>
 
       {isLoading ? (
-        <div className="card flex items-center justify-center py-12 text-muted">
+        <div className="rounded-lg border border-orange-100 bg-white flex items-center justify-center py-8 text-muted">
           <Loader2 className="size-5 animate-spin" />
         </div>
       ) : items.length === 0 ? (
-        <div className="card text-center py-12">
+        <div className="rounded-lg border border-orange-100 bg-white text-center py-8">
           <CheckCircle2 className="size-10 mx-auto text-success/60" />
           <p className="mt-3 text-sm text-muted">Şu an onay bekleyen damga yok. 👍</p>
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className={compact ? 'grid gap-2' : 'grid gap-3 md:grid-cols-2'}>
           {items.map((it) => (
-            <div key={it.id} className="card space-y-2.5">
+            <div key={it.id} className="rounded-lg border border-orange-100 bg-white p-3 space-y-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h3 className="font-display text-lg flex items-center gap-1.5">
@@ -149,7 +149,7 @@ export function AdminPendingReviewsPage() {
                   <img
                     src={it.selfie_url}
                     alt="Selfie"
-                    className="w-full h-44 object-cover"
+                    className={compact ? 'w-full h-28 object-cover' : 'w-full h-44 object-cover'}
                   />
                 </button>
               )}

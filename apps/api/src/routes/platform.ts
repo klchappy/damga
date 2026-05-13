@@ -18,6 +18,7 @@ import { HttpError } from '../middleware/error';
 import { ensurePlanCatalogTable } from '../lib/plan-limits';
 
 export const platformRouter = Router();
+const ARRAY_SEPARATOR = '\u001f';
 
 /**
  * Middleware: kullanıcı email'i public.platform_admins'da kayıtlı + is_active mi?
@@ -306,7 +307,7 @@ platformRouter.patch('/platform/billing/catalog/:plan', ...platformGuard, async 
         locations_limit = ${nextPlan.locations_limit as number | null},
         api_keys_limit = ${nextPlan.api_keys_limit as number | null},
         webhooks_limit = ${nextPlan.webhooks_limit as number | null},
-        features = ${nextPlan.features as string[]},
+        features = array_remove(string_to_array(${(nextPlan.features as string[] | undefined ?? []).join(ARRAY_SEPARATOR)}, ${ARRAY_SEPARATOR}), ''),
         is_public = ${Boolean(nextPlan.is_public)},
         updated_at = now()
       WHERE plan = ${plan}

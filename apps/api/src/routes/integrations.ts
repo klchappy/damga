@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { getDb, apiKeys, webhooks, externalIntegrations } from '@damga/db';
 import { z } from 'zod';
 import { requireAuth, requirePlatformAdminUser, requireRole } from '../middleware/auth';
@@ -8,6 +8,39 @@ import { HttpError } from '../middleware/error';
 import { env, isConfigured } from '../config/env';
 
 export const integrationsRouter = Router();
+
+let externalIntegrationsReady = false;
+
+async function ensureExternalIntegrationsTable(): Promise<void> {
+  if (externalIntegrationsReady) return;
+  const db = getDb();
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS public.external_integrations (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id uuid NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+      service_type text NOT NULL,
+      name text NOT NULL,
+      base_url text,
+      docs_url text,
+      config jsonb NOT NULL DEFAULT '{}'::jsonb,
+      encrypted_secrets jsonb NOT NULL DEFAULT '{}'::jsonb,
+      secret_fields text[] NOT NULL DEFAULT ARRAY[]::text[],
+      is_active boolean NOT NULL DEFAULT true,
+      created_by uuid REFERENCES public.users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_external_integrations_org
+    ON public.external_integrations(org_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_external_integrations_type
+    ON public.external_integrations(service_type)
+  `);
+  externalIntegrationsReady = true;
+}
 
 const serviceTypeSchema = z.enum([
   'ai',
@@ -113,6 +146,7 @@ integrationsRouter.get(
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      await ensureExternalIntegrationsTable();
 
       const rows = await getDb()
         .select({
@@ -151,6 +185,7 @@ integrationsRouter.post(
   async (req, res, next) => {
     try {
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      await ensureExternalIntegrationsTable();
       const input = externalIntegrationSchema.parse(req.body);
       const encryptedSecrets = encryptSecrets(input.secrets);
       const secretFields = Object.keys(encryptedSecrets);
@@ -202,6 +237,7 @@ integrationsRouter.patch(
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      await ensureExternalIntegrationsTable();
       const id = String(req.params.id ?? '').trim();
       const input = updateExternalIntegrationSchema.parse(req.body);
 
@@ -271,6 +307,7 @@ integrationsRouter.delete(
   async (req, res, next) => {
     try {
       if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      await ensureExternalIntegrationsTable();
       const id = String(req.params.id ?? '').trim();
       const [deleted] = await getDb()
         .delete(externalIntegrations)

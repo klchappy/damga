@@ -6,6 +6,8 @@ type PlanName = keyof typeof PLAN_LIMITS;
 type LimitKey = 'users' | 'locations' | 'api_keys' | 'webhooks';
 
 let tableReady = false;
+const DEFAULT_FEATURES = ['Kullanici yonetimi', 'Damga takibi', 'Raporlama'];
+const ARRAY_SEPARATOR = '\u001f';
 
 const PLAN_ROWS: Array<{
   plan: PlanName;
@@ -64,7 +66,7 @@ export async function ensurePlanCatalogTable(): Promise<void> {
         ${row.locations},
         ${row.apiKeys},
         ${row.webhooks},
-        ${['Kullanici yonetimi', 'Damga takibi', 'Raporlama']}
+        array_remove(string_to_array(${DEFAULT_FEATURES.join(ARRAY_SEPARATOR)}, ${ARRAY_SEPARATOR}), '')
       )
       ON CONFLICT (plan) DO NOTHING
     `);
