@@ -179,7 +179,7 @@ export function AppLayout() {
             <MobileNavItem
               to="/"
               icon={<Home className="size-5" />}
-              label="BugÃ¼n"
+              label="Bugün"
             />
             <MobileNavItem
               to="/me/records"
@@ -189,7 +189,7 @@ export function AppLayout() {
             <MobileNavItem
               to="/menu"
               icon={<Utensils className="size-5" />}
-              label="MenÃ¼"
+              label="Menü"
             />
             <MobileNavItem
               to="/announcements"
