@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -66,6 +67,20 @@ interface SupportTicket {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+}
+
+interface OrgApplication {
+  id: string;
+  org_name: string;
+  industry: string | null;
+  employee_count_estimate: string | null;
+  applicant_full_name: string;
+  applicant_email: string;
+  applicant_phone: string | null;
+  applicant_title: string | null;
+  notes: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
 }
 
 interface PlatformStats {
@@ -159,6 +174,13 @@ export function PlatformPage() {
     enabled: isPlatformAdmin,
   });
 
+  const { data: applicationsData } = useQuery<{ items: OrgApplication[] }>({
+    queryKey: ['platform-applications', 'pending'],
+    queryFn: async () => (await api.get('/admin/applications?status=pending')).data,
+    enabled: isPlatformAdmin,
+    retry: false,
+  });
+
   const updateTicketMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: SupportTicket['status'] }) =>
       (await api.patch(`/platform/support-tickets/${id}`, { status })).data,
@@ -196,6 +218,7 @@ export function PlatformPage() {
 
   const summary = stats?.summary;
   const tickets = ticketsData?.items ?? [];
+  const applications = applicationsData?.items ?? [];
   const accessUsers = usersData?.items ?? [];
 
   return (
@@ -218,7 +241,7 @@ export function PlatformPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatCard icon={<Building2 className="size-4" />} label="Şirket" value={summary.org_count} color="orange" />
           <StatCard
             icon={<Users className="size-4" />}
@@ -242,8 +265,63 @@ export function PlatformPage() {
             sub={`24s: ${summary.support_24h}`}
             color="rose"
           />
+          <StatCard
+            icon={<Building2 className="size-4" />}
+            label="Başvuru"
+            value={applications.length}
+            sub="bekleyen"
+            color="orange"
+          />
         </div>
       )}
+
+      <section className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg flex items-center gap-2">
+            <Building2 className="size-5 text-orange-600" />
+            Şirket Başvuruları
+          </h2>
+          <Link to="/admin/applications" className="btn-secondary px-3 py-1.5 text-xs">
+            Tümünü Aç
+          </Link>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2">
+          {applications.map((app) => (
+            <div key={app.id} className="rounded-lg border border-orange-100 bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate text-sm font-semibold">{app.org_name}</h3>
+                    <Badge tone="orange">Beklemede</Badge>
+                    <span className="font-mono text-[10px] text-muted">
+                      #{app.id.slice(0, 8)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    {app.applicant_full_name} · {app.applicant_email}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span>{app.employee_count_estimate ?? 'Çalışan sayısı yok'}</span>
+                    <span>{app.industry ?? 'Sektör yok'}</span>
+                    <span>{formatDate(app.created_at)}</span>
+                  </div>
+                </div>
+                <Link to="/admin/applications" className="btn-primary px-2 py-1 text-xs">
+                  İncele
+                </Link>
+              </div>
+            </div>
+          ))}
+          {applications.length === 0 && (
+            <EmptyState
+              icon={<CheckCircle2 className="size-5" />}
+              title="Bekleyen şirket başvurusu yok"
+              text="Yeni başvurular başvuru numarasıyla birlikte burada görünecek."
+            />
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <section className="card">
