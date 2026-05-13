@@ -12,7 +12,7 @@ import { sql, eq, and, desc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { generateServiceKey } from '@damga/verification';
-import { getDb, apiKeys, auditLog } from '@damga/db';
+import { getDb, apiKeys, auditLog, platformServices } from '@damga/db';
 import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 import { ensurePlanCatalogTable } from '../lib/plan-limits';
@@ -822,6 +822,168 @@ platformRouter.patch('/platform/orgs/:id/plan', ...platformGuard, async (req, re
       .catch(() => {});
 
     res.json({ item: r.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── External Services (Dış Servisler) ──────────────────────────────
+// Platform sahibinin kullandığı dış servislerin merkezi yönetimi.
+// Hassas key/şifre BURADA YOK — sadece referans (URL, hesap, plan, not).
+
+const SERVICE_CATEGORIES = [
+  'infra',
+  'database',
+  'email',
+  'auth',
+  'push',
+  'repo',
+  'payment',
+  'monitoring',
+  'security',
+  'dns',
+  'other',
+] as const;
+const SERVICE_STATUSES = ['active', 'setup_pending', 'inactive', 'deprecated'] as const;
+
+const createPlatformServiceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  category: z.enum(SERVICE_CATEGORIES),
+  dashboard_url: z.string().trim().url(),
+  account_identifier: z.string().trim().max(200).nullable().optional(),
+  plan: z.string().trim().max(160).nullable().optional(),
+  status: z.enum(SERVICE_STATUSES).default('active'),
+  notes: z.string().trim().max(4000).nullable().optional(),
+  bitwarden_note_name: z.string().trim().max(200).nullable().optional(),
+  icon: z.string().trim().max(60).nullable().optional(),
+  display_order: z.number().int().min(0).max(9999).default(0),
+});
+
+const updatePlatformServiceSchema = createPlatformServiceSchema.partial();
+
+platformRouter.get('/platform/services', ...platformGuard, async (_req, res, next) => {
+  try {
+    const rows = await getDb()
+      .select()
+      .from(platformServices)
+      .orderBy(platformServices.display_order, platformServices.name);
+    res.json({ items: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.post('/platform/services', ...platformGuard, async (req, res, next) => {
+  try {
+    const input = createPlatformServiceSchema.parse(req.body);
+    const [row] = await getDb()
+      .insert(platformServices)
+      .values({
+        name: input.name,
+        category: input.category,
+        dashboard_url: input.dashboard_url,
+        account_identifier: input.account_identifier ?? null,
+        plan: input.plan ?? null,
+        status: input.status,
+        notes: input.notes ?? null,
+        bitwarden_note_name: input.bitwarden_note_name ?? null,
+        icon: input.icon ?? null,
+        display_order: input.display_order,
+      })
+      .returning();
+    if (!row) throw new HttpError(500, 'Servis oluşturulamadı');
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.service_created',
+        target_type: 'platform_service',
+        target_id: row.id,
+        details: { name: row.name, category: row.category },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.status(201).json({ item: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.patch('/platform/services/:id', ...platformGuard, async (req, res, next) => {
+  try {
+    const id = String(req.params.id ?? '').trim();
+    const input = updatePlatformServiceSchema.parse(req.body);
+    const update: Partial<typeof platformServices.$inferInsert> & { updated_at: Date } = {
+      updated_at: new Date(),
+    };
+    if (input.name !== undefined) update.name = input.name;
+    if (input.category !== undefined) update.category = input.category;
+    if (input.dashboard_url !== undefined) update.dashboard_url = input.dashboard_url;
+    if (input.account_identifier !== undefined)
+      update.account_identifier = input.account_identifier ?? null;
+    if (input.plan !== undefined) update.plan = input.plan ?? null;
+    if (input.status !== undefined) update.status = input.status;
+    if (input.notes !== undefined) update.notes = input.notes ?? null;
+    if (input.bitwarden_note_name !== undefined)
+      update.bitwarden_note_name = input.bitwarden_note_name ?? null;
+    if (input.icon !== undefined) update.icon = input.icon ?? null;
+    if (input.display_order !== undefined) update.display_order = input.display_order;
+
+    const [row] = await getDb()
+      .update(platformServices)
+      .set(update)
+      .where(eq(platformServices.id, id))
+      .returning();
+    if (!row) throw new HttpError(404, 'Servis bulunamadı');
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.service_updated',
+        target_type: 'platform_service',
+        target_id: id,
+        details: { changes: input as Record<string, unknown> },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.json({ item: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.delete('/platform/services/:id', ...platformGuard, async (req, res, next) => {
+  try {
+    const id = String(req.params.id ?? '').trim();
+    const [row] = await getDb()
+      .delete(platformServices)
+      .where(eq(platformServices.id, id))
+      .returning();
+    if (!row) throw new HttpError(404, 'Servis bulunamadı');
+
+    void getDb()
+      .insert(auditLog)
+      .values({
+        org_id: null,
+        actor_user_id: null,
+        action: 'platform.service_deleted',
+        target_type: 'platform_service',
+        target_id: id,
+        details: { name: row.name },
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') ?? null,
+      })
+      .catch(() => {});
+
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

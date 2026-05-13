@@ -12,3 +12,4 @@ export * from './integrations';
 export * from './gamification';
 export * from './shifts';
 export * from './notifications';
+export * from './platform';

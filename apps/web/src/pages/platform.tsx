@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { PlatformExternalServices } from '@/components/platform-external-services';
 
 interface PlatformOrg {
   id: string;
@@ -1027,6 +1028,8 @@ export function PlatformPage() {
           </table>
         </div>
       </section>
+
+      <PlatformExternalServices enabled={isPlatformAdmin} />
 
       {stats?.plan_breakdown && stats.plan_breakdown.length > 0 && (
         <section className="card">
