@@ -21,6 +21,7 @@
 import { Queue, Worker, type JobsOptions, type Processor } from 'bullmq';
 import { getRedis, isRedisAvailable } from './redis';
 import { logger } from '../config/logger';
+import { withSpanAndCapture } from './sentry';
 
 const QUEUE_NAME = 'damga-jobs';
 const TIMEZONE = 'Europe/Istanbul';
@@ -115,20 +116,27 @@ export function startWorker(processors: Record<string, Processor>): Worker | nul
     }
     logger.info({ jobName: job.name, jobId: job.id }, '⚙️  Job başladı');
     const start = Date.now();
-    try {
-      const result = await handler(job, '');
-      logger.info(
-        { jobName: job.name, jobId: job.id, duration_ms: Date.now() - start },
-        '✓ Job tamamlandı',
-      );
-      return result;
-    } catch (err) {
-      logger.error(
-        { err, jobName: job.name, jobId: job.id, duration_ms: Date.now() - start },
-        '✗ Job hata',
-      );
-      throw err;
-    }
+    // Sentry custom span — BullMQ auto-instrumentation yok
+    return withSpanAndCapture(
+      `queue.${job.name}`,
+      async () => {
+        try {
+          const result = await handler(job, '');
+          logger.info(
+            { jobName: job.name, jobId: job.id, duration_ms: Date.now() - start },
+            '✓ Job tamamlandı',
+          );
+          return result;
+        } catch (err) {
+          logger.error(
+            { err, jobName: job.name, jobId: job.id, duration_ms: Date.now() - start },
+            '✗ Job hata',
+          );
+          throw err;
+        }
+      },
+      { job_name: job.name, job_id: String(job.id ?? 'unknown') },
+    );
   };
 
   _worker = new Worker(QUEUE_NAME, processor, {
