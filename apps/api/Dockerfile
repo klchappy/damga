@@ -22,7 +22,10 @@ RUN pnpm install --filter @damga/api... --filter @damga/shared --filter @damga/d
 
 # ---- 2) runtime ----
 FROM base AS runtime
-RUN apk add --no-cache curl
+# curl: healthcheck
+# postgresql-client: pg_dump (backup scheduled task)
+# rclone: B2/S3 backup upload
+RUN apk add --no-cache curl postgresql16-client rclone bash
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
@@ -33,6 +36,9 @@ COPY packages/db ./packages/db
 COPY packages/shared ./packages/shared
 COPY packages/verification ./packages/verification
 COPY apps/api ./apps/api
+# Backup scripts (pg_dump_damga.sh, pg_restore_damga.sh)
+COPY infra/backup ./infra/backup
+RUN chmod +x /app/infra/backup/*.sh
 
 EXPOSE 4100
 
