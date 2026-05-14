@@ -191,13 +191,24 @@ function LocationCard({ loc }: { loc: Location }) {
             {loc.city && ` · ${loc.city}`}
           </div>
         </div>
-        <span
-          className={`chip ${
-            loc.is_active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted'
-          }`}
-        >
-          {loc.is_active ? 'aktif' : 'pasif'}
-        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/kiosk/${loc.id}`}
+            target="_blank"
+            rel="noopener"
+            className="chip bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 text-xs"
+            title="Kiosk modunu yeni sekmede aç (paylaşımlı tablet için)"
+          >
+            🖥️ Kiosk
+          </a>
+          <span
+            className={`chip ${
+              loc.is_active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted'
+            }`}
+          >
+            {loc.is_active ? 'aktif' : 'pasif'}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">

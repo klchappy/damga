@@ -24,6 +24,7 @@ import { analyticsRouter } from './analytics';
 import { platformRouter } from './platform';
 import { integrationsRouter } from './integrations';
 import { statusRouter } from './status';
+import { stampCredentialsRouter } from './stamp-credentials';
 import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
@@ -56,6 +57,7 @@ apiRouter.use(notificationsRouter);
 apiRouter.use(analyticsRouter);
 apiRouter.use(platformRouter);
 apiRouter.use(integrationsRouter);
+apiRouter.use(stampCredentialsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({

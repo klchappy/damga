@@ -14,3 +14,4 @@ export * from './shifts';
 export * from './notifications';
 export * from './platform';
 export * from './monitoring';
+export * from './user-credentials';

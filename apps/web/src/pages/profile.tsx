@@ -22,6 +22,7 @@ import { useAuthStore, updatePassword, type AuthUser } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
 import { MOOD_EMOJIS } from '@damga/shared';
 import { AccountDeletionPanel } from '@/components/account-deletion';
+import { MyStampBadge } from '@/components/my-stamp-badge';
 
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -230,6 +231,12 @@ export function ProfilePage() {
         />
       )}
       {changingPw && <ChangePasswordModal onClose={() => setChangingPw(false)} />}
+
+      {/* Kişisel damga QR badge — kiosk modunda kullanılır */}
+      <section className="mt-6">
+        <h2 className="font-display text-lg mb-2">Damga kartım</h2>
+        <MyStampBadge />
+      </section>
 
       {/* KVKK md.11 — Self-serve hesap silme */}
       <section className="mt-6">

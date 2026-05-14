@@ -15,6 +15,7 @@ import { awardXp, computeOnTimeBonus } from '../lib/xp';
 import { detectOvertime } from '../lib/overtime';
 import { getUserShiftForDate } from '../lib/shift-lookup';
 import { createNotification, notifyOrgManagers } from '../lib/notifications';
+import { findUserByCredential } from './stamp-credentials';
 
 export const checkInRouter = Router();
 
@@ -798,6 +799,132 @@ checkInRouter.post(
     }
   },
 );
+
+/**
+ * POST /v1/kiosk-stamp
+ *
+ * Kiosk modu: paylaşımlı bir tablette logged-in olan manager/admin/owner,
+ * her çalışanın KENDİ kişisel QR badge'ini kameraya gösterir → damga
+ * O ÇALIŞAN ADINA atılır. Authenticated kullanıcı (kiosk operator)
+ * sadece "kim bu tableti kullanıyor" diye log'lanır.
+ *
+ * Body:
+ *   personal_credential: string  — çalışanın QR/NFC değeri
+ *   location_id?: string         — opsiyonel, verilmezse org'un tek lokasyonu kullanılır
+ *   nfc_tag_id?: string          — lokasyon NFC tag (varsa)
+ *   qr_code_payload?: string     — lokasyon QR (varsa)
+ *   client_time?: string         — istemci zamanı
+ *   device_info?: object         — kiosk cihaz bilgisi (UA vs.)
+ *
+ * Yetki: en az 'employee' (org'a bağlı herhangi bir kullanıcı bu endpoint'i çağırabilir
+ * çünkü kiosk genelde manager hesabıyla logged-in olur, ama biz pratik olarak ekstra
+ * kısıt koymuyoruz — credential doğrulaması zaten kullanıcıyı bulur).
+ *
+ * Response:
+ *   Standart stamp response + stamper bilgisi (kullanıcı), operator bilgisi (kiosk)
+ *
+ * Auto check_in/out:
+ *   Çalışanın bugünkü son event'ine bakılır → otomatik check_in veya check_out.
+ */
+const kioskStampSchema = z.object({
+  personal_credential: z.string().min(8).max(64),
+  location_id: z.string().uuid().optional(),
+  nfc_tag_id: z.string().optional(),
+  qr_code_payload: z.string().optional(),
+  client_time: z.string().datetime().optional(),
+  device_info: z.record(z.unknown()).optional(),
+  override_type: z.enum(['check_in', 'check_out']).optional(),
+});
+
+checkInRouter.post('/kiosk-stamp', requireAuth, checkInLimiter, async (req, res, next) => {
+  try {
+    if (!req.authUserId || !req.authOrgId || !req.authUser) {
+      throw new HttpError(401, 'Yetki yok');
+    }
+    const body = kioskStampSchema.parse(req.body);
+
+    // 1) Personal credential → target user bul (aynı org)
+    const found = await findUserByCredential(req.authOrgId, body.personal_credential);
+    if (!found) {
+      throw new HttpError(404, 'Geçersiz veya pasif kullanıcı QR kodu', 'INVALID_USER_CREDENTIAL');
+    }
+
+    // 2) Target user bilgilerini al
+    const [targetUser] = await getDb().select().from(users).where(eq(users.id, found.user_id));
+    if (!targetUser) {
+      throw new HttpError(404, 'Çalışan bulunamadı', 'TARGET_USER_NOT_FOUND');
+    }
+    if (!targetUser.is_active) {
+      throw new HttpError(403, 'Çalışan pasif — yöneticinizle iletişime geçin', 'TARGET_USER_INACTIVE');
+    }
+    if (targetUser.org_id !== req.authOrgId) {
+      // Defense in depth — findUserByCredential zaten org filtreli ama yine kontrol
+      throw new HttpError(403, 'Cross-org damga reddedildi', 'CROSS_ORG_DENIED');
+    }
+
+    // 3) Bugünün başlangıcı + son event → otomatik check_in/check_out
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    let nextType: 'check_in' | 'check_out' = body.override_type ?? 'check_in';
+    if (!body.override_type) {
+      const [last] = await getDb()
+        .select({ type: attendanceEvents.type })
+        .from(attendanceEvents)
+        .where(
+          and(eq(attendanceEvents.user_id, targetUser.id), gte(attendanceEvents.server_time, today)),
+        )
+        .orderBy(desc(attendanceEvents.server_time))
+        .limit(1);
+      nextType = !last || last.type === 'check_out' ? 'check_in' : 'check_out';
+    }
+
+    // 4) Kiosk operator bilgisi — log + notification için sakla
+    const kioskOperatorId = req.authUserId;
+    const kioskOperatorName = req.authUser.full_name;
+    const targetUserFullName = targetUser.full_name;
+
+    // 5) req.authUserId/User'ı temp olarak target'a çevir, performAttendance'ı çağır
+    //    Bu Express req mutation pattern'i bilinçli — performAttendance bu alanları kullanıyor
+    const origAuthUserId = req.authUserId;
+    const origAuthUser = req.authUser;
+
+    // body'yi performAttendance'ın beklediği şekle çevir (checkInSchema'ya uygun)
+    req.body = {
+      location_id: body.location_id,
+      nfc_tag_id: body.nfc_tag_id,
+      qr_code_payload: body.qr_code_payload,
+      client_time: body.client_time ?? new Date().toISOString(),
+      device_info: {
+        ...(body.device_info ?? {}),
+        kiosk: true,
+        kiosk_operator_id: kioskOperatorId,
+        kiosk_operator_name: kioskOperatorName,
+      },
+    };
+    req.authUserId = targetUser.id;
+    req.authUser = targetUser;
+
+    try {
+      logger.info(
+        {
+          kioskOperatorId,
+          kioskOperatorName,
+          targetUserId: targetUser.id,
+          targetUserName: targetUserFullName,
+          type: nextType,
+        },
+        '🏪 Kiosk damga',
+      );
+      await performAttendance(nextType, req, res);
+    } finally {
+      // req orijinal haline döndür (bu request bittiğinde teorik olarak gerek yok ama defansif)
+      req.authUserId = origAuthUserId;
+      req.authUser = origAuthUser;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
 
 /** unused-import suppressors */
 const _suppress = { sql, inArray };

@@ -40,6 +40,7 @@ import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
 import { StatusPage } from "@/pages/status";
 import { LandingPage } from "@/pages/landing";
 import { OnboardingPage } from "@/pages/onboarding";
+import { KioskPage } from "@/pages/kiosk";
 import { ManagerWorkforcePage } from "@/pages/manager-workforce";
 import { MyRecordsPage } from "@/pages/my-records";
 import { SettingsHubPage } from "@/pages/settings-hub";
@@ -136,6 +137,16 @@ function AppInner() {
         element={
           <PrivateRoute>
             <OnboardingPage />
+          </PrivateRoute>
+        }
+      />
+
+      {/* Kiosk modu (paylaşımlı tablet) — AppLayout dışında, fullscreen */}
+      <Route
+        path="/kiosk/:locationId"
+        element={
+          <PrivateRoute>
+            <KioskPage />
           </PrivateRoute>
         }
       />
