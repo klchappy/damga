@@ -17,3 +17,4 @@ export * from './monitoring';
 export * from './user-credentials';
 export * from './email-events';
 export * from './auth-attempts';
+export * from './feature-flags';
