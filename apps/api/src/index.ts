@@ -1,3 +1,8 @@
+// Sentry init EN BAŞTA — diğer import'ları monkey-patch eder (HTTP, Express vs.)
+// SENTRY_DSN yoksa sessizce skip eder
+import { initSentry, Sentry } from './lib/sentry';
+initSentry();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -63,6 +68,11 @@ app.get('/', (_req, res) => {
 });
 
 app.use(notFound);
+
+// Sentry Express error handler — errorHandler'dan ÖNCE (hata yakalama için)
+if (isConfigured.sentry) {
+  Sentry.setupExpressErrorHandler(app);
+}
 app.use(errorHandler);
 
 const port = env.PORT;

@@ -46,6 +46,10 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default('mailto:noreply@deploi.net'),
+
+  /** Sentry error tracking — opsiyonel, set değilse init skip */
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -86,4 +90,5 @@ export const isConfigured = {
   redis: Boolean(env.REDIS_URL),
   resend: Boolean(env.RESEND_API_KEY),
   webPush: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
+  sentry: Boolean(env.SENTRY_DSN),
 };

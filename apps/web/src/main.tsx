@@ -1,3 +1,7 @@
+// Sentry init EN BAŞTA — VITE_SENTRY_DSN yoksa sessizce skip eder
+import { initSentry } from './lib/sentry';
+initSentry();
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app';
