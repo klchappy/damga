@@ -13,3 +13,4 @@ export * from './gamification';
 export * from './shifts';
 export * from './notifications';
 export * from './platform';
+export * from './monitoring';

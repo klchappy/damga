@@ -13,6 +13,7 @@ import { apiRouter } from './routes';
 import { errorHandler, notFound } from './middleware/error';
 import { apiLimiter } from './middleware/rate-limit';
 import { startScheduler, stopScheduler } from './lib/scheduler';
+import { startHealthMonitor, stopHealthMonitor } from './lib/health-monitor';
 
 const app = express();
 
@@ -87,15 +88,17 @@ app.listen(port, () => {
   );
 
   // Arka plan görevleri: her Pazartesi 09:00 auto-finalize weekly
-  if (isConfigured) {
+  if (isConfigured.db) {
     startScheduler();
+    startHealthMonitor();
   } else {
-    logger.warn('Scheduler başlatılmadı (DB yapılandırılmamış)');
+    logger.warn('Scheduler + health monitor başlatılmadı (DB yapılandırılmamış)');
   }
 });
 
 process.on('SIGTERM', () => {
   logger.info('SIGTERM alındı, kapatılıyor...');
   stopScheduler();
+  stopHealthMonitor();
   process.exit(0);
 });

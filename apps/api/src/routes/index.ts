@@ -23,6 +23,7 @@ import { notificationsRouter } from './notifications';
 import { analyticsRouter } from './analytics';
 import { platformRouter } from './platform';
 import { integrationsRouter } from './integrations';
+import { statusRouter } from './status';
 import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
@@ -31,6 +32,7 @@ export const apiRouter = Router();
 apiRouter.use(idempotencyMiddleware);
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/status', statusRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use(applicationsRouter);
 apiRouter.use(orgsRouter);

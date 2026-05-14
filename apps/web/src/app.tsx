@@ -37,6 +37,7 @@ import { MenuFeedbackPage } from "@/pages/menu-feedback";
 import { QLandingPage } from "@/pages/q-landing";
 import { AnnouncementsPage } from "@/pages/announcements";
 import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
+import { StatusPage } from "@/pages/status";
 import { ManagerWorkforcePage } from "@/pages/manager-workforce";
 import { MyRecordsPage } from "@/pages/my-records";
 import { SettingsHubPage } from "@/pages/settings-hub";
@@ -97,6 +98,7 @@ function AppInner() {
       <Route path="/legal/terms" element={<TermsPage />} />
       <Route path="/legal/privacy" element={<PrivacyPage />} />
       <Route path="/legal/cookies" element={<CookiesPage />} />
+      <Route path="/status" element={<StatusPage />} />
 
       {/* Auth gerekli */}
       <Route
