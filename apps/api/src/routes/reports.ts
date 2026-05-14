@@ -13,6 +13,14 @@ import {
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole, requireScope } from '../middleware/auth';
 import { buildXlsxBuffer, sendXlsx, type ExcelColumn } from '../lib/excel';
+import {
+  derivePuantajForUser,
+  PUANTAJ_CODES,
+  summarizePuantaj,
+  TR_MONTHS,
+} from '../lib/puantaj-codes';
+import { buildPuantajXlsx, type PuantajRow } from '../lib/puantaj-xlsx';
+import { orgs } from '@damga/db';
 
 export const reportsRouter = Router();
 
@@ -1101,6 +1109,188 @@ reportsRouter.get(
         return;
       }
       res.json({ items: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/* ============= AYLIK PUANTAJ (Kılıç Enerji formatı) ============= */
+
+/**
+ * GET /v1/reports/puantaj?month=YYYY-MM&format=json|xlsx
+ *
+ * Geleneksel puantaj tablosu — X/H/RX/R/IZ/G/DI/YI kodlu. Damga'nın event-bazlı
+ * verisinden türetilir (check_in günü → X/RX, izin günü → R/YI/IZ/DI,
+ * hafta sonu → H, hafta içi kayıt yok → G).
+ *
+ * format=xlsx → Kılıç Enerji'nin standart Excel layout'una uygun dosya döner.
+ * format=json → web grid render için yapılandırılmış JSON döner.
+ */
+reportsRouter.get(
+  '/reports/puantaj',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  requireScope('reports:read'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const q = monthQuery.parse(req.query);
+      const [yyyy, mm] = q.month.split('-').map(Number) as [number, number];
+      const daysInMonth = new Date(yyyy, mm, 0).getDate();
+      const start = new Date(Date.UTC(yyyy, mm - 1, 1));
+      const end = new Date(Date.UTC(yyyy, mm, 0, 23, 59, 59));
+      const startStr = `${yyyy}-${String(mm).padStart(2, '0')}-01`;
+      const endStr = `${yyyy}-${String(mm).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+      // Ay günleri (YYYY-MM-DD format)
+      const monthDayStrs: string[] = [];
+      for (let d = 1; d <= daysInMonth; d += 1) {
+        monthDayStrs.push(
+          `${yyyy}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        );
+      }
+
+      // Org adı (Excel başlığında lazım)
+      const [orgRow] = await getDb()
+        .select({ name: orgs.name })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      const orgName = orgRow?.name ?? 'Şirket';
+
+      // Aktif personel listesi
+      const personeller = await getDb()
+        .select({
+          id: users.id,
+          full_name: users.full_name,
+          title: users.title,
+          department: users.department,
+          hired_at: users.hired_at,
+        })
+        .from(users)
+        .where(and(eq(users.org_id, req.authOrgId), eq(users.is_active, true)))
+        .orderBy(asc(users.full_name));
+
+      if (personeller.length === 0) {
+        if (q.format === 'xlsx') {
+          const buf = await buildPuantajXlsx({
+            org_name: orgName,
+            year: yyyy,
+            month: mm,
+            rows: [],
+          });
+          sendXlsx(res, buf, `puantaj-${q.month}.xlsx`);
+          return;
+        }
+        res.json({
+          month: q.month,
+          org_name: orgName,
+          codes: PUANTAJ_CODES,
+          days: monthDayStrs,
+          rows: [],
+        });
+        return;
+      }
+
+      const personIds = personeller.map((p) => p.id);
+
+      // Check-in event'leri: gün bazında (TR timezone)
+      const checkInRows = await getDb()
+        .select({
+          user_id: attendanceEvents.user_id,
+          day: sql<string>`to_char(${attendanceEvents.server_time} at time zone 'Europe/Istanbul', 'YYYY-MM-DD')`,
+        })
+        .from(attendanceEvents)
+        .where(
+          and(
+            eq(attendanceEvents.org_id, req.authOrgId),
+            eq(attendanceEvents.type, 'check_in'),
+            gte(attendanceEvents.server_time, start),
+            lte(attendanceEvents.server_time, end),
+            sql`${attendanceEvents.user_id} = ANY(${personIds})`,
+          ),
+        );
+
+      const checkInsByUser = new Map<string, Set<string>>();
+      for (const r of checkInRows) {
+        const set = checkInsByUser.get(r.user_id) ?? new Set<string>();
+        set.add(r.day);
+        checkInsByUser.set(r.user_id, set);
+      }
+
+      // Onaylı izinler — overlapping the month
+      const leavesRows = await getDb()
+        .select({
+          user_id: leaves.user_id,
+          start_date: leaves.start_date,
+          end_date: leaves.end_date,
+          type: leaves.type,
+        })
+        .from(leaves)
+        .where(
+          and(
+            eq(leaves.org_id, req.authOrgId),
+            eq(leaves.status, 'approved'),
+            lte(leaves.start_date, endStr),
+            gte(leaves.end_date, startStr),
+          ),
+        );
+
+      const leavesByUser = new Map<
+        string,
+        Array<{ start_date: string; end_date: string; type: string }>
+      >();
+      for (const lv of leavesRows) {
+        const arr = leavesByUser.get(lv.user_id) ?? [];
+        // Ayın sınırlarına clamp et (overlap'in sadece bu ay kısmı)
+        const s = lv.start_date < startStr ? startStr : lv.start_date;
+        const e = lv.end_date > endStr ? endStr : lv.end_date;
+        arr.push({ start_date: s, end_date: e, type: lv.type });
+        leavesByUser.set(lv.user_id, arr);
+      }
+
+      // Her personel için kodları türet
+      const rows: PuantajRow[] = personeller.map((per) => {
+        const codes = derivePuantajForUser({
+          user_id: per.id,
+          checked_in_days: checkInsByUser.get(per.id) ?? new Set<string>(),
+          leaves: leavesByUser.get(per.id) ?? [],
+          month_days: monthDayStrs,
+        });
+        const summary = summarizePuantaj(codes);
+        return {
+          full_name: per.full_name,
+          position: per.title ?? per.department ?? '',
+          codes,
+          summary,
+        };
+      });
+
+      if (q.format === 'xlsx') {
+        const buf = await buildPuantajXlsx({
+          org_name: orgName,
+          year: yyyy,
+          month: mm,
+          rows,
+        });
+        sendXlsx(res, buf, `puantaj-${orgName.replace(/\s+/g, '_')}-${q.month}.xlsx`);
+        return;
+      }
+
+      // JSON format — web grid render için
+      res.json({
+        month: q.month,
+        month_name: TR_MONTHS[mm],
+        year: yyyy,
+        org_name: orgName,
+        days_in_month: daysInMonth,
+        days: monthDayStrs,
+        codes: PUANTAJ_CODES,
+        rows: rows.map((r, idx) => ({
+          idx: idx + 1,
+          ...r,
+        })),
+      });
     } catch (err) {
       next(err);
     }

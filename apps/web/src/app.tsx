@@ -16,6 +16,7 @@ import {
 } from "@/pages/auth-misc";
 import { EmployeeHomePage } from "@/pages/employee-home";
 import { ManagerReportsPage } from "@/pages/manager-reports";
+import { ManagerPuantajPage } from "@/pages/manager-puantaj";
 import { AdminLocationsPage } from "@/pages/admin-locations";
 import { AdminTeamPage } from "@/pages/admin-team";
 import { AdminDepartmentsPage } from "@/pages/admin-departments";
@@ -280,6 +281,16 @@ function AppInner() {
             <RoleGate roles={["manager", "admin", "owner"]}>
               <DesktopOnlyRoute>
                 <ManagerReportsPage />
+              </DesktopOnlyRoute>
+            </RoleGate>
+          }
+        />
+        <Route
+          path="manager/puantaj"
+          element={
+            <RoleGate roles={["manager", "admin", "owner"]}>
+              <DesktopOnlyRoute>
+                <ManagerPuantajPage />
               </DesktopOnlyRoute>
             </RoleGate>
           }

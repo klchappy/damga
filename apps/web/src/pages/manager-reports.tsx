@@ -7,8 +7,11 @@ import {
   ShieldCheck,
   Loader2,
   ClipboardList,
+  ClipboardCheck,
   CalendarDays,
+  ArrowRight,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/hooks/use-auth';
 
@@ -116,6 +119,24 @@ export function ManagerReportsPage() {
           />
         </div>
       </div>
+
+      {/* Puantaj — geleneksel X/H/RX/R/IZ/G/DI/YI kodlu renkli tablo */}
+      <Link
+        to="/manager/puantaj"
+        className="card flex items-center gap-4 hover:border-[#1d6f8a] transition group"
+      >
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1d6f8a] to-[#145a6e] text-white shrink-0">
+          <ClipboardCheck className="size-7" />
+        </div>
+        <div className="flex-1">
+          <div className="font-display font-semibold text-lg">📋 Aylık Puantaj Tablosu</div>
+          <div className="text-sm text-muted leading-snug mt-0.5">
+            Geleneksel renkli puantaj formatı — X / H / RX / R / İZ / G / Dİ / Yİ kodlu.
+            Excel çıktısı bordro & muhasebe için hazır.
+          </div>
+        </div>
+        <ArrowRight className="size-5 text-zinc-400 group-hover:text-[#1d6f8a] transition shrink-0" />
+      </Link>
 
       {/* Rapor indirme kartları — CSV (muhasebeye) ve Excel (kendiniz için, biçimli) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
