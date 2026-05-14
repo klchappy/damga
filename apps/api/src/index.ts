@@ -14,6 +14,7 @@ import { errorHandler, notFound } from './middleware/error';
 import { apiLimiter } from './middleware/rate-limit';
 import { startScheduler, stopScheduler } from './lib/scheduler';
 import { startHealthMonitor, stopHealthMonitor } from './lib/health-monitor';
+import { startAccountCleanup, stopAccountCleanup } from './lib/account-cleanup';
 
 const app = express();
 
@@ -91,8 +92,9 @@ app.listen(port, () => {
   if (isConfigured.db) {
     startScheduler();
     startHealthMonitor();
+    startAccountCleanup();
   } else {
-    logger.warn('Scheduler + health monitor başlatılmadı (DB yapılandırılmamış)');
+    logger.warn('Scheduler + health monitor + account cleanup başlatılmadı (DB yapılandırılmamış)');
   }
 });
 
@@ -100,5 +102,6 @@ process.on('SIGTERM', () => {
   logger.info('SIGTERM alındı, kapatılıyor...');
   stopScheduler();
   stopHealthMonitor();
+  stopAccountCleanup();
   process.exit(0);
 });

@@ -21,6 +21,7 @@ import {
 import { useAuthStore, updatePassword, type AuthUser } from '@/hooks/use-auth';
 import { api, getErrorMessage } from '@/lib/api';
 import { MOOD_EMOJIS } from '@damga/shared';
+import { AccountDeletionPanel } from '@/components/account-deletion';
 
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -229,6 +230,12 @@ export function ProfilePage() {
         />
       )}
       {changingPw && <ChangePasswordModal onClose={() => setChangingPw(false)} />}
+
+      {/* KVKK md.11 — Self-serve hesap silme */}
+      <section className="mt-6">
+        <h2 className="font-display text-lg mb-2">Hesap yönetimi</h2>
+        <AccountDeletionPanel />
+      </section>
     </div>
   );
 }

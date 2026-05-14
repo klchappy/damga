@@ -499,3 +499,131 @@ usersRouter.post(
     }
   },
 );
+
+// ============================================================================
+// KVKK md.11 — Self-serve hesap silme (kullanıcının kendi talebi)
+// ============================================================================
+
+const deleteRequestSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+  /** Owner ise org'u da silmeyi onaylar */
+  confirm_delete_org_if_owner: z.boolean().optional(),
+});
+
+usersRouter.post('/me/account/delete-request', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId || !req.authUser) throw new HttpError(401, 'Yetki yok');
+    const body = deleteRequestSchema.parse(req.body ?? {});
+
+    // Owner için ekstra koruma: org'da başka owner var mı?
+    if (req.authUser.role === 'owner' && req.authOrgId) {
+      const otherOwners = await getDb()
+        .select({ c: count() })
+        .from(users)
+        .where(
+          and(
+            eq(users.org_id, req.authOrgId),
+            eq(users.role, 'owner'),
+            eq(users.is_active, true),
+          ),
+        );
+      const count_ = (otherOwners[0]?.c ?? 1) - 1; // kendisini düş
+      if (count_ === 0 && !body.confirm_delete_org_if_owner) {
+        throw new HttpError(
+          400,
+          "Tek owner'sın — hesabını silmeden önce başka bir kullanıcıya owner rolünü devret veya confirm_delete_org_if_owner=true ile şirketin tümünü silmeyi onayla.",
+          'OWNER_REQUIRES_HANDOVER',
+        );
+      }
+    }
+
+    const now = new Date();
+    const scheduled = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await getDb()
+      .update(users)
+      .set({
+        deletion_requested_at: now,
+        deletion_scheduled_at: scheduled,
+        deletion_reason: body.reason ?? null,
+        is_active: false,
+        updated_at: now,
+      })
+      .where(eq(users.id, req.authUserId));
+
+    logger.info(
+      { userId: req.authUserId, role: req.authUser.role, reason: body.reason },
+      '🗑️ Hesap silme talebi alındı',
+    );
+
+    res.json({
+      ok: true,
+      message:
+        'Hesabın silme süreci başladı. 30 gün içinde geri alabilirsin — sonrasında veriler anonymize edilecek.',
+      requested_at: now.toISOString(),
+      scheduled_at: scheduled.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+usersRouter.post('/me/account/cancel-deletion', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const db = getDb();
+    const [u] = await db.select().from(users).where(eq(users.id, req.authUserId));
+    if (!u) throw new HttpError(404, 'Kullanıcı bulunamadı');
+    if (!u.deletion_requested_at) {
+      throw new HttpError(400, 'Silme talebi yok', 'NO_PENDING_DELETION');
+    }
+    if (u.deleted_at) {
+      throw new HttpError(
+        410,
+        'Hesap zaten anonymize edilmiş — geri alınamaz',
+        'ALREADY_DELETED',
+      );
+    }
+    await db
+      .update(users)
+      .set({
+        deletion_requested_at: null,
+        deletion_scheduled_at: null,
+        deletion_reason: null,
+        is_active: true,
+        updated_at: new Date(),
+      })
+      .where(eq(users.id, req.authUserId));
+    logger.info({ userId: req.authUserId }, '✓ Hesap silme talebi GERİ ALINDI');
+    res.json({ ok: true, message: 'Hesabın aktif — tekrar normal kullanabilirsin.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+usersRouter.get('/me/account/deletion-status', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    const [u] = await getDb()
+      .select({
+        deletion_requested_at: users.deletion_requested_at,
+        deletion_scheduled_at: users.deletion_scheduled_at,
+        deletion_reason: users.deletion_reason,
+        deleted_at: users.deleted_at,
+        is_active: users.is_active,
+      })
+      .from(users)
+      .where(eq(users.id, req.authUserId));
+    if (!u) throw new HttpError(404, 'Kullanıcı bulunamadı');
+    res.json({
+      requested: !!u.deletion_requested_at,
+      requested_at: u.deletion_requested_at?.toISOString() ?? null,
+      scheduled_at: u.deletion_scheduled_at?.toISOString() ?? null,
+      reason: u.deletion_reason,
+      anonymized_at: u.deleted_at?.toISOString() ?? null,
+      is_active: u.is_active,
+    });
+  } catch (err) {
+    next(err);
+  }
+});

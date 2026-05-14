@@ -208,7 +208,21 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
       throw new HttpError(404, 'Kullanıcı profili bulunamadı', 'USER_NOT_FOUND');
     }
     if (!u.is_active) {
-      throw new HttpError(403, 'Kullanıcı pasif', 'USER_INACTIVE');
+      // KVKK md.11: silme talep edilmiş kullanıcı 30 gün boyunca
+      // /me/account/cancel-deletion + /me/account/deletion-status endpoint'lerine
+      // erişebilmeli (geri alabilmek için). Diğer her şey 403.
+      const isInGracePeriod =
+        u.deletion_requested_at != null &&
+        u.deleted_at == null &&
+        u.deletion_scheduled_at != null &&
+        u.deletion_scheduled_at > new Date();
+      const isAccountRecoveryPath =
+        req.method === 'POST' && req.path === '/me/account/cancel-deletion';
+      const isStatusPath =
+        req.method === 'GET' && req.path === '/me/account/deletion-status';
+      if (!(isInGracePeriod && (isAccountRecoveryPath || isStatusPath))) {
+        throw new HttpError(403, 'Kullanıcı pasif', 'USER_INACTIVE');
+      }
     }
     req.authUser = u;
     req.authUserId = u.id;

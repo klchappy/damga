@@ -51,6 +51,14 @@ export const users = pgTable(
     /** Streak Shield stoğu (gamification) */
     shields: integer('shields').notNull().default(0),
     last_login_at: timestamp('last_login_at', { withTimezone: true }),
+    /** KVKK md.11: kullanıcı hesabını silme talebinde bulundu */
+    deletion_requested_at: timestamp('deletion_requested_at', { withTimezone: true }),
+    /** Otomatik anonymize tarihi (talep + 30 gün) — bu tarihten önce geri alabilir */
+    deletion_scheduled_at: timestamp('deletion_scheduled_at', { withTimezone: true }),
+    /** Kullanıcının silme nedeni (opsiyonel feedback) */
+    deletion_reason: text('deletion_reason'),
+    /** Anonymize edildiği tarih (full_name='[Silinmiş]' vs olduğunda doldurulur) */
+    deleted_at: timestamp('deleted_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
