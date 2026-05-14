@@ -1,0 +1,61 @@
+{
+  "common": {
+    "save": "Kaydet",
+    "cancel": "Vazgeç",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "loading": "Yükleniyor…",
+    "error": "Hata",
+    "success": "Başarılı",
+    "yes": "Evet",
+    "no": "Hayır",
+    "close": "Kapat",
+    "back": "Geri",
+    "continue": "Devam et",
+    "submit": "Gönder"
+  },
+  "nav": {
+    "home": "Bugün",
+    "history": "Geçmiş",
+    "team": "Takım",
+    "shifts": "Vardiya",
+    "menu": "Yemek",
+    "leaves": "İzin",
+    "announcements": "Duyurular",
+    "settings": "Ayarlar",
+    "profile": "Profil",
+    "signOut": "Çıkış yap"
+  },
+  "auth": {
+    "signIn": "Giriş yap",
+    "signUp": "Kayıt ol",
+    "forgotPassword": "Şifremi unuttum",
+    "email": "E-posta",
+    "password": "Şifre",
+    "identifier": "E-posta, kullanıcı adı veya telefon",
+    "twoFactor": "İki adımlı doğrulama",
+    "twoFactorCode": "6 haneli kodu gir",
+    "verify": "Doğrula",
+    "magicLink": "Sihirli link gönder",
+    "welcomeBack": "Damga'ya hoş geldin"
+  },
+  "stamp": {
+    "checkIn": "Giriş",
+    "checkOut": "Çıkış",
+    "checkInDone": "Giriş yaptın",
+    "checkOutDone": "Çıkış yaptın",
+    "trustScore": "Güven",
+    "location": "Lokasyon",
+    "tooSoon": "Çok hızlı tekrar denedin",
+    "outOfGeofence": "Lokasyon dışındasın",
+    "selfieRequired": "Selfie gerekli",
+    "showQR": "QR kodunu göster"
+  },
+  "landing": {
+    "title": "Çalışanların geliş-gidişi kanıtlı ve şeffaf",
+    "subtitle": "NFC, QR, GPS, WiFi ve cihaz parmak izinden hesaplanan dürüstlük skoru. Hash-zincirli denetim izi.",
+    "ctaStart": "Ücretsiz başla",
+    "ctaHow": "Nasıl çalışır?",
+    "pricing": "Şeffaf fiyatlandırma"
+  }
+}

@@ -6,6 +6,9 @@ initSentry();
 import { initAnalytics } from './lib/analytics';
 initAnalytics();
 
+// i18n init (TR varsayılan, EN destek — kullanıcı dil tercihi localStorage'da)
+import './i18n';
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app';

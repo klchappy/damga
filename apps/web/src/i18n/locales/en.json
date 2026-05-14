@@ -1,0 +1,61 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading…",
+    "error": "Error",
+    "success": "Success",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close",
+    "back": "Back",
+    "continue": "Continue",
+    "submit": "Submit"
+  },
+  "nav": {
+    "home": "Today",
+    "history": "History",
+    "team": "Team",
+    "shifts": "Shifts",
+    "menu": "Menu",
+    "leaves": "Leaves",
+    "announcements": "Announcements",
+    "settings": "Settings",
+    "profile": "Profile",
+    "signOut": "Sign out"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "forgotPassword": "Forgot password",
+    "email": "Email",
+    "password": "Password",
+    "identifier": "Email, username or phone",
+    "twoFactor": "Two-factor authentication",
+    "twoFactorCode": "Enter the 6-digit code",
+    "verify": "Verify",
+    "magicLink": "Send magic link",
+    "welcomeBack": "Welcome to Damga"
+  },
+  "stamp": {
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "checkInDone": "You're checked in",
+    "checkOutDone": "You're checked out",
+    "trustScore": "Trust",
+    "location": "Location",
+    "tooSoon": "Too soon — wait before retrying",
+    "outOfGeofence": "You're outside the location",
+    "selfieRequired": "Selfie required",
+    "showQR": "Show your QR code"
+  },
+  "landing": {
+    "title": "Tamper-proof workplace attendance",
+    "subtitle": "Trust score from NFC, QR, GPS, WiFi and device fingerprint. Hash-chained audit trail.",
+    "ctaStart": "Start free",
+    "ctaHow": "How it works",
+    "pricing": "Transparent pricing"
+  }
+}
