@@ -1,0 +1,19 @@
+Contact: mailto:guvenlik@deploi.net
+Contact: mailto:kvkk@deploi.net
+Expires: 2027-05-14T00:00:00Z
+Preferred-Languages: tr, en
+Canonical: https://damga.deploi.net/.well-known/security.txt
+Policy: https://damga.deploi.net/legal/privacy
+
+# Damga — İşyeri yoklama platformu güvenlik politikası
+# Türkçe:
+#   Bir güvenlik açığı bulduysanız lütfen guvenlik@deploi.net adresine bildirin.
+#   Sorumlu açıklama ilkesine uyacağız ve 7 iş günü içinde dönüş yapacağız.
+#   PoC paylaşımı için önce e-posta atın; production verisi içeren açıklar için
+#   detayları çoğaltabileceğimiz şekilde adım adım iletin.
+#
+# English:
+#   If you've discovered a security vulnerability, please report it to
+#   guvenlik@deploi.net. We follow responsible disclosure and will respond
+#   within 7 business days. Please email us first before sharing PoCs;
+#   for issues involving production data, please include reproduction steps.
