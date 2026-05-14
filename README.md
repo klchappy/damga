@@ -180,6 +180,9 @@ OpenAPI 3.0 spec: [`docs/openapi.yaml`](./docs/openapi.yaml)
 | **Container** | Docker + Coolify (self-hosted PaaS) |
 | **Sunucu** | Hetzner CX22 (EU, €4/ay) |
 | **DNS/CDN** | Cloudflare Free tier |
+| **Error tracking** | Sentry (`@sentry/react` + `@sentry/node`, KVKK uyumlu: PII off, header filtreli) |
+| **Uptime monitoring** | UptimeRobot (web + `/v1/health`, 5dk interval) |
+| **CI/CD** | GitHub Actions (typecheck + lint + build) + Coolify auto-deploy |
 
 ---
 
@@ -331,6 +334,9 @@ Deploy detay: [`DEPLOY.md`](./DEPLOY.md)
 - RLS default-deny (36 tablo)
 - Email altyapısı (Resend)
 - Dış Servisler yönetim UI
+- **GitHub Actions CI** (typecheck + lint + build)
+- **Sentry error tracking** (frontend + backend, @sentry/react + @sentry/node)
+- **UptimeRobot monitoring** (web + api health, 5dk interval)
 
 ### 🟡 Plan dahilinde
 - Stripe entegrasyonu (Iyzico stub yerine)
@@ -339,12 +345,13 @@ Deploy detay: [`DEPLOY.md`](./DEPLOY.md)
 - Capacitor iOS/Android app
 - APNs push notifications
 - Mailbox kurulumu (Cloudflare Email Routing)
+- UptimeRobot public status page yayınlama
 
 ### 🟢 Gelecek
 - Lokma yeniden kurma (ayrı Supabase, API ile entegre)
-- Sentry (production hata izleme)
-- Status page (UptimeRobot)
 - pg_dump otomatik haftalık yedek
+- Vitest test coverage
+- APM (application performance monitoring)
 
 ---
 

@@ -11,6 +11,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  Activity,
+  AlertTriangle,
   Bell,
   Cloud,
   Container,
@@ -115,6 +117,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Bell,
   Shield,
   CreditCard,
+  AlertTriangle,
+  Activity,
 };
 
 function ServiceIcon({ name, className }: { name: string | null; className?: string }) {
