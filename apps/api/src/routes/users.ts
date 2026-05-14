@@ -601,6 +601,83 @@ usersRouter.post('/me/account/cancel-deletion', requireAuth, async (req, res, ne
   }
 });
 
+/**
+ * POST /v1/admin/users/:userId/mfa-reset
+ *
+ * Çalışan telefonunu kaybetti ve 2FA'sını sıfırlamak istiyor.
+ * Admin/owner onun adına Supabase'de TÜM factor'larını siler.
+ *
+ * Kullanıcı sonraki giriş'te şifre + (varsa) magic link ile girer, sonra
+ * tekrar 2FA enroll yapar.
+ *
+ * Audit: hangi admin ne zaman hangi user için reset yaptı → log + Sentry
+ * (KVKK md.12 — yetkili erişim izleme)
+ */
+usersRouter.post(
+  '/admin/users/:userId/mfa-reset',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const targetUserId = req.params.userId as string | undefined;
+      if (!targetUserId || typeof targetUserId !== 'string') {
+        throw new HttpError(400, 'userId gerekli');
+      }
+
+      // Hedef kullanıcı aynı org'da olmalı
+      const [target] = await getDb()
+        .select({ id: users.id, auth_user_id: users.auth_user_id, full_name: users.full_name })
+        .from(users)
+        .where(and(eq(users.id, targetUserId), eq(users.org_id, req.authOrgId)));
+      if (!target) throw new HttpError(404, 'Çalışan bulunamadı');
+      if (!target.auth_user_id) throw new HttpError(400, 'Supabase auth bağlantısı yok');
+
+      const supabase = getSupabaseAdmin();
+      // Tüm MFA factor'larını listele + sil
+      const { data: factorsData, error: listErr } = await supabase.auth.admin.mfa.listFactors({
+        userId: target.auth_user_id,
+      });
+      if (listErr) {
+        logger.warn({ err: listErr, userId: target.id }, 'MFA list failed');
+      }
+      const factors = factorsData?.factors ?? [];
+
+      const deleted: string[] = [];
+      for (const f of factors) {
+        const { error: delErr } = await supabase.auth.admin.mfa.deleteFactor({
+          userId: target.auth_user_id,
+          id: f.id,
+        });
+        if (delErr) {
+          logger.warn({ err: delErr, factorId: f.id }, 'MFA factor delete failed');
+          continue;
+        }
+        deleted.push(f.id);
+      }
+
+      logger.info(
+        {
+          byAdminId: req.authUserId,
+          forUserId: target.id,
+          forUserName: target.full_name,
+          deletedFactorCount: deleted.length,
+        },
+        '🔐 Admin MFA reset',
+      );
+
+      res.json({
+        ok: true,
+        deleted_factor_count: deleted.length,
+        user: { id: target.id, full_name: target.full_name },
+        message: `${target.full_name} için ${deleted.length} MFA factor silindi. Kullanıcı bir sonraki girişte tekrar 2FA kurmak isteyecek.`,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 usersRouter.get('/me/account/deletion-status', requireAuth, async (req, res, next) => {
   try {
     if (!req.authUserId) throw new HttpError(401, 'Yetki yok');

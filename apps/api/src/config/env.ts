@@ -24,6 +24,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1).optional(),
 
   RESEND_API_KEY: z.string().optional(),
+  /** Resend webhook signing secret (svix-id, svix-timestamp, svix-signature header doğrulaması) */
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
   EMAIL_FROM: z.string().default('Damga <noreply@deploi.net>'),
   CONTACT_EMAIL: z.string().email().default('damga@deploi.net'),
   SUPPORT_EMAIL: z.string().email().default('destek@deploi.net'),

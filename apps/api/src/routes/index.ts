@@ -25,6 +25,7 @@ import { platformRouter } from './platform';
 import { integrationsRouter } from './integrations';
 import { statusRouter } from './status';
 import { stampCredentialsRouter } from './stamp-credentials';
+import { resendWebhookRouter } from './webhooks-resend';
 import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
@@ -58,6 +59,7 @@ apiRouter.use(analyticsRouter);
 apiRouter.use(platformRouter);
 apiRouter.use(integrationsRouter);
 apiRouter.use(stampCredentialsRouter);
+apiRouter.use(resendWebhookRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({
