@@ -7,7 +7,7 @@
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm --filter @damga/web --filter @damga/api build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "pnpm -r lint --if-present",
     "db:generate": "pnpm --filter @damga/db generate",
     "db:migrate": "pnpm --filter @damga/db migrate",
     "db:seed": "pnpm --filter @damga/db seed",

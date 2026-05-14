@@ -67,7 +67,7 @@ export default defineConfig({
           query: ['@tanstack/react-query', 'axios'],
           supabase: ['@supabase/supabase-js'],
           ui: ['lucide-react', 'sonner'],
-          scanner: ['@zxing/browser', '@zxing/library'],
+          scanner: ['jsqr', 'qrcode'],
         },
       },
     },
