@@ -26,7 +26,7 @@ COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 RUN pnpm --filter @damga/web build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 RUN apk add --no-cache curl wget
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
