@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createLeaveSchema, rejectLeaveSchema } from '@damga/shared';
 import { getDb, leaves, users } from '@damga/db';
@@ -181,7 +181,7 @@ leavesRouter.post(
           .where(
             and(
               eq(users.org_id, req.authOrgId),
-              sql`${users.email} = ANY(${emails})`,
+              inArray(users.email, emails),
             ),
           );
         for (const u of found) {
@@ -202,7 +202,7 @@ leavesRouter.post(
           .where(
             and(
               eq(users.org_id, req.authOrgId),
-              sql`${users.id} = ANY(${explicitUserIds})`,
+              inArray(users.id, explicitUserIds),
             ),
           );
         for (const u of found) validOrgUserIds.add(u.id);

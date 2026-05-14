@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   getDb,
@@ -761,7 +761,7 @@ reportsRouter.get(
         ? await getDb()
             .select({ id: approver.id, full_name: approver.full_name })
             .from(approver)
-            .where(sql`${approver.id} = ANY(${approverIds})`)
+            .where(inArray(approver.id, approverIds))
         : [];
       const approverMap = new Map(approvers.map((a) => [a.id, a.full_name]));
 
@@ -1210,7 +1210,7 @@ reportsRouter.get(
             eq(attendanceEvents.type, 'check_in'),
             gte(attendanceEvents.server_time, start),
             lte(attendanceEvents.server_time, end),
-            sql`${attendanceEvents.user_id} = ANY(${personIds})`,
+            inArray(attendanceEvents.user_id, personIds),
           ),
         );
 
