@@ -7,8 +7,7 @@
     "dev": "vite --port 5273",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 5273",
-    "typecheck": "tsc -b --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@damga/shared": "workspace:*",
