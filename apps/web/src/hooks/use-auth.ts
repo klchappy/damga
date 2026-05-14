@@ -230,7 +230,24 @@ export async function signInWithIdentifier(identifier: string, password: string)
     email,
     password,
   });
-  if (error) throw error;
+  if (error) {
+    // Server'a başarısız denemeyi raporla (account lockout sayacı için)
+    void api
+      .post('/auth/login-result', {
+        identifier: identifier.trim(),
+        success: false,
+        reason: 'invalid_password',
+      })
+      .catch(() => {});
+    throw error;
+  }
+  // Başarılı login'i raporla (audit + sayaç sıfırlama)
+  void api
+    .post('/auth/login-result', {
+      identifier: identifier.trim(),
+      success: true,
+    })
+    .catch(() => {});
   const { setUser, setOrg, setSession } = useAuthStore.getState();
   if (authData?.session) setSession(authData.session);
 

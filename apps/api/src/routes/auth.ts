@@ -311,6 +311,14 @@ authRouter.post('/resolve-identifier', authLimiter, async (req, res, next) => {
       res.json({ email: null });
       return;
     }
+
+    // Account lockout kontrolü (kullanıcı-bazlı brute force koruması)
+    const { checkLockout } = await import('../lib/account-lockout');
+    const lock = await checkLockout(id);
+    if (lock.locked) {
+      throw new HttpError(429, lock.message ?? 'Hesap kilitli', 'ACCOUNT_LOCKED');
+    }
+
     // Email gibi görünüyorsa direkt onu kullan
     if (id.includes('@')) {
       res.json({ email: id.toLowerCase() });
@@ -330,6 +338,62 @@ authRouter.post('/resolve-identifier', authLimiter, async (req, res, next) => {
       )
       .limit(1);
     res.json({ email: user?.email ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /v1/auth/login-result — frontend Supabase sign-in sonucunu raporlar.
+ *
+ * Body: { identifier, success: boolean, reason?: 'invalid_password' | 'mfa_failed' | ... }
+ *
+ * Sunucu lockout sayacını günceller. Başarısız 5 deneme → 15 dk kilit.
+ *
+ * Bu endpoint client tarafından çağrıldığı için saldırgan göndermeyebilir
+ * (false report). Ama gerçek brute force durumunda saldırgan'ın "report
+ * etmemesi" zaten ona yardım etmez — şifre yine yanlış, login yine başarısız.
+ * Audit + UX için yeterli.
+ */
+authRouter.post('/login-result', authLimiter, async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        identifier: z.string().trim().min(1).max(200),
+        success: z.boolean(),
+        reason: z
+          .enum(['invalid_password', 'user_not_found', 'mfa_failed', 'rate_limited'])
+          .optional(),
+      })
+      .parse(req.body);
+
+    const ip =
+      (req.headers['cf-connecting-ip'] as string) ||
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.ip ||
+      null;
+    const ua = (req.headers['user-agent'] as string) ?? null;
+
+    const { recordFailedAttempt, recordSuccessfulLogin, checkLockout } = await import(
+      '../lib/account-lockout'
+    );
+
+    if (body.success) {
+      await recordSuccessfulLogin({ identifier: body.identifier, ip, user_agent: ua });
+      res.json({ ok: true });
+      return;
+    }
+
+    await recordFailedAttempt({
+      identifier: body.identifier,
+      ip,
+      user_agent: ua,
+      reason: body.reason ?? 'invalid_password',
+    });
+
+    // Bu denemeden sonra hesap kilitlendi mi?
+    const lock = await checkLockout(body.identifier);
+    res.json({ ok: true, locked: lock.locked, failed_count: lock.failed_count });
   } catch (err) {
     next(err);
   }
