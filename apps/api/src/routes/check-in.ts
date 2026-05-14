@@ -14,13 +14,13 @@ import { uploadSelfie } from '../lib/storage';
 import { awardXp, computeOnTimeBonus } from '../lib/xp';
 import { detectOvertime } from '../lib/overtime';
 import { getUserShiftForDate } from '../lib/shift-lookup';
-import { createNotification, notifyOrgManagers } from '../lib/notifications';
+import { createNotification } from '../lib/notifications';
 import { findUserByCredential } from './stamp-credentials';
+import { enforceVelocityLimit, notifyAdminsOfStamp } from '../lib/attendance-helpers';
 
 export const checkInRouter = Router();
 
-/** Aynı kullanıcının çift damga atmasını engelle (proxy/replay attack) */
-const VELOCITY_WINDOW_MS = 30 * 1000; // 30 saniye
+// VELOCITY_WINDOW_MS artık apps/api/src/config/constants.ts'te (Batch 16 refactor)
 
 /** Anomali sebep kodları → kullanıcıya gösterilecek TR mesaj */
 const REVIEW_REASON_MESSAGES: Record<string, string> = {
@@ -86,25 +86,7 @@ async function performAttendance(
   // ============================================================
 
   // 1) Velocity check: aynı kullanıcı 30sn içinde tekrar damga atıyorsa reject
-  const velocityCutoff = new Date(Date.now() - VELOCITY_WINDOW_MS);
-  const [recentEvent] = await db
-    .select({ id: attendanceEvents.id, server_time: attendanceEvents.server_time })
-    .from(attendanceEvents)
-    .where(
-      and(
-        eq(attendanceEvents.user_id, req.authUserId),
-        gte(attendanceEvents.server_time, velocityCutoff),
-      ),
-    )
-    .orderBy(desc(attendanceEvents.server_time))
-    .limit(1);
-  if (recentEvent) {
-    throw new HttpError(
-      429,
-      'Çok hızlı tekrar denedin — son damgadan en az 30 saniye sonra tekrar dene.',
-      'VELOCITY_BLOCKED',
-    );
-  }
+  await enforceVelocityLimit(req.authUserId);
 
   // 2) Org settings — allow_outside_geofence true ise lokasyon kontrolü yumuşak
   // auto_selfie_every_stamp true ise her damga'da selfie istenir (kanıt amaçlı)
@@ -503,36 +485,21 @@ async function performAttendance(
     `✓ ${type}`,
   );
 
-  // Yöneticilere real-time bildirim (her damga için) — KIM/NE/NEREDE/NE ZAMAN
-  // Damgalayan kullanıcı kendisi yöneticiyse kendine bildirim gitmesin.
-  const stamperName = req.authUser?.full_name ?? 'Çalışan';
-  const stamperEmail = req.authUser?.email ?? '';
-  const actionEmoji = type === 'check_in' ? '🟢' : '🔴';
-  const actionLabel = type === 'check_in' ? 'giriş yaptı' : 'çıkış yaptı';
-  const trustEmoji = trust.score >= 100 ? '✓' : trust.score >= 80 ? '⚠️' : '🚨';
-  void notifyOrgManagers({
+  // Yöneticilere real-time bildirim (helper'a çıkartıldı, fire-and-forget)
+  notifyAdminsOfStamp({
     orgId: req.authOrgId,
-    type: type === 'check_in' ? 'stamp_check_in' : 'stamp_check_out',
-    title: `${actionEmoji} ${stamperName} ${actionLabel}`,
-    body:
-      `📍 ${location.name}` +
-      ` · ${trustEmoji} Güven: ${trust.score}/100` +
-      (trust.flags.length > 0 ? ` · ⚠️ ${trust.flags.slice(0, 2).join(', ')}` : ''),
-    url: '/admin/live-feed',
-    excludeUserId: req.authUserId,
-    metadata: {
-      event_id: event.id,
-      stamper_user_id: req.authUserId,
-      stamper_name: stamperName,
-      stamper_email: stamperEmail,
-      location_id: location.id,
-      location_name: location.name,
-      trust_score: trust.score,
-      trust_decision: trust.decision,
-      flags: trust.flags,
-      verification_methods: trust.verification_methods,
-      server_time: event.server_time.toISOString(),
-    },
+    userId: req.authUserId,
+    type,
+    stamperName: req.authUser?.full_name ?? 'Çalışan',
+    stamperEmail: req.authUser?.email ?? '',
+    locationName: location.name,
+    locationId: location.id,
+    trustScore: trust.score,
+    trustDecision: trust.decision,
+    flags: trust.flags,
+    verificationMethods: trust.verification_methods,
+    eventId: event.id,
+    serverTime: event.server_time,
   });
 
   // Webhook tetikle (fire-and-forget)
