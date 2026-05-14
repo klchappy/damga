@@ -326,6 +326,49 @@ usersRouter.patch(
         );
       }
 
+      // SECURITY: Owner kendi rolünü owner'dan başkasına çeviremez (lock-out önleme)
+      // Birden fazla owner varsa devir/handover gerekir, son owner yalnız kalırsa
+      // şirket yönetimi tamamen kilitlenir.
+      if (
+        id === req.authUserId &&
+        input.role !== undefined &&
+        req.authUser?.role === 'owner' &&
+        input.role !== 'owner'
+      ) {
+        // Başka aktif owner var mı kontrol et
+        const otherOwners = await getDb()
+          .select({ c: count() })
+          .from(users)
+          .where(
+            and(
+              eq(users.org_id, req.authOrgId),
+              eq(users.role, 'owner'),
+              eq(users.is_active, true),
+            ),
+          );
+        const ownerCount = otherOwners[0]?.c ?? 1;
+        if (ownerCount <= 1) {
+          throw new HttpError(
+            400,
+            "Tek owner kendi rolünü düşüremez — önce başka bir kullanıcıya owner rolünü devret.",
+            'OWNER_HANDOVER_REQUIRED',
+          );
+        }
+      }
+
+      // SECURITY: Admin/owner aktif/pasif değişikliği kendi hesabında yapamaz
+      // (kendini pasif yapıp hemen erişimi kaybetme riski)
+      if (
+        id === req.authUserId &&
+        input.is_active === false
+      ) {
+        throw new HttpError(
+          400,
+          'Kendi hesabını pasif yapamazsın — başka bir admin/owner üzerinden yap.',
+          'CANNOT_DEACTIVATE_SELF',
+        );
+      }
+
       const updates: Record<string, unknown> = { updated_at: new Date() };
       if (input.full_name !== undefined) updates.full_name = input.full_name;
       if (input.role !== undefined) updates.role = input.role;

@@ -30,17 +30,34 @@ app.use(
   }),
 );
 
+// SECURITY: CORS izin listesi.
+// Önceki versiyon /^https:\/\/[a-z0-9-]+\.deploi\.net$/ ile TÜM subdomain'lere
+// açıktı; saldırgan herhangi bir subdomain'i (örn: attacker.deploi.net)
+// alabilse veya subdomain takeover yapabilse credentials'lı request gönderebilirdi.
+// Şimdi explicit allow-list: sadece Damga'nın gerçekten kullandığı origin'ler.
+const ALLOWED_ORIGINS = new Set<string>(
+  [
+    env.CLIENT_URL.replace(/\/$/, ''),
+    'https://damga.deploi.net',
+    'https://www.damga.deploi.net',
+    'https://api.damga.deploi.net',
+    'https://deploi.net',
+    'https://www.deploi.net',
+  ].filter(Boolean),
+);
+
 app.use(
   cors({
     origin: (origin, cb) => {
-      // İzinli origin'ler: CLIENT_URL (env) + lokal dev + tüm *.deploi.net subdomain'leri
-      if (!origin) return cb(null, true);
+      if (!origin) return cb(null, true); // server-to-server, curl, mobile app
       const trimmed = origin.replace(/\/$/, '');
-      const clientUrl = env.CLIENT_URL.replace(/\/$/, '');
       if (
-        trimmed === clientUrl ||
+        ALLOWED_ORIGINS.has(trimmed) ||
         trimmed.startsWith('http://localhost:') ||
-        /^https:\/\/[a-z0-9-]+\.deploi\.net$/.test(trimmed)
+        trimmed.startsWith('http://127.0.0.1:') ||
+        // Capacitor (mobile) — file:// veya capacitor:// scheme'leri
+        trimmed.startsWith('capacitor://') ||
+        trimmed.startsWith('ionic://')
       ) {
         cb(null, true);
       } else {

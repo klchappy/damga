@@ -167,19 +167,45 @@ leavesRouter.post(
       if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
       const body = bulkLeaveSchema.parse(req.body);
 
-      // Email → user_id lookup
+      // Email → user_id lookup (sadece bu org'un kullanıcılarından)
+      // SECURITY: WHERE clause'a org_id filter eklendi (önceki versiyonda DB-level
+      // filter yoktu, sadece post-fetch JS filter vardı — defense in depth zayıftı)
       const emails = Array.from(
         new Set(body.items.filter((i) => i.user_email).map((i) => i.user_email!)),
       );
       const userByEmail = new Map<string, string>();
       if (emails.length > 0) {
         const found = await getDb()
-          .select({ id: users.id, email: users.email, org_id: users.org_id })
+          .select({ id: users.id, email: users.email })
           .from(users)
-          .where(sql`${users.email} = ANY(${emails})`);
+          .where(
+            and(
+              eq(users.org_id, req.authOrgId),
+              sql`${users.email} = ANY(${emails})`,
+            ),
+          );
         for (const u of found) {
-          if (u.org_id === req.authOrgId) userByEmail.set(u.email, u.id);
+          userByEmail.set(u.email, u.id);
         }
+      }
+
+      // Direkt user_id verilen item'lar için: hepsini bu org'a ait olduğunu doğrula
+      // (saldırgan başka org'un user_id'sini parametre olarak verebilir)
+      const explicitUserIds = Array.from(
+        new Set(body.items.filter((i) => i.user_id).map((i) => i.user_id!)),
+      );
+      const validOrgUserIds = new Set<string>();
+      if (explicitUserIds.length > 0) {
+        const found = await getDb()
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.org_id, req.authOrgId),
+              sql`${users.id} = ANY(${explicitUserIds})`,
+            ),
+          );
+        for (const u of found) validOrgUserIds.add(u.id);
       }
 
       let inserted = 0;
@@ -188,6 +214,11 @@ leavesRouter.post(
       for (let i = 0; i < body.items.length; i++) {
         const item = body.items[i]!;
         let userId = item.user_id;
+        // SECURITY: explicit user_id verildiyse org doğrulamasından geçmeli
+        if (userId && !validOrgUserIds.has(userId)) {
+          skipped.push({ row: i + 1, reason: 'user_not_in_org' });
+          continue;
+        }
         if (!userId && item.user_email) {
           userId = userByEmail.get(item.user_email);
         }

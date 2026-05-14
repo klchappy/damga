@@ -5,6 +5,7 @@
  * bu kod service role key ile yükleme yapar). Bucket yoksa runtime'da oluşturmaya
  * çalışır.
  */
+import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import { env, isConfigured } from '../config/env';
@@ -125,7 +126,10 @@ export async function uploadSelfie(args: {
       : finalContentType === 'image/png'
         ? 'png'
         : 'jpg';
-  const rand = Math.random().toString(36).slice(2, 10);
+  // SECURITY: 128-bit cryptographic random — bucket public olduğunda bile
+  // URL brute-force ile cross-org selfie keşfedilemez.
+  // Önceki Math.random()-based 8 char ~41 bit'di; bu 22 char base64url ~128 bit.
+  const rand = crypto.randomBytes(16).toString('base64url');
   const ts = Date.now();
   const path = `${args.orgId}/${args.userId}/${ts}-${rand}.${ext}`;
 
@@ -141,4 +145,34 @@ export async function uploadSelfie(args: {
 
   const { data } = supabase.storage.from(SELFIE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, path };
+}
+
+/**
+ * Yetkili bir kullanıcı için 1 saatlik signed URL üret.
+ *
+ * Mevcut bucket public — bu helper, ileride bucket private'a alınırsa
+ * (KVKK ileri seviye) tek satır değişiklik ile geçişe hazırlık. Yeni kod
+ * kullanırken bunu tercih edin; eski selfie_url'ler (DB'de saklı) zaten
+ * çalışır.
+ *
+ * NOT: path = "<orgId>/<userId>/<ts>-<rand>.webp" formatında olmalı.
+ */
+export async function getSignedSelfieUrl(
+  path: string,
+  expiresInSeconds = 3600,
+): Promise<string | null> {
+  try {
+    const supabase = getStorageClient();
+    const { data, error } = await supabase.storage
+      .from(SELFIE_BUCKET)
+      .createSignedUrl(path, expiresInSeconds);
+    if (error || !data?.signedUrl) {
+      logger.warn({ err: error?.message, path }, 'Signed URL üretilemedi');
+      return null;
+    }
+    return data.signedUrl;
+  } catch (e) {
+    logger.warn({ err: e, path }, 'Signed URL exception');
+    return null;
+  }
 }

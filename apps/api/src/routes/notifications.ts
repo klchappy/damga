@@ -107,18 +107,18 @@ notificationsRouter.delete(
 
 notificationsRouter.get('/me/notifications', requireAuth, async (req, res, next) => {
   try {
-    if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+    if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
     const q = z
       .object({
         unread: z.enum(['1', '0']).optional(),
         limit: z.coerce.number().int().min(1).max(100).default(30),
       })
       .parse(req.query);
-    const items = await listMyNotifications(req.authUserId, {
+    const items = await listMyNotifications(req.authUserId, req.authOrgId, {
       limit: q.limit,
       unreadOnly: q.unread === '1',
     });
-    const unread_count = await countUnread(req.authUserId);
+    const unread_count = await countUnread(req.authUserId, req.authOrgId);
     res.json({ items, unread_count });
   } catch (err) {
     next(err);
@@ -130,9 +130,9 @@ notificationsRouter.post(
   requireAuth,
   async (req, res, next) => {
     try {
-      if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
+      if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
       const id = String(req.params.id ?? '').trim();
-      await markRead(req.authUserId, id);
+      await markRead(req.authUserId, req.authOrgId, id);
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -145,8 +145,8 @@ notificationsRouter.post(
   requireAuth,
   async (req, res, next) => {
     try {
-      if (!req.authUserId) throw new HttpError(401, 'Yetki yok');
-      await markAllRead(req.authUserId);
+      if (!req.authUserId || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      await markAllRead(req.authUserId, req.authOrgId);
       res.json({ ok: true });
     } catch (err) {
       next(err);

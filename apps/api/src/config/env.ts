@@ -80,6 +80,34 @@ if (!parsed.success) {
   }
 }
 
+// SECURITY: Production'da NFC_SIGNING_SECRET default değer kullanıyorsa fail-fast.
+// Bu secret zod schema'da min(32) kontrol ediyor ama default ile geçiyor. Production'da
+// default kalırsa, fake NFC imzaları üretilebilir — kritik güvenlik açığı.
+const DEFAULT_NFC_SECRET = 'damga-dev-default-secret-change-in-prod-please';
+if (
+  process.env.NODE_ENV === 'production' &&
+  (parsed.success
+    ? parsed.data.NFC_SIGNING_SECRET === DEFAULT_NFC_SECRET
+    : process.env.NFC_SIGNING_SECRET === DEFAULT_NFC_SECRET ||
+      !process.env.NFC_SIGNING_SECRET)
+) {
+  console.error(
+    '❌ FATAL: NFC_SIGNING_SECRET production\'da default değerde — fake NFC imzaları üretilebilir.',
+  );
+  console.error('   Coolify env\'inde minimum 32 karakter random secret set\'le ve redeploy et.');
+  process.exit(1);
+}
+
+// Production'da JWT secret de mutlaka olmalı
+if (
+  process.env.NODE_ENV === 'production' &&
+  !process.env.SUPABASE_JWT_SECRET &&
+  !process.env.SUPABASE_SERVICE_ROLE_KEY
+) {
+  console.error('❌ FATAL: Auth secret\'leri production\'da eksik (SUPABASE_JWT_SECRET veya SERVICE_ROLE_KEY).');
+  process.exit(1);
+}
+
 const fallback = {
   NODE_ENV: 'development' as const,
   PORT: 4100,

@@ -53,12 +53,22 @@ export async function createNotification(
   }
 }
 
+/**
+ * SECURITY: Tüm notification helper'ları artık (user_id, org_id) ile filtre yapıyor.
+ * Defense-in-depth — auth middleware'i bypass eden bir bug olursa veya helper başka
+ * yerden çağrılırsa, org_id zorunlu parametre olarak gelir; cross-org veri sızıntısı
+ * imkansız.
+ */
 export async function listMyNotifications(
   userId: string,
+  orgId: string,
   opts?: { limit?: number; unreadOnly?: boolean },
 ) {
   const db = getDb();
-  const conds = [eq(notifications.user_id, userId)];
+  const conds = [
+    eq(notifications.user_id, userId),
+    eq(notifications.org_id, orgId),
+  ];
   if (opts?.unreadOnly) conds.push(eq(notifications.is_read, false));
   return db
     .select()
@@ -68,26 +78,44 @@ export async function listMyNotifications(
     .limit(opts?.limit ?? 30);
 }
 
-export async function countUnread(userId: string): Promise<number> {
+export async function countUnread(userId: string, orgId: string): Promise<number> {
   const [r] = await getDb()
     .select({ c: sql<number>`count(*)::int` })
     .from(notifications)
-    .where(and(eq(notifications.user_id, userId), eq(notifications.is_read, false)));
+    .where(
+      and(
+        eq(notifications.user_id, userId),
+        eq(notifications.org_id, orgId),
+        eq(notifications.is_read, false),
+      ),
+    );
   return r?.c ?? 0;
 }
 
-export async function markRead(userId: string, id: string) {
+export async function markRead(userId: string, orgId: string, id: string) {
   await getDb()
     .update(notifications)
     .set({ is_read: true, read_at: new Date() })
-    .where(and(eq(notifications.id, id), eq(notifications.user_id, userId)));
+    .where(
+      and(
+        eq(notifications.id, id),
+        eq(notifications.user_id, userId),
+        eq(notifications.org_id, orgId),
+      ),
+    );
 }
 
-export async function markAllRead(userId: string) {
+export async function markAllRead(userId: string, orgId: string) {
   await getDb()
     .update(notifications)
     .set({ is_read: true, read_at: new Date() })
-    .where(and(eq(notifications.user_id, userId), eq(notifications.is_read, false)));
+    .where(
+      and(
+        eq(notifications.user_id, userId),
+        eq(notifications.org_id, orgId),
+        eq(notifications.is_read, false),
+      ),
+    );
 }
 
 /**

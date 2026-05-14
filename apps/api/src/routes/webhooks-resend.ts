@@ -18,6 +18,8 @@
 import { Router, type Request } from 'express';
 import crypto from 'node:crypto';
 import { getDb, emailEvents } from '@damga/db';
+import { requireAuth, requireRole } from '../middleware/auth';
+import { HttpError } from '../middleware/error';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 
@@ -153,23 +155,35 @@ resendWebhookRouter.post(
 );
 
 /**
- * GET /v1/webhooks/resend/stats — son 24 saatlik email teslimat sağlığı.
- * Platform admin için.
+ * GET /v1/webhooks/resend/stats — son 24 saatlik email teslimat sağlığı (org bazlı).
+ *
+ * Admin/owner için: bu org'a gönderilen maillerin sent/delivered/bounced/complained
+ * dağılımı. Platform genelinde değil — sadece kendi org'un.
+ *
+ * Önceki versiyon auth'suzdu ve TÜM org'ların metriklerini döndürüyordu — bu
+ * info leak idi. Şimdi requireAuth + admin/owner + org_id filter ile korunmuş.
  */
-resendWebhookRouter.get('/webhooks/resend/stats', async (_req, res, next) => {
-  try {
-    const { sql } = await import('drizzle-orm');
-    const rows = await getDb().execute<{ event_type: string; count: number }>(sql`
-      SELECT event_type, count(*)::int as count
-      FROM public.email_events
-      WHERE received_at > now() - interval '24 hours'
-      GROUP BY event_type
-      ORDER BY count DESC
-    `);
-    const data = (rows as unknown as { rows?: Array<{ event_type: string; count: number }> }).rows
-      ?? (rows as unknown as Array<{ event_type: string; count: number }>);
-    res.json({ stats: data ?? [], window: '24h' });
-  } catch (err) {
-    next(err);
-  }
-});
+resendWebhookRouter.get(
+  '/webhooks/resend/stats',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const { sql } = await import('drizzle-orm');
+      const rows = await getDb().execute<{ event_type: string; count: number }>(sql`
+        SELECT event_type, count(*)::int as count
+        FROM public.email_events
+        WHERE received_at > now() - interval '24 hours'
+          AND org_id = ${req.authOrgId}
+        GROUP BY event_type
+        ORDER BY count DESC
+      `);
+      const data = (rows as unknown as { rows?: Array<{ event_type: string; count: number }> }).rows
+        ?? (rows as unknown as Array<{ event_type: string; count: number }>);
+      res.json({ stats: data ?? [], window: '24h' });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
