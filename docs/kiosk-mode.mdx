@@ -1,0 +1,97 @@
+---
+title: 'Kiosk modu'
+description: 'Paylaşımlı tablette çoklu kullanıcı damga akışı'
+---
+
+## Senaryo
+
+Lokasyonunda **bir tablet** var (iPad, Android tablet, hatta laptop). Çalışanlar kendi telefonlarıyla değil, bu tablete kendi **kişisel QR kartlarını** göstererek check-in/out yapsın istiyorsun.
+
+Damga kiosk modu tam bu senaryoyu çözer.
+
+## Nasıl çalışır?
+
+<Steps>
+  <Step title="Her çalışan kendi QR kartını üretir">
+    Profil sayfası > "Damga kartım" > **İlk QR'ımı üret** butonu
+
+    Çıkan QR'ı **bir kez yazdırır**, cüzdanında taşır.
+
+    <Warning>
+      QR değeri **sadece bir kez** görünür. Kaybolursa yeni üretmesi gerekir (eski iptal olur).
+    </Warning>
+  </Step>
+
+  <Step title="Yönetici tablete kiosk modunu açar">
+    Tablette **manager hesabıyla** login ol.
+
+    Yönetici paneli > Lokasyonlar > İlgili lokasyon > **"🖥️ Kiosk"** butonu
+
+    Yeni sekmede tam-ekran kiosk açılır. Kamera başlar.
+  </Step>
+
+  <Step title="Çalışanlar QR'larını gösterir">
+    Tablete yaklaşır → kart kameraya doğru tutulur → otomatik algılanır.
+
+    - Bugünkü ilk damga ise: **giriş** olarak işlenir
+    - Daha önce giriş yapmışsa: **çıkış** olarak işlenir
+  </Step>
+
+  <Step title="Sonuç ekranda gösterilir">
+    Yeşil rozet + isim + güven skoru: **"Ahmet Yılmaz — Giriş yaptın ✓"**
+
+    3 saniye sonra otomatik temizlenir, sıradaki çalışan için hazır.
+  </Step>
+</Steps>
+
+## Güvenlik
+
+- **Her QR sadece o kullanıcıya özel** (24 karakter Crockford Base32, ~120 bit entropy)
+- DB'de sadece **bcrypt hash** tutulur, düz değer geri çevrilemez
+- QR kaybolursa **revoke** edilebilir, yeni üretilir
+- Kiosk operatörü her damga için **audit log**'a yazılır (`device_info.kiosk_operator_id`)
+- Cross-org QR kabul edilmez (sadece aynı org içinde geçerli)
+- 30 saniyede ikinci damga blocklanır (replay attack koruması)
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Tablet seçimi">
+    Herhangi bir tablet/laptop yeterli (Android, iPad, Windows tablet, eski telefon).
+
+    **Şartlar:**
+    - Modern bir tarayıcı (Chrome, Safari, Edge — son 2 sürüm)
+    - Kameraya erişim izni
+    - Sürekli internet (4G yedek iyi olur)
+    - Wake Lock API destek (Chrome var, Safari iOS 16.4+)
+  </Accordion>
+
+  <Accordion title="Tablet ne zaman uyumamalı?">
+    Damga kiosk sayfası **Wake Lock API** çağırır — sayfa açıkken ekran kapanmaz. Yine de:
+
+    - Ekran ayarlarından "Asla uyuma" yap
+    - Pil yerine prize bağlı çalışsın
+  </Accordion>
+
+  <Accordion title="Çoklu kiosk?">
+    Aynı lokasyonda birden fazla kiosk açabilirsin (giriş + çıkış kapısı vs.). Her ikisinin de URL'i aynı: `/kiosk/:locationId`.
+
+    Hash zinciri tek bir sıra üzerinden çalıştığı için yarış durumu olmaz.
+  </Accordion>
+
+  <Accordion title="Kart kaybolursa?">
+    1. Çalışan profil sayfasından "Yeni QR üret" → eski otomatik revoke olur
+    2. Yeni QR'ı yazdırır
+    3. Eski kart artık kabul edilmez
+
+    Yönetici onun adına da üretebilir: `/v1/admin/users/:userId/stamp-credentials/generate`
+  </Accordion>
+</AccordionGroup>
+
+## Trust score'da ne etki?
+
+Kiosk üzerinden gelen damgalar normal damga akışıyla aynı geçer:
+
+- GPS olmadığı için **out_of_geofence flag**'i tetiklenir
+- Bu durum admin paneli > Damga Akışı'nda "Konum dışı" rozetiyle görünür
+- Owner ayarlardan `allow_outside_geofence: true` yaparsa otomatik onay verilir

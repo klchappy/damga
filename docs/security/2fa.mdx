@@ -1,0 +1,80 @@
+---
+title: 'İki adımlı doğrulama (2FA)'
+description: 'Hesabını TOTP ile ekstra koru'
+---
+
+## 2FA nedir?
+
+Şifre + tek seferlik 6 haneli kod. Şifren çalınsa bile saldırgan giremiyor — kod sürekli değişiyor (30 sn'de bir).
+
+## Kurulum
+
+<Steps>
+  <Step title="Authenticator uygulaması indir">
+    Önerilen:
+    - **Google Authenticator** (iOS / Android)
+    - **Authy** (iOS / Android / Desktop, cloud sync)
+    - **1Password** (premium ama en güvenli)
+  </Step>
+
+  <Step title="Damga profili aç">
+    [damga.deploi.net](https://damga.deploi.net) > Sağ üst profil > Ayarlar > Profil
+
+    "Güvenlik & damga" bölümünde **"2FA'yı aç"** butonu.
+  </Step>
+
+  <Step title="QR'ı tarat">
+    Authenticator uygulamasını aç → "+" → "QR kodu tarat" → ekrandaki QR'ı tarat.
+
+    Uygulama 6 haneli kod üretmeye başlar.
+  </Step>
+
+  <Step title="Kodu gir + doğrula">
+    Şu anki kodu Damga'ya gir → "Doğrula" → ✓
+  </Step>
+</Steps>
+
+## Sign-in akışı
+
+Sonraki girişlerde:
+
+1. E-posta + şifre gir
+2. Damga "6 haneli kodu gir" ekranı açar
+3. Authenticator'dan kodu yaz → ✓
+
+## Telefonumu kaybedersem?
+
+<Warning>
+  Şu an backup codes desteklenmiyor. Telefonu kaybedersen kendi başına 2FA'yı kapatamazsın.
+</Warning>
+
+Çözüm:
+
+1. **Yöneticini ara** (org admin/owner)
+2. Yönetici Damga'da senin profili açar → "2FA'yı sıfırla" butonu (planlanan özellik — şu an manuel destek)
+3. Geçici olarak: destek@deploi.net'e kimlik doğrulamasıyla başvur
+
+**Önleme:**
+- Authy kullan (cloud sync ile başka cihazdan erişim)
+- 1Password kullan (Apple/Google sync)
+- QR'ı tararken bilgi sayfasında **secret string** de var — yedek bir cihaza da kaydet
+
+## Kimler 2FA aktif etmeli?
+
+<CardGroup cols={2}>
+  <Card title="Mutlaka" icon="circle-check" color="#16a34a">
+    - Org sahibi (owner)
+    - Sistem yöneticisi (admin)
+    - API key üretme yetkisi olanlar
+  </Card>
+  <Card title="Önerilen" icon="thumbs-up" color="#0284c7">
+    - Manager rolü
+    - Hassas departman çalışanları
+  </Card>
+</CardGroup>
+
+## Org-wide zorunlu hale getirme (planlanan)
+
+Org owner'lar yakında ayarlardan "Tüm admin ve owner'lar 2FA aktif etmeli" toggle'ı görecek. Aktif olduğunda 2FA kurmadan admin sayfalarına giriş engellenir.
+
+Şu an opsiyonel.

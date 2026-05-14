@@ -1,0 +1,92 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Damga",
+  "logo": {
+    "light": "/logo.svg",
+    "dark": "/logo-dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#2563EB",
+    "light": "#3B82F6",
+    "dark": "#1E40AF",
+    "anchors": {
+      "from": "#2563EB",
+      "to": "#3B82F6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Destek",
+      "url": "mailto:destek@deploi.net"
+    },
+    {
+      "name": "Status",
+      "url": "https://damga.deploi.net/status"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Ücretsiz başla",
+    "url": "https://damga.deploi.net/auth/sign-up-org"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "code",
+      "url": "api-reference"
+    },
+    {
+      "name": "Güvenlik",
+      "icon": "shield",
+      "url": "security"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/klchappy/damga"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Başlangıç",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "kiosk-mode",
+        "personal-qr"
+      ]
+    },
+    {
+      "group": "Yönetici",
+      "pages": [
+        "admin/onboarding",
+        "admin/team-management",
+        "admin/shifts",
+        "admin/reports"
+      ]
+    },
+    {
+      "group": "API Entegrasyonu",
+      "pages": [
+        "api-reference/intro",
+        "api-reference/auth",
+        "api-reference/rate-limits",
+        "api-reference/idempotency",
+        "api-reference/webhooks"
+      ]
+    },
+    {
+      "group": "Güvenlik & Uyum",
+      "pages": [
+        "security/overview",
+        "security/2fa",
+        "security/hash-chain",
+        "security/kvkk"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/klchappy/damga",
+    "linkedin": "https://www.linkedin.com/company/damga"
+  }
+}

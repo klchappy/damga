@@ -1,0 +1,79 @@
+---
+title: 'Damga Nedir?'
+description: 'Şeffaf işyeri yoklama platformu — NFC, QR, GPS, hash-zinciri'
+---
+
+## Tek cümle özet
+
+**Damga, çalışanların geliş-gidişini NFC, QR, GPS ve cihaz parmak izinden hesaplanan dürüstlük skoruyla kanıtlanır kılan, hash-zincirli denetim izine sahip, KVKK uyumlu bir B2B SaaS platformudur.**
+
+## Neden Damga?
+
+Geleneksel mesai takip sistemleri tek bir kanıta dayanır: ya kart okutma, ya parmak izi, ya da kâğıt imza. Hepsi manipüle edilebilir.
+
+Damga **6 ayrı sinyali** birleştirir:
+
+<CardGroup cols={2}>
+  <Card title="NFC fiziksel temas" icon="wifi">
+    Çalışan telefonunu lokasyon NFC etiketine yaklaştırır. Mesafe ≤2 cm — uzaktan tetiklenemez.
+  </Card>
+  <Card title="QR + imza" icon="qrcode">
+    HMAC imzalı QR kodları. URL'i kopyalayıp uzaktan okutamazsın.
+  </Card>
+  <Card title="GPS geofence" icon="location-dot">
+    Lokasyon yarıçapı tanımlı. Dışarısı pending review.
+  </Card>
+  <Card title="WiFi BSSID" icon="signal">
+    Şirket Wi-Fi MAC adresi doğrulaması.
+  </Card>
+  <Card title="Cihaz parmak izi" icon="fingerprint">
+    Tanınmayan cihazdan ilk damga özel onay ister.
+  </Card>
+  <Card title="Hash zinciri" icon="link">
+    Her event önceki event'in hash'iyle imzalanır. Geriye dönük müdahale imkânsız.
+  </Card>
+</CardGroup>
+
+## Kimler için?
+
+- 🍽️ Restoran zincirleri (vardiyalı, multi-şube)
+- 🚐 Lojistik & kargo (sahada, GPS önemli)
+- 🏭 Üretim & fabrika (NFC kapı, vardiyalı)
+- 🛍️ Perakende mağaza (parttime, multi-lokasyon)
+- 🏢 Holding & kurumsal (departman, izin onay zinciri)
+
+## Mimari
+
+Multi-tenant SaaS — her firma kendi izole verisi, kendi kuralları, kendi planı.
+
+```
+┌─────────────────────────────────────────┐
+│  damga.deploi.net (Web)                 │
+│  api.damga.deploi.net/v1 (REST API)     │
+│  → 3 Auth tipi: JWT, org-admin, service │
+└───────────┬─────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────┐
+│  Hetzner CX22 + Coolify (self-hosted)   │
+│  Cloudflare proxy + Sentry + UptimeRobot│
+└───────────┬─────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────┐
+│  Supabase EU/Frankfurt                  │
+│  PostgreSQL 15 + RLS default-deny       │
+│  Auth + Storage + Realtime              │
+└─────────────────────────────────────────┘
+```
+
+## Sonraki adım
+
+<CardGroup cols={2}>
+  <Card title="Hızlı başlangıç" icon="rocket" href="/quickstart">
+    5 dakikada org aç, ilk lokasyon ekle, çalışan davet et.
+  </Card>
+  <Card title="Kiosk modu" icon="tablet" href="/kiosk-mode">
+    Paylaşımlı tablette her çalışan kendi QR'ı ile damga atar.
+  </Card>
+</CardGroup>

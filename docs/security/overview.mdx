@@ -1,0 +1,102 @@
+---
+title: 'Güvenlik genel bakış'
+description: 'Damga güvenlik mimarisi — derin savunma katmanları'
+---
+
+## Mimari prensipleri
+
+<CardGroup cols={2}>
+  <Card title="Defense in depth" icon="layer-group">
+    Her katmanda ayrı koruma. Bir katman aşılırsa diğerleri devrede.
+  </Card>
+  <Card title="Default-deny" icon="shield-halved">
+    İzin verilmiş şeyler hariç her şey reddedilir (allowlist mantığı).
+  </Card>
+  <Card title="Audit izi" icon="link">
+    Tüm kritik işlemler hash-zincirli audit log'a yazılır.
+  </Card>
+  <Card title="Veri minimizasyonu" icon="filter">
+    Gereken minimum veriyi topla, en kısa süre tut.
+  </Card>
+</CardGroup>
+
+## Katman 1: Ağ
+
+- **Cloudflare WAF + DDoS koruma** (proxy: on/off duruma göre)
+- **TLS 1.2 minimum**, TLS 1.3 destekli
+- **Always Use HTTPS** (HTTP → HTTPS redirect Cloudflare seviyesinde)
+- **HSTS** 180 gün + includeSubDomains
+- **CSP** (Content Security Policy) enforce — XSS koruması
+
+## Katman 2: Uygulama
+
+- **Helmet middleware:** X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+- **CORS allowlist:** Sadece `damga.deploi.net` + `*.deploi.net` + localhost
+- **Rate limiting:**
+  - Per-IP: `apiLimiter` (genel) + `authLimiter` (sign-in, 30/dk)
+  - Per-API-key: in-memory token bucket
+- **Input validation:** Zod schema her endpoint'te
+- **Idempotency keys:** Aynı POST 24 saat içinde tekrar tetiklenmesin
+
+## Katman 3: Kimlik doğrulama (3 tip)
+
+| Tip | Format | Süre | Kullanım |
+|---|---|---|---|
+| Supabase JWT | `eyJ...` | 1 saat | Web/mobil kullanıcı |
+| Org-admin API key | `dmg_live_...` | Sınırsız (revoke edilebilir) | Müşteri entegrasyonu |
+| Service key | `dmg_svc_...` | Sınırsız | Sistem-sisteme |
+
+Tüm key'ler **bcrypt hash** ile saklanır, düz değer DB'de yok.
+
+## Katman 4: 2FA (TOTP)
+
+Supabase Auth native MFA. Google Authenticator / Authy / 1Password destekli.
+
+[Detay: 2FA kurulumu](/security/2fa)
+
+## Katman 5: Veri (RLS default-deny)
+
+PostgreSQL Row-Level Security:
+
+- 36 tabloda `ENABLE ROW LEVEL SECURITY`
+- **Hiçbir tabloda policy yok** → anonymous erişim varsayılan olarak engelli
+- API katmanı `service_role` ile RLS'i bypass eder (uygulama-seviye org_id scoping)
+- Anon REST API direkt sorgulanırsa: boş array döner
+
+Bu **defense in depth** — uygulama katmanında bir bug org_id filtresini atlasa bile DB seviyesinde reddedilir.
+
+## Katman 6: Hash zinciri (audit)
+
+Her `attendance_event` (check-in/out) bir önceki event'in hash'iyle imzalanır:
+
+```
+event_n.evidence_hash = SHA256(
+  event_n.payload + event_(n-1).evidence_hash
+)
+```
+
+Sonuç: **geriye dönük müdahale matematiksel olarak imkânsız**. Eski bir event'i değiştirsen, sonraki tüm event'lerin hash'i değişir → `verify_hash_chain()` fonksiyonu hatayı yakalar.
+
+[Detay: Hash chain mekanizması](/security/hash-chain)
+
+## Katman 7: KVKK uyumu
+
+- Veri EU/Frankfurt'ta (Supabase, GDPR-aware)
+- Self-serve hesap silme (KVKK Md. 11)
+- 30 gün grace + 60 gün audit + 90 gün hard delete
+- Sentry/PostHog'a PII gönderilmez (filtreli)
+- Audit log her veri erişimini kayıt eder
+
+[Detay: KVKK uyum](/security/kvkk)
+
+## Yapılan vs. yapılacak
+
+✅ **Yapılanlar:** CSP enforce, HSTS, 2FA, RLS, hash chain, KVKK self-serve, KVKK aydınlatma + sözleşme, rate limit (IP + key), bcrypt hash, idempotency, audit log, helmet, security.txt, Dependabot, Sentry KVKK-uyumlu, PostHog KVKK-uyumlu
+
+🟡 **Plan dahilinde:** External penetration test, SOC2 Type 1 yol haritası (Vanta), bug bounty program, nonce-based CSP, account lockout (kullanıcı bazlı), HSTS preload list submit
+
+## Sorumlu açıklama
+
+Bir güvenlik açığı bulduysanız: [guvenlik@deploi.net](mailto:guvenlik@deploi.net)
+
+[security.txt](https://damga.deploi.net/.well-known/security.txt) — 7 iş günü dönüş garantisi.

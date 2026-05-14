@@ -1,0 +1,59 @@
+---
+title: 'Hızlı başlangıç'
+description: '5 dakikada Damga kurulumu'
+---
+
+<Steps>
+  <Step title="Hesap aç">
+    [damga.deploi.net/auth/sign-up-org](https://damga.deploi.net/auth/sign-up-org) → email + şirket adı + şifre.
+
+    İlk girişte **3 adımlı onboarding wizard** açılır.
+  </Step>
+
+  <Step title="İlk lokasyonu ekle">
+    Lokasyon = çalışanların check-in yapacağı fiziksel yer.
+
+    - **Ad** (zorunlu): "Bağdat Caddesi Şubesi"
+    - **Adres** (opsiyonel)
+
+    GPS koordinatlarını sonra haritadan seçeceksin.
+  </Step>
+
+  <Step title="Çalışanı davet et">
+    Email adresi gir → otomatik davet maili gider. Çalışan linke tıklayıp hesap açtığında otomatik şirketine `employee` olarak bağlanır.
+  </Step>
+
+  <Step title="NFC / QR üret">
+    Yönetici paneli > Lokasyonlar > NFC tag'ler veya QR kodları > "Üret":
+
+    - **NFC**: NFC etiket alıp telefonla yazdırırsın, lokasyona yapıştırırsın
+    - **QR**: PDF olarak yazdır, lokasyona koy
+
+    Çalışan kendi telefonundan kameraya gösterir → check-in başlar.
+  </Step>
+
+  <Step title="(Opsiyonel) Kiosk modu">
+    Lokasyonlar sayfasında her lokasyonun yanında "🖥️ Kiosk" butonu var.
+
+    Tıkla → tablette aç → paylaşımlı kullanım için ayarlandı. Her çalışan **kendi kişisel QR'ını** kameraya gösterir.
+
+    Detay: [Kiosk modu](/kiosk-mode)
+  </Step>
+</Steps>
+
+## Senin için sonraki adımlar
+
+<CardGroup cols={2}>
+  <Card title="Kullanıcı yönetimi" icon="users" href="/admin/team-management">
+    Çalışan rolleri, departmanlar, izin kotaları
+  </Card>
+  <Card title="Vardiya kurulumu" icon="calendar" href="/admin/shifts">
+    Template oluşturup atama yap, swap akışı
+  </Card>
+  <Card title="API entegrasyonu" icon="code" href="/api-reference/intro">
+    Logo, Mikro, kendi sistemine bağla
+  </Card>
+  <Card title="Güvenlik" icon="shield-check" href="/security/overview">
+    2FA, hash zinciri, KVKK
+  </Card>
+</CardGroup>

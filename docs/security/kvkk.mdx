@@ -1,0 +1,98 @@
+---
+title: 'KVKK uyumu'
+description: 'Damga ve KVKK — veri sahibinin hakları + saklama'
+---
+
+## Veri sorumlusu / işleyen modeli
+
+- **Veri sorumlusu:** Damga'yı kullanan **işveren şirket** (müşteri firma)
+- **Veri işleyen:** **Damga / Deploi** (platform sağlayıcı)
+- Aralarındaki yazılı sözleşme: **DPA (Veri İşleyen Sözleşmesi)** — talep üzerine paylaşılır
+
+## Hangi veriler işlenir?
+
+| Kategori | Veri | Hangi amaç | Saklama |
+|---|---|---|---|
+| Kimlik | Ad, soyad, e-posta | Hesap | Aktif kullanıcı süresince |
+| İletişim | E-posta, telefon | Bildirim | Aktif süresince |
+| Çalışan | Departman, ünvan, vardiya | Yoklama | Aktif süresince |
+| Konum | GPS koordinatları (çalışma anında) | Doğrulama | Damga başına 1 kayıt |
+| Cihaz | Tarayıcı UA, parmak izi | Anti-fraud | Damga ile birlikte |
+| Görsel | Selfie (sadece anomali durumunda) | Kanıt | 1 yıl |
+
+**Toplanmaz:** SGK numarası, IBAN, kredi kartı, sağlık verisi, biyometrik (parmak izi DEĞİL — sadece QR/NFC + cihaz fingerprint).
+
+## Veri sahibinin hakları (KVKK Md. 11)
+
+Her çalışan/kullanıcı:
+
+✅ **Bilgi alma:** Damga onun hakkında ne tutuyor? `/me/records` sayfasında tüm damga geçmişi
+✅ **Düzeltme:** Hatalı bilgiyi düzeltme talebi (Profil > Düzenle)
+✅ **Silme:** Profil > Hesap Yönetimi > "Hesabımı sil" (30 gün grace period)
+✅ **İtiraz:** Otomatik işleme itiraz: kvkk@deploi.net'e e-posta
+✅ **Veri portabilitesi:** `/me/records` sayfasından CSV export
+
+## Self-serve silme akışı
+
+<Steps>
+  <Step title="Talep">
+    Profil > Hesap Yönetimi > "Hesabımı sil" butonu
+
+    Modal'da "hesabımı sil" yazımı + opsiyonel neden + (owner ise) org silme onayı.
+  </Step>
+
+  <Step title="30 gün grace period">
+    Hesap pasifleştirilir (giriş yapamaz), 30 gün boyunca **geri alınabilir**.
+
+    Kullanıcı sign-in dener → "Vazgeç" sayfası açılır → 1 tık ile geri alır.
+  </Step>
+
+  <Step title="Anonymize (Gün 30)">
+    Otomatik cron (her gece 04:00 TR):
+
+    - `full_name` → "[Silinmiş Kullanıcı]"
+    - `email/phone/username/avatar_url` → NULL
+    - Supabase Auth'tan silinir
+    - `deleted_at` işaretlenir
+    - **Damga event'leri korunur** (anonimleşmiş user_id ile, audit izi)
+  </Step>
+
+  <Step title="Hard delete (Gün 90)">
+    `deleted_at < now() - 60 gün` olan kayıtlar tamamen silinir.
+
+    CASCADE ile tüm damga + izin + bildirim geçmişi kaybolur.
+  </Step>
+</Steps>
+
+## Veri ikametgâhı
+
+- Tüm veriler **Supabase EU/Frankfurt** bölgesinde
+- AB - Türkiye arası: KVKK Md. 9 / yurtdışına aktarım kuralları:
+  - **Açık rıza** çalışan onayında alınır
+  - **Yeterli koruma** çerçevesi: AB Komisyonu yeterli koruma kararı verdiği ülke
+  - Aktarım için ayrıca **SCC (Standart Sözleşmesel Maddeler)** içerilebilir
+
+Kurumsal müşteri "TR'de tutun" isterse → self-hosted PostgreSQL opsiyonu var (planlanan özellik).
+
+## Aydınlatma metni + sözleşmeler
+
+- [Aydınlatma metni](https://damga.deploi.net/legal/kvkk)
+- [Gizlilik politikası](https://damga.deploi.net/legal/privacy)
+- [Hizmet şartları](https://damga.deploi.net/legal/terms)
+- [Çerez politikası](https://damga.deploi.net/legal/cookies)
+- **DPA:** kvkk@deploi.net'e talep edin (PDF, e-imza ile imzalanır)
+
+## İhlal bildirim taahhüdü
+
+Veri ihlali durumunda:
+
+- **72 saat içinde** KVKK'ya bildirim (Md. 12/5)
+- **48 saat içinde** etkilenen müşteri firmalara e-posta
+- **Postmortem** yayını (status sayfasında public)
+
+## VERBİS
+
+- **Damga (veri işleyen):** VERBİS'e kayıtlı
+- **Müşteri firma (veri sorumlusu):** Kendi VERBİS kaydını yapması zorunlu (50K-1M TL ceza riski)
+
+Yardım: [VERBİS başvuru kılavuzu](https://verbis.kvkk.gov.tr/Anasayfa/VerbisGiris)
