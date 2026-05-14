@@ -181,7 +181,7 @@ OpenAPI 3.0 spec: [`docs/openapi.yaml`](./docs/openapi.yaml)
 | **Sunucu** | Hetzner CX22 (EU, €4/ay) |
 | **DNS/CDN** | Cloudflare Free tier |
 | **Error tracking** | Sentry (`@sentry/react` + `@sentry/node`, KVKK uyumlu: PII off, header filtreli) |
-| **Uptime monitoring** | UptimeRobot (web + `/v1/health`, 5dk interval) |
+| **Uptime monitoring** | UptimeRobot (web + `/v1/health`, 5dk interval) — manuel kurulum |
 | **CI/CD** | GitHub Actions (typecheck + lint + build) + Coolify auto-deploy |
 
 ---
