@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/hooks/use-auth';
+import { track } from '@/lib/analytics';
 
 type Step = 1 | 2 | 3 | 'done';
 
@@ -61,6 +62,7 @@ export function OnboardingPage() {
     onSuccess: (loc) => {
       setCreatedLocation(loc);
       toast.success(`"${loc.name}" oluşturuldu`);
+      track('location_created', { onboarding: true });
       setStep(2);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -81,6 +83,7 @@ export function OnboardingPage() {
     onSuccess: () => {
       setInvitedEmail(inviteEmail);
       toast.success(`${inviteEmail} davet edildi`);
+      track('employee_invited', { onboarding: true });
       setStep(3);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -93,6 +96,7 @@ export function OnboardingPage() {
     },
     onSuccess: () => {
       toast.success('Tebrikler — kurulum tamamlandı 🎉');
+      track('onboarding_completed');
       qc.invalidateQueries({ queryKey: ['auth-me'] });
       setStep('done');
       setTimeout(() => navigate('/'), 1500);
@@ -106,6 +110,7 @@ export function OnboardingPage() {
       await api.post('/orgs/me/onboarding/skip');
     },
     onSuccess: () => {
+      track('onboarding_skipped');
       qc.invalidateQueries({ queryKey: ['auth-me'] });
       navigate('/');
     },

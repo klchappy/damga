@@ -2,6 +2,10 @@
 import { initSentry } from './lib/sentry';
 initSentry();
 
+// PostHog analytics — VITE_POSTHOG_KEY yoksa sessizce skip eder (KVKK uyumlu)
+import { initAnalytics } from './lib/analytics';
+initAnalytics();
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app';

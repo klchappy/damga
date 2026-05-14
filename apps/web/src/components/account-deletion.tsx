@@ -26,6 +26,7 @@ import { AlertTriangle, Loader2, ShieldOff, Trash2, X } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/hooks/use-auth';
 import { getSupabase } from '@/lib/supabase';
+import { track, resetUser } from '@/lib/analytics';
 
 interface DeletionStatus {
   requested: boolean;
@@ -66,14 +67,14 @@ export function AccountDeletionPanel() {
         'Hesabın silme süreci başladı. Logout ediliyorsun — 30 gün içinde geri alabilirsin.',
         { duration: 8000 },
       );
+      track('account_deletion_requested', { is_owner: isOwner });
+      resetUser();
       setShowModal(false);
-      // Supabase logout
       try {
         await getSupabase().auth.signOut();
       } catch {
         /* ignore */
       }
-      // 1.5 sn sonra landing'e git
       setTimeout(() => {
         useAuthStore.getState().setUser(null);
         useAuthStore.getState().setOrg(null);
@@ -90,6 +91,7 @@ export function AccountDeletionPanel() {
     },
     onSuccess: () => {
       toast.success('Silme talebin geri alındı — hesabın aktif.');
+      track('account_deletion_cancelled');
       qc.invalidateQueries({ queryKey: ['me', 'deletion-status'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),

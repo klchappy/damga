@@ -238,6 +238,16 @@ export async function signInWithIdentifier(identifier: string, password: string)
     );
     setUser(profile.user);
     setOrg(profile.org);
+    // Analytics: identify + track sign-in (PII GÖNDERILMEZ — sadece user_id + role + plan)
+    if (profile.user) {
+      void import('@/lib/analytics').then(({ identify, track }) => {
+        identify(profile.user.id, {
+          role: profile.user.role,
+          org_id: profile.org?.id,
+        });
+        track('signed_in');
+      });
+    }
   } catch (err) {
     console.warn('[auth] post-signin /auth/me failed:', err);
   }
@@ -255,6 +265,10 @@ export async function sendMagicLink(email: string) {
 }
 
 export async function signOut() {
+  void import('@/lib/analytics').then(({ track, resetUser }) => {
+    track('signed_out');
+    resetUser();
+  });
   await getSupabase().auth.signOut();
 }
 
