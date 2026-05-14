@@ -3,7 +3,7 @@
 # Build context: monorepo root
 # =====================================================
 
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 WORKDIR /app
