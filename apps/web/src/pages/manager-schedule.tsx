@@ -127,7 +127,18 @@ export function ManagerSchedulePage() {
       shift_date: string;
       shift_template_id: string;
     }) => (await api.post('/shift-assignments', payload)).data,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // FIX: Backend `onConflictDoNothing` ile çakışmada items=[] dönerdi ve
+      // UI "Vardiya atandı" gösterirdi (kullanıcı atadığını sanır ama hiçbir
+      // şey yaratılmamış). Artık backend 409 fırlatıyor ama defansif olarak
+      // burada da count=0 ise warning gösteriyoruz.
+      const count = (data?.count as number | undefined) ?? (data?.items?.length ?? 0);
+      if (count === 0) {
+        toast.warning(
+          'Vardiya kaydedilmedi (muhtemelen çakışma). Konsolu/yöneticini kontrol et.',
+        );
+        return;
+      }
       toast.success('✅ Vardiya atandı');
       void qc.invalidateQueries({ queryKey: ['shift-assignments'] });
       setPicker(null);

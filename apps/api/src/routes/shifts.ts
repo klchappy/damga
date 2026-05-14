@@ -244,11 +244,69 @@ shiftsRouter.post(
         .select({ id: shiftTemplates.id, org_id: shiftTemplates.org_id })
         .from(shiftTemplates)
         .where(inArray(shiftTemplates.id, templateIds));
+      const tplIdsValid = new Set(tpls.map((t) => t.id));
+      for (const id of templateIds) {
+        if (!tplIdsValid.has(id)) {
+          throw new HttpError(404, 'Vardiya şablonu bulunamadı', 'TEMPLATE_NOT_FOUND');
+        }
+      }
       for (const t of tpls) {
         if (t.org_id !== req.authOrgId) {
           throw new HttpError(403, 'Şablon bu org\'a ait değil');
         }
       }
+
+      // SECURITY + UX FIX: user_id'lerin bu org'a ait olduğunu doğrula
+      // Önceki versiyon user_id'yi körü körüne kabul ediyordu — başka org'un
+      // user_id'siyle assignment oluşturulabilirdi (cross-org pollution).
+      // Ayrıca kullanıcı "Vardiya atandı" görüp gerçekten görmüyorsa BUG açık değildi.
+      const userIds = Array.from(new Set(list.map((x) => x.user_id)));
+      const orgUsers = await getDb()
+        .select({ id: users.id, is_active: users.is_active })
+        .from(users)
+        .where(and(eq(users.org_id, req.authOrgId), inArray(users.id, userIds)));
+      const validUserIds = new Set(orgUsers.filter((u) => u.is_active).map((u) => u.id));
+      const invalidUsers = userIds.filter((id) => !validUserIds.has(id));
+      if (invalidUsers.length > 0) {
+        throw new HttpError(
+          400,
+          `Bu çalışan(lar) org'unuza ait değil veya pasif: ${invalidUsers.length} adet`,
+          'USER_NOT_IN_ORG',
+          { invalid_user_ids: invalidUsers },
+        );
+      }
+
+      // Çakışan (user_id, shift_date) önceden tespit — UX için clear feedback
+      const dateUserPairs = list.map((x) => ({ uid: x.user_id, date: x.shift_date }));
+      const existing = dateUserPairs.length
+        ? await getDb()
+            .select({
+              user_id: shiftAssignments.user_id,
+              shift_date: shiftAssignments.shift_date,
+            })
+            .from(shiftAssignments)
+            .where(
+              and(
+                eq(shiftAssignments.org_id, req.authOrgId),
+                inArray(
+                  shiftAssignments.user_id,
+                  dateUserPairs.map((p) => p.uid),
+                ),
+                inArray(
+                  shiftAssignments.shift_date,
+                  dateUserPairs.map((p) => p.date),
+                ),
+                // status != swapped (unique index'le aynı koşul)
+                sql`${shiftAssignments.status} <> 'swapped'`,
+              ),
+            )
+        : [];
+      const existingKeys = new Set(
+        existing.map((e) => `${e.user_id}|${e.shift_date}`),
+      );
+      const conflicts = list.filter((x) =>
+        existingKeys.has(`${x.user_id}|${x.shift_date}`),
+      );
 
       const inserts = await getDb()
         .insert(shiftAssignments)
@@ -267,8 +325,19 @@ shiftsRouter.post(
         .onConflictDoNothing()
         .returning();
 
+      // Eğer hiçbir kayıt eklenmediyse ama çakışma da yoksa → bilinmeyen bir sorun (DB hatası?)
+      // Eğer çakışma varsa 409 + detaylı mesaj
+      if (inserts.length === 0 && conflicts.length > 0) {
+        throw new HttpError(
+          409,
+          `Bu gün için zaten vardiya atanmış (${conflicts.length} çakışma). Önce mevcut vardiyayı kaldır veya farklı gün seç.`,
+          'SHIFT_CONFLICT',
+          { conflicts: conflicts.map((c) => ({ user_id: c.user_id, shift_date: c.shift_date })) },
+        );
+      }
+
       logger.info(
-        { count: inserts.length, by: req.authUserId },
+        { count: inserts.length, conflicts: conflicts.length, by: req.authUserId },
         '📅 Vardiya ataması oluşturuldu',
       );
 
