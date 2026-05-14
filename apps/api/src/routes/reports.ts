@@ -12,12 +12,13 @@ import {
 } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole, requireScope } from '../middleware/auth';
+import { buildXlsxBuffer, sendXlsx, type ExcelColumn } from '../lib/excel';
 
 export const reportsRouter = Router();
 
 const monthQuery = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM formatı'),
-  format: z.enum(['json', 'csv']).default('json'),
+  format: z.enum(['json', 'csv', 'xlsx']).default('json'),
 });
 
 const trDate = new Intl.DateTimeFormat('en-CA', {
@@ -108,6 +109,25 @@ reportsRouter.get(
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="damga-${q.month}.csv"`);
         res.send('﻿' + csv); // UTF-8 BOM (Excel TR uyumu)
+        return;
+      }
+
+      if (q.format === 'xlsx') {
+        const buf = await buildXlsxBuffer({
+          sheetName: `Devam ${q.month}`,
+          title: `Damga — Devam Raporu — ${q.month}`,
+          columns: [
+            { header: 'Ad Soyad', key: 'fullName', width: 28 },
+            { header: 'E-posta', key: 'email', width: 30 },
+            { header: 'Departman', key: 'department', width: 18 },
+            { header: 'Giriş', key: 'checkIns', width: 10, type: 'number' },
+            { header: 'Çıkış', key: 'checkOuts', width: 10, type: 'number' },
+            { header: 'Bayraklı', key: 'flaggedCount', width: 12, type: 'number' },
+            { header: 'Ort. Trust', key: 'avgScore', width: 12 },
+          ],
+          rows: rows as unknown as Array<Record<string, unknown>>,
+        });
+        sendXlsx(res, buf, `damga-devam-${q.month}.xlsx`);
         return;
       }
 
@@ -352,6 +372,34 @@ reportsRouter.get(
         return;
       }
 
+      if (q.format === 'xlsx') {
+        const columns: ExcelColumn[] = [
+          { header: 'Ad Soyad', key: 'full_name', width: 28 },
+          { header: 'E-posta', key: 'email', width: 30 },
+          { header: 'Departman', key: 'department', width: 18 },
+          { header: 'Çalışılan Gün', key: 'worked_days', width: 14, type: 'number' },
+          { header: 'Toplam Giriş', key: 'check_in_count', width: 13, type: 'number' },
+          { header: 'Toplam Çıkış', key: 'check_out_count', width: 13, type: 'number' },
+          { header: 'Geç Kalma', key: 'late_count', width: 11, type: 'number' },
+          { header: 'Bayraklı', key: 'flagged_count', width: 11, type: 'number' },
+          { header: 'Ort. Trust', key: 'avg_trust', width: 11, type: 'number' },
+          { header: 'Onaylı İzin (gün)', key: 'leave_days', width: 16, type: 'number' },
+          { header: 'Fazla Mesai (dk)', key: 'overtime_minutes', width: 16, type: 'number' },
+          { header: 'Fazla Mesai (sa)', key: 'overtime_hours', width: 16 },
+          { header: 'Baz Çalışma (sa)', key: 'base_hours', width: 16, type: 'number' },
+          { header: 'Toplam Çalışma (sa)', key: 'total_hours', width: 18 },
+        ];
+        const buf = await buildXlsxBuffer({
+          sheetName: `Bordro ${q.month}`,
+          title: `Damga — Bordro 3-1 — ${q.month}`,
+          subtitle: `Toplam ${items.length} kişi · ${items.reduce((s, i) => s + i.worked_days, 0)} çalışılan gün · ${Math.round(items.reduce((s, i) => s + i.overtime_minutes, 0) / 60)} sa fazla mesai`,
+          columns,
+          rows: items as unknown as Array<Record<string, unknown>>,
+        });
+        sendXlsx(res, buf, `damga-bordro-${q.month}.xlsx`);
+        return;
+      }
+
       res.json({
         month: q.month,
         total_users: items.length,
@@ -591,6 +639,34 @@ reportsRouter.get(
         return;
       }
 
+      if (q.format === 'xlsx') {
+        const buf = await buildXlsxBuffer({
+          sheetName: `Puantaj ${q.month}`,
+          title: `Damga — Puantaj — ${q.month}`,
+          subtitle: `${people.length} kişi · ${items.length} satır · ${Math.round(items.reduce((s, i) => s + i.worked_minutes, 0) / 60)} sa toplam`,
+          columns: [
+            { header: 'Tarih', key: 'date', width: 12 },
+            { header: 'Ad Soyad', key: 'full_name', width: 26 },
+            { header: 'Departman', key: 'department', width: 18 },
+            { header: 'Ünvan', key: 'title', width: 18 },
+            { header: 'Durum', key: 'user_status', width: 10 },
+            { header: 'Vardiya', key: 'shift', width: 22 },
+            { header: 'Giriş', key: 'check_in', width: 10 },
+            { header: 'Çıkış', key: 'check_out', width: 10 },
+            { header: 'Çalışma (dk)', key: 'worked_minutes', width: 13, type: 'number' },
+            { header: 'Çalışma (sa)', key: 'worked_hours', width: 13 },
+            { header: 'İzin', key: 'leave_type', width: 18 },
+            { header: 'Gün Durumu', key: 'day_status', width: 14 },
+            { header: 'Ort. Trust', key: 'avg_trust', width: 11 },
+            { header: 'İnceleme Bekleyen', key: 'pending_review_count', width: 16, type: 'number' },
+            { header: 'Reddedilen', key: 'rejected_event_count', width: 12, type: 'number' },
+          ],
+          rows: items as unknown as Array<Record<string, unknown>>,
+        });
+        sendXlsx(res, buf, `damga-puantaj-${q.month}.xlsx`);
+        return;
+      }
+
       res.json({
         month: q.month,
         total_users: people.length,
@@ -613,7 +689,7 @@ reportsRouter.get(
  */
 const overtimeReportQuery = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM formatı'),
-  format: z.enum(['json', 'csv']).default('json'),
+  format: z.enum(['json', 'csv', 'xlsx']).default('json'),
   status: z.enum(['approved', 'pending', 'rejected', 'all']).default('approved'),
 });
 
@@ -759,6 +835,32 @@ reportsRouter.get(
           `attachment; filename="overtime-${q.month}-${q.status}.csv"`,
         );
         res.send('﻿' + lines.join('\n')); // UTF-8 BOM
+        return;
+      }
+
+      if (q.format === 'xlsx') {
+        const buf = await buildXlsxBuffer({
+          sheetName: `FazlaMesai ${q.month}`,
+          title: `Damga — Fazla Mesai (${q.status}) — ${q.month}`,
+          subtitle: `Toplam ${items.length} kayıt · ${(totalMinutes / 60).toFixed(2)} sa`,
+          columns: [
+            { header: 'Tarih', key: 'shift_date', width: 12 },
+            { header: 'Ad Soyad', key: 'full_name', width: 26 },
+            { header: 'Departman', key: 'department', width: 18 },
+            { header: 'Vardiya', key: 'template_name', width: 18 },
+            { header: 'Vardiya Saati', key: 'template_hours', width: 16 },
+            { header: 'Beklenen Çıkış', key: 'expected_end', width: 22 },
+            { header: 'Gerçek Çıkış', key: 'actual_end', width: 22 },
+            { header: 'Fazla Mesai (dk)', key: 'overtime_minutes', width: 14, type: 'number' },
+            { header: 'Fazla Mesai (sa)', key: 'overtime_hours', width: 14 },
+            { header: 'Durum', key: 'status', width: 12 },
+            { header: 'Sebep', key: 'reason', width: 30 },
+            { header: 'Onaylayan', key: 'approved_by_name', width: 20 },
+            { header: 'Onay Tarihi', key: 'approved_at', width: 22 },
+          ],
+          rows: items as unknown as Array<Record<string, unknown>>,
+        });
+        sendXlsx(res, buf, `damga-overtime-${q.month}-${q.status}.xlsx`);
         return;
       }
 

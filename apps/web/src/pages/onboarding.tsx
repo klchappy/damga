@@ -70,19 +70,35 @@ export function OnboardingPage() {
 
   // Step 2: Davet
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFullName, setInviteFullName] = useState('');
+  const [inviteDelivery, setInviteDelivery] = useState<
+    'email' | 'fallback_link' | 'skipped' | null
+  >(null);
+  const [inviteResetLink, setInviteResetLink] = useState<string | null>(null);
   const invite = useMutation({
     mutationFn: async () => {
       const { data } = await api.post('/users', {
         email: inviteEmail.trim().toLowerCase(),
-        name: inviteEmail.split('@')[0],
+        full_name: inviteFullName.trim() || inviteEmail.split('@')[0],
         role: 'employee',
-        send_invitation: true,
+        department: 'Diğer',
       });
-      return data;
+      return data as {
+        email_delivery?: 'email' | 'fallback_link' | 'skipped';
+        password_reset_link?: string | null;
+      };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setInvitedEmail(inviteEmail);
-      toast.success(`${inviteEmail} davet edildi`);
+      setInviteDelivery(data.email_delivery ?? 'skipped');
+      setInviteResetLink(data.password_reset_link ?? null);
+      if (data.email_delivery === 'email') {
+        toast.success(`📧 ${inviteEmail} adresine davet maili gönderildi`);
+      } else if (data.password_reset_link) {
+        toast.success(`Çalışan eklendi — davet linkini manuel paylaş`);
+      } else {
+        toast.success(`${inviteEmail} eklendi`);
+      }
       track('employee_invited', { onboarding: true });
       setStep(3);
     },
@@ -118,12 +134,12 @@ export function OnboardingPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-zinc-50">
       <div className="mx-auto max-w-2xl px-4 py-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-purple-700 text-white flex items-center justify-center">
               <Stamp className="w-5 h-5" />
             </div>
             <div>
@@ -153,7 +169,7 @@ export function OnboardingPage() {
             <div
               key={s}
               className={`h-1.5 flex-1 rounded-full transition ${
-                step === 'done' || (step as number) >= s ? 'bg-blue-600' : 'bg-zinc-200'
+                step === 'done' || (step as number) >= s ? 'bg-purple-700' : 'bg-zinc-200'
               }`}
             />
           ))}
@@ -169,7 +185,7 @@ export function OnboardingPage() {
             <p className="mt-2 text-zinc-600">
               Damga senin için hazır. Yönlendiriliyorsun…
             </p>
-            <Loader2 className="w-5 h-5 animate-spin text-blue-600 mx-auto mt-4" />
+            <Loader2 className="w-5 h-5 animate-spin text-purple-700 mx-auto mt-4" />
           </div>
         )}
 
@@ -177,10 +193,10 @@ export function OnboardingPage() {
         {step === 1 && (
           <div className="rounded-2xl bg-white p-8 shadow-sm border border-zinc-100">
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">
+              <span className="text-xs font-bold text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
                 ADIM 1 / 3
               </span>
-              <MapPin className="w-5 h-5 text-blue-600" />
+              <MapPin className="w-5 h-5 text-purple-700" />
             </div>
             <h2 className="text-2xl font-bold mt-2">İlk lokasyonunu ekle</h2>
             <p className="mt-2 text-zinc-600">
@@ -207,7 +223,7 @@ export function OnboardingPage() {
                   value={locName}
                   onChange={(e) => setLocName(e.target.value)}
                   placeholder="Örn: Bağdat Caddesi Şubesi"
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                   autoFocus
                   required
                 />
@@ -221,7 +237,7 @@ export function OnboardingPage() {
                   value={locAddress}
                   onChange={(e) => setLocAddress(e.target.value)}
                   placeholder="Caddebostan, Kadıköy / İstanbul"
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                 />
                 <p className="text-xs text-zinc-500 mt-1">
                   GPS koordinatlarını ileride harita üzerinden seçeceksin.
@@ -230,7 +246,7 @@ export function OnboardingPage() {
               <button
                 type="submit"
                 disabled={createLocation.isPending || locName.trim().length < 2}
-                className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 text-white py-2.5 font-semibold flex items-center justify-center gap-2 transition"
+                className="w-full rounded-lg bg-purple-700 hover:bg-purple-800 disabled:bg-zinc-300 text-white py-2.5 font-semibold flex items-center justify-center gap-2 transition"
               >
                 {createLocation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -248,10 +264,10 @@ export function OnboardingPage() {
         {step === 2 && (
           <div className="rounded-2xl bg-white p-8 shadow-sm border border-zinc-100">
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">
+              <span className="text-xs font-bold text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
                 ADIM 2 / 3
               </span>
-              <UserPlus className="w-5 h-5 text-blue-600" />
+              <UserPlus className="w-5 h-5 text-purple-700" />
             </div>
             <h2 className="text-2xl font-bold mt-2">İlk çalışanını davet et</h2>
             <p className="mt-2 text-zinc-600">
@@ -267,25 +283,42 @@ export function OnboardingPage() {
                   toast.error('Geçerli email adresi gir');
                   return;
                 }
+                if (inviteFullName.trim().length < 2) {
+                  toast.error('Çalışanın adı en az 2 karakter olmalı');
+                  return;
+                }
                 invite.mutate();
               }}
               className="mt-6 space-y-4"
             >
               <div>
                 <label className="block text-sm font-medium text-zinc-700 mb-1">
-                  Çalışan e-posta adresi <span className="text-red-500">*</span>
+                  Çalışan adı soyadı <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={inviteFullName}
+                  onChange={(e) => setInviteFullName(e.target.value)}
+                  placeholder="Ali Yılmaz"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  autoFocus
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  E-posta adresi <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="calisan@sirketin.com"
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  autoFocus
+                  placeholder="ali@sirketin.com"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                   required
                 />
                 <p className="text-xs text-zinc-500 mt-1">
-                  Çalışana otomatik davet e-postası gönderilecek.
+                  Bu adrese davet maili — şifre belirleme linkiyle birlikte — otomatik gönderilecek.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -299,7 +332,7 @@ export function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={invite.isPending}
-                  className="flex-1 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 text-white py-2.5 font-semibold flex items-center justify-center gap-2 transition"
+                  className="flex-1 rounded-lg bg-purple-700 hover:bg-purple-800 disabled:bg-zinc-300 text-white py-2.5 font-semibold flex items-center justify-center gap-2 transition"
                 >
                   {invite.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -318,10 +351,10 @@ export function OnboardingPage() {
         {step === 3 && (
           <div className="rounded-2xl bg-white p-8 shadow-sm border border-zinc-100">
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">
+              <span className="text-xs font-bold text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
                 ADIM 3 / 3
               </span>
-              <ScanLine className="w-5 h-5 text-blue-600" />
+              <ScanLine className="w-5 h-5 text-purple-700" />
             </div>
             <h2 className="text-2xl font-bold mt-2">Yoklamayı test et</h2>
             <p className="mt-2 text-zinc-600">
@@ -331,21 +364,42 @@ export function OnboardingPage() {
             </p>
 
             {createdLocation && (
-              <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 p-4 flex items-center gap-3">
-                <Building2 className="w-5 h-5 text-blue-600" />
+              <div className="mt-4 rounded-xl bg-purple-50 border border-purple-100 p-4 flex items-center gap-3">
+                <Building2 className="w-5 h-5 text-purple-700" />
                 <div>
                   <div className="font-semibold text-sm">{createdLocation.name}</div>
-                  <div className="text-xs text-blue-700">Az önce oluşturuldu</div>
+                  <div className="text-xs text-purple-800">Az önce oluşturuldu</div>
                 </div>
               </div>
             )}
 
             {invitedEmail && (
-              <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-100 p-4 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <div>
+              <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-100 p-4 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm">{invitedEmail}</div>
-                  <div className="text-xs text-emerald-700">davet edildi</div>
+                  <div className="text-xs text-emerald-700 mt-0.5">
+                    {inviteDelivery === 'email'
+                      ? '📧 Davet maili gönderildi — çalışana iletilen linke tıklayıp şifre belirleyince giriş yapabilir.'
+                      : 'Çalışan eklendi. Mail gönderilemediği için aşağıdaki şifre belirleme linkini sen ilet (WhatsApp, kurumsal mail, vs.).'}
+                  </div>
+                  {inviteDelivery !== 'email' && inviteResetLink && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="text-[10px] bg-white border border-emerald-200 rounded px-2 py-1 break-all flex-1 overflow-hidden text-ellipsis">
+                        {inviteResetLink}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(inviteResetLink);
+                          toast.success('Link panoya kopyalandı');
+                        }}
+                        className="text-xs px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded whitespace-nowrap"
+                      >
+                        Kopyala
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -363,9 +417,9 @@ export function OnboardingPage() {
                   setTimeout(() => navigate('/admin/locations'), 500);
                 }}
                 disabled={complete.isPending}
-                className="rounded-lg border-2 border-blue-200 hover:border-blue-300 hover:bg-blue-50 p-4 text-left"
+                className="rounded-lg border-2 border-purple-200 hover:border-purple-300 hover:bg-purple-50 p-4 text-left"
               >
-                <ScanLine className="w-6 h-6 text-blue-600 mb-2" />
+                <ScanLine className="w-6 h-6 text-purple-700 mb-2" />
                 <div className="font-semibold">NFC / QR üret</div>
                 <div className="text-xs text-zinc-500 mt-1">
                   Lokasyonlar sayfasına git, üret + yazdır
@@ -375,13 +429,13 @@ export function OnboardingPage() {
                 type="button"
                 onClick={() => complete.mutate()}
                 disabled={complete.isPending}
-                className="rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 text-white p-4 text-left"
+                className="rounded-lg bg-purple-700 hover:bg-purple-800 disabled:bg-zinc-300 text-white p-4 text-left"
               >
                 <CheckCircle2 className="w-6 h-6 text-white mb-2" />
                 <div className="font-semibold">
                   {complete.isPending ? 'Kaydediliyor...' : 'Tamamla, ben sonra hallederim'}
                 </div>
-                <div className="text-xs text-blue-100 mt-1">
+                <div className="text-xs text-purple-100 mt-1">
                   Dashboard'a git, NFC/QR'i ayrı yap
                 </div>
               </button>
@@ -392,7 +446,7 @@ export function OnboardingPage() {
         {/* Footer hint */}
         <p className="text-center text-xs text-zinc-400 mt-6">
           Yardıma ihtiyacın olursa{' '}
-          <a href="mailto:destek@deploi.net" className="text-blue-600 hover:underline">
+          <a href="mailto:destek@deploi.net" className="text-purple-700 hover:underline">
             destek@deploi.net
           </a>
         </p>

@@ -52,33 +52,44 @@ export function ManagerReportsPage() {
     queryFn: async () => (await api.get(`/reports/monthly-summary?month=${month}`)).data,
   });
 
-  const downloadCsv = async (
+  const downloadReport = async (
     endpoint: string,
     filename: string,
+    format: 'csv' | 'xlsx',
     extraQuery = '',
   ) => {
-    setDownloading(endpoint);
+    const key = `${endpoint}:${format}`;
+    setDownloading(key);
     try {
       const r = await api.get(
-        `/reports/${endpoint}?month=${month}&format=csv${extraQuery}`,
+        `/reports/${endpoint}?month=${month}&format=${format}${extraQuery}`,
         { responseType: 'blob' },
       );
-      const blob = new Blob([r.data], { type: 'text/csv;charset=utf-8' });
+      const mime =
+        format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv;charset=utf-8';
+      const blob = new Blob([r.data], { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${filename}-${month}.csv`;
+      a.download = `${filename}-${month}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast.success(`📥 ${filename} CSV indirildi`);
+      toast.success(`📥 ${filename} ${format.toUpperCase()} indirildi`);
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setDownloading(null);
     }
   };
+
+  const downloadCsv = (endpoint: string, filename: string, extraQuery = '') =>
+    downloadReport(endpoint, filename, 'csv', extraQuery);
+  const downloadXlsx = (endpoint: string, filename: string, extraQuery = '') =>
+    downloadReport(endpoint, filename, 'xlsx', extraQuery);
 
   const items = data?.items ?? [];
 
@@ -106,43 +117,51 @@ export function ManagerReportsPage() {
         </div>
       </div>
 
-      {/* CSV indirme butonları */}
+      {/* Rapor indirme kartları — CSV (muhasebeye) ve Excel (kendiniz için, biçimli) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <ExportCard
           icon={<CalendarDays className="size-5" />}
           title="Puantaj"
           desc="Gün gün giriş/çıkış, çalışma süresi, izin ve vardiya bilgisi"
-          onClick={() => downloadCsv('timesheet', 'puantaj')}
-          loading={downloading === 'timesheet'}
+          onCsv={() => downloadCsv('timesheet', 'puantaj')}
+          onXlsx={() => downloadXlsx('timesheet', 'puantaj')}
+          loadingCsv={downloading === 'timesheet:csv'}
+          loadingXlsx={downloading === 'timesheet:xlsx'}
         />
         <ExportCard
           icon={<FileSpreadsheet className="size-5" />}
           title="Bordro 3-1"
           desc="Devam + izin + fazla mesai tek dosyada (her kişi için 1 satır)"
-          onClick={() => downloadCsv('monthly-summary', 'bordro')}
-          loading={downloading === 'monthly-summary'}
+          onCsv={() => downloadCsv('monthly-summary', 'bordro')}
+          onXlsx={() => downloadXlsx('monthly-summary', 'bordro')}
+          loadingCsv={downloading === 'monthly-summary:csv'}
+          loadingXlsx={downloading === 'monthly-summary:xlsx'}
         />
         <ExportCard
           icon={<Download className="size-5" />}
           title="Devam Detay"
           desc="Her kullanıcı için aylık check_in/out sayıları + trust ortalaması"
-          onClick={() => downloadCsv('attendance', 'devam')}
-          loading={downloading === 'attendance'}
+          onCsv={() => downloadCsv('attendance', 'devam')}
+          onXlsx={() => downloadXlsx('attendance', 'devam')}
+          loadingCsv={downloading === 'attendance:csv'}
+          loadingXlsx={downloading === 'attendance:xlsx'}
         />
         <ExportCard
           icon={<Download className="size-5" />}
           title="Fazla Mesai"
           desc="Onaylı fazla mesai kayıtları — sebep/onaylayan dahil"
-          onClick={() => downloadCsv('overtime', 'overtime', '&status=approved')}
-          loading={downloading === 'overtime'}
+          onCsv={() => downloadCsv('overtime', 'overtime', '&status=approved')}
+          onXlsx={() => downloadXlsx('overtime', 'overtime', '&status=approved')}
+          loadingCsv={downloading === 'overtime:csv'}
+          loadingXlsx={downloading === 'overtime:xlsx'}
         />
         {isAdmin && (
           <ExportCard
             icon={<ShieldCheck className="size-5" />}
             title="KVKK Audit"
             desc="Hash chain doğrulamalı tüm event log — denetçiye verilebilir"
-            onClick={() => downloadCsv('audit-export', 'audit')}
-            loading={downloading === 'audit-export'}
+            onCsv={() => downloadCsv('audit-export', 'audit')}
+            loadingCsv={downloading === 'audit-export:csv'}
             highlight="purple"
           />
         )}
@@ -252,41 +271,67 @@ function ExportCard({
   icon,
   title,
   desc,
-  onClick,
-  loading,
+  onCsv,
+  onXlsx,
+  loadingCsv,
+  loadingXlsx,
   highlight,
 }: {
   icon: React.ReactNode;
   title: string;
   desc: string;
-  onClick: () => void;
-  loading?: boolean;
+  onCsv: () => void;
+  onXlsx?: () => void;
+  loadingCsv?: boolean;
+  loadingXlsx?: boolean;
   highlight?: 'purple';
 }) {
   const ringClass =
     highlight === 'purple'
-      ? 'border-purple-200 hover:border-purple-400 bg-purple-50/40'
-      : 'hover:border-orange-400';
+      ? 'border-purple-200 bg-purple-50/40'
+      : '';
   const iconBg =
     highlight === 'purple'
       ? 'bg-purple-100 text-purple-700'
       : 'bg-orange-100 text-orange-700';
 
   return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className={`card flex items-start gap-3 text-left transition disabled:opacity-60 ${ringClass}`}
+    <div
+      className={`card flex flex-col gap-3 transition disabled:opacity-60 ${ringClass}`}
     >
-      <div
-        className={`flex size-10 items-center justify-center rounded-lg shrink-0 ${iconBg}`}
-      >
-        {loading ? <Loader2 className="size-5 animate-spin" /> : icon}
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex size-10 items-center justify-center rounded-lg shrink-0 ${iconBg}`}
+        >
+          {icon}
+        </div>
+        <div className="flex-1">
+          <div className="font-display font-semibold">{title}</div>
+          <div className="text-xs text-muted leading-snug mt-0.5">{desc}</div>
+        </div>
       </div>
-      <div className="flex-1">
-        <div className="font-display font-semibold">{title}</div>
-        <div className="text-xs text-muted leading-snug mt-0.5">{desc}</div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCsv}
+          disabled={loadingCsv || loadingXlsx}
+          className="flex-1 rounded-lg border border-zinc-200 hover:border-zinc-400 text-xs font-medium px-2 py-1.5 inline-flex items-center justify-center gap-1 disabled:opacity-50 transition"
+        >
+          {loadingCsv ? <Loader2 className="size-3 animate-spin" /> : null}
+          CSV
+        </button>
+        {onXlsx && (
+          <button
+            type="button"
+            onClick={onXlsx}
+            disabled={loadingCsv || loadingXlsx}
+            className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2 py-1.5 inline-flex items-center justify-center gap-1 disabled:opacity-50 transition"
+          >
+            {loadingXlsx ? <Loader2 className="size-3 animate-spin" /> : null}
+            Excel
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
