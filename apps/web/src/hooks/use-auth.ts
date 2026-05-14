@@ -225,20 +225,33 @@ export async function signInWithIdentifier(identifier: string, password: string)
       throw new Error('Kullanıcı arama başarısız');
     }
   }
-  const { error, data: authData } = await getSupabase().auth.signInWithPassword({
+  const supabase = getSupabase();
+  const { error, data: authData } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
   if (error) throw error;
   const { setUser, setOrg, setSession } = useAuthStore.getState();
   if (authData?.session) setSession(authData.session);
+
+  // 2FA kontrolü: kullanıcının verified MFA factor'ı var mı?
+  // aal1 (sadece şifre) → aal2 (şifre + TOTP) gerekiyorsa challenge döndür
+  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aalData && aalData.currentLevel === 'aal1' && aalData.nextLevel === 'aal2') {
+    // Kullanıcı 2FA aktif, kod istenmeli — caller'a MFA gerekli sinyali ver
+    const { data: factorsData } = await supabase.auth.mfa.listFactors();
+    const totpFactor = factorsData?.totp.find((f) => f.status === 'verified');
+    if (totpFactor) {
+      return { needsMfa: true, factorId: totpFactor.id };
+    }
+  }
+
   try {
     const { data: profile } = await api.get<{ user: AuthUser; org: AuthOrg | null }>(
       '/auth/me',
     );
     setUser(profile.user);
     setOrg(profile.org);
-    // Analytics: identify + track sign-in (PII GÖNDERILMEZ — sadece user_id + role + plan)
     if (profile.user) {
       void import('@/lib/analytics').then(({ identify, track }) => {
         identify(profile.user.id, {
@@ -250,6 +263,39 @@ export async function signInWithIdentifier(identifier: string, password: string)
     }
   } catch (err) {
     console.warn('[auth] post-signin /auth/me failed:', err);
+  }
+  return { needsMfa: false };
+}
+
+/**
+ * 2FA challenge + verify — sign-in akışında MFA gerekiyorsa çağrılır.
+ */
+export async function verifyMfaChallenge(factorId: string, code: string) {
+  const supabase = getSupabase();
+  const { data: challenge, error: cErr } = await supabase.auth.mfa.challenge({ factorId });
+  if (cErr) throw cErr;
+  const { error: vErr } = await supabase.auth.mfa.verify({
+    factorId,
+    challengeId: challenge.id,
+    code,
+  });
+  if (vErr) throw vErr;
+  // MFA başarılı — şimdi profili çek
+  const { setUser, setOrg } = useAuthStore.getState();
+  try {
+    const { data: profile } = await api.get<{ user: AuthUser; org: AuthOrg | null }>(
+      '/auth/me',
+    );
+    setUser(profile.user);
+    setOrg(profile.org);
+    if (profile.user) {
+      void import('@/lib/analytics').then(({ identify, track }) => {
+        identify(profile.user.id, { role: profile.user.role, org_id: profile.org?.id });
+        track('signed_in');
+      });
+    }
+  } catch (err) {
+    console.warn('[auth] post-mfa-verify /auth/me failed:', err);
   }
 }
 

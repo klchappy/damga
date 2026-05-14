@@ -23,6 +23,7 @@ import { api, getErrorMessage } from '@/lib/api';
 import { MOOD_EMOJIS } from '@damga/shared';
 import { AccountDeletionPanel } from '@/components/account-deletion';
 import { MyStampBadge } from '@/components/my-stamp-badge';
+import { TwoFactorAuth } from '@/components/two-factor-auth';
 
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -232,9 +233,10 @@ export function ProfilePage() {
       )}
       {changingPw && <ChangePasswordModal onClose={() => setChangingPw(false)} />}
 
-      {/* Kişisel damga QR badge — kiosk modunda kullanılır */}
-      <section className="mt-6">
-        <h2 className="font-display text-lg mb-2">Damga kartım</h2>
+      {/* Güvenlik: 2FA + kişisel QR + hesap silme */}
+      <section className="mt-6 space-y-4">
+        <h2 className="font-display text-lg">Güvenlik & damga</h2>
+        <TwoFactorAuth />
         <MyStampBadge />
       </section>
 
