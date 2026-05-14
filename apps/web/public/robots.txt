@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /$
+Allow: /status
+Allow: /legal/
+
+# Auth, app içi sayfaları crawl etme
+Disallow: /auth/
+Disallow: /app/
+Disallow: /admin/
+Disallow: /platform/
+Disallow: /apply-org
+Disallow: /q/
+
+Sitemap: https://damga.deploi.net/sitemap.xml

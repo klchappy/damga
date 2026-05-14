@@ -22,7 +22,7 @@ import { NotificationPermissionGate } from "@/components/notification-permission
 import { NotificationBell } from "@/components/notification-bell";
 import { useMobileDevice } from "@/hooks/use-mobile-device";
 
-export function AppLayout() {
+export function AppLayout({ children }: { children?: React.ReactNode } = {}) {
   const user = useAuthStore((s) => s.user);
   const org = useAuthStore((s) => s.org);
   const navigate = useNavigate();
@@ -175,7 +175,7 @@ export function AppLayout() {
       </header>
 
       <main className={`flex-1 ${showMobileShell ? "pb-20" : ""}`}>
-        <Outlet />
+        {children ?? <Outlet />}
       </main>
 
       {showMobileShell && (

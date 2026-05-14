@@ -38,6 +38,7 @@ import { QLandingPage } from "@/pages/q-landing";
 import { AnnouncementsPage } from "@/pages/announcements";
 import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
 import { StatusPage } from "@/pages/status";
+import { LandingPage } from "@/pages/landing";
 import { ManagerWorkforcePage } from "@/pages/manager-workforce";
 import { MyRecordsPage } from "@/pages/my-records";
 import { SettingsHubPage } from "@/pages/settings-hub";
@@ -59,6 +60,23 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   // Atanmamış kullanıcı → bekleme ekranı
   if (user.is_pending || !user.org_id) return <PendingPage />;
   return <>{children}</>;
+}
+
+/**
+ * `/` index — login durumuna göre marketing landing veya çalışan ana sayfası.
+ * Login yoksa LandingPage (pricing + features + signup CTA).
+ * Login varsa AppLayout + EmployeeHomePage (mevcut davranış).
+ */
+function HomeOrLanding() {
+  const { user, loading, signInTransition } = useAuthStore();
+  if (loading || signInTransition) return <DamgaSplash />;
+  if (!user) return <LandingPage />;
+  if (user.is_pending || !user.org_id) return <PendingPage />;
+  return (
+    <AppLayout>
+      <EmployeeHomePage />
+    </AppLayout>
+  );
 }
 
 function RoleGate({
@@ -100,6 +118,9 @@ function AppInner() {
       <Route path="/legal/cookies" element={<CookiesPage />} />
       <Route path="/status" element={<StatusPage />} />
 
+      {/* Index — anon ziyaretçi için marketing landing, auth için EmployeeHome */}
+      <Route index element={<HomeOrLanding />} />
+
       {/* Auth gerekli */}
       <Route
         element={
@@ -108,7 +129,6 @@ function AppInner() {
           </PrivateRoute>
         }
       >
-        <Route index element={<EmployeeHomePage />} />
         <Route
           path="history"
           element={
