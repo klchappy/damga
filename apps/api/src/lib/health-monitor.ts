@@ -71,7 +71,7 @@ async function pingOne(t: MonitorTarget): Promise<void> {
   }
 }
 
-async function runPings(): Promise<void> {
+export async function runPings(): Promise<void> {
   await Promise.all(TARGETS.map((t) => pingOne(t)));
 }
 

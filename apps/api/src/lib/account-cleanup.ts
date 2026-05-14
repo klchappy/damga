@@ -39,7 +39,7 @@ function getSupabaseAdmin() {
  * korunur — user_id ile bağlantı kalır, audit izi bütünlüğü için. Frontend listede
  * gösterirken full_name='[Silinmiş Kullanıcı]' görünür.
  */
-async function anonymizeReadyUsers(): Promise<{ count: number }> {
+export async function anonymizeReadyUsers(): Promise<{ count: number }> {
   const db = getDb();
   const now = new Date();
 
@@ -112,7 +112,7 @@ async function anonymizeReadyUsers(): Promise<{ count: number }> {
  * 2. Hard delete: anonymize'den 60 gün geçmiş kullanıcıları sil.
  * CASCADE ile attendance_events, leaves, notifications, vs. tümü silinir.
  */
-async function hardDeleteOldUsers(): Promise<{ count: number }> {
+export async function hardDeleteOldUsers(): Promise<{ count: number }> {
   const cutoff = new Date(Date.now() - HARD_DELETE_AFTER_DAYS * 24 * 60 * 60 * 1000);
   const r = await getDb().execute(
     sql`

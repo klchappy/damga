@@ -149,7 +149,7 @@ async function finalizeForOrg(args: {
 }
 
 /** Süresi geçmiş aktif credit'leri pasifleştir (ayın 9'unda 00:00 sonrası) */
-async function expireOldCredits(): Promise<void> {
+export async function expireOldCredits(): Promise<void> {
   try {
     await getDb()
       .update(monthlyMarketCredits)
@@ -165,7 +165,7 @@ async function expireOldCredits(): Promise<void> {
   }
 }
 
-async function runWeekly(): Promise<void> {
+export async function runWeekly(): Promise<void> {
   try {
     const db = getDb();
     const allOrgs = await db.select({ id: orgs.id, name: orgs.name }).from(orgs);
@@ -193,7 +193,7 @@ async function runWeekly(): Promise<void> {
   }
 }
 
-async function runMonthly(): Promise<void> {
+export async function runMonthly(): Promise<void> {
   try {
     const db = getDb();
     const allOrgs = await db.select({ id: orgs.id, name: orgs.name }).from(orgs);
@@ -222,7 +222,7 @@ async function runMonthly(): Promise<void> {
 }
 
 /** Yıllık izin kotası reset — her 1 Ocak 00:00 (Türkiye) */
-async function runAnnualLeaveReset(): Promise<void> {
+export async function runAnnualLeaveReset(): Promise<void> {
   try {
     const db = getDb();
     await db.update(users).set({ annual_leave_used_days: 0, updated_at: new Date() });

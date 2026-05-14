@@ -15,6 +15,8 @@ import { apiLimiter } from './middleware/rate-limit';
 import { startScheduler, stopScheduler } from './lib/scheduler';
 import { startHealthMonitor, stopHealthMonitor } from './lib/health-monitor';
 import { startAccountCleanup, stopAccountCleanup } from './lib/account-cleanup';
+import { isRedisAvailable, scheduleRepeatingJobs, startWorker, stopQueue } from './lib/queue';
+import { processors } from './lib/queue-processors';
 
 const app = express();
 
@@ -88,20 +90,31 @@ app.listen(port, () => {
     `🚀 Damga API ${isProd ? 'production' : 'dev'} → http://localhost:${port}`,
   );
 
-  // Arka plan görevleri: her Pazartesi 09:00 auto-finalize weekly
+  // Arka plan görevleri: Redis varsa BullMQ (multi-instance safe),
+  // yoksa in-process setInterval (single-instance fallback)
   if (isConfigured.db) {
-    startScheduler();
-    startHealthMonitor();
-    startAccountCleanup();
+    if (isRedisAvailable()) {
+      // Production scale: BullMQ + Redis
+      startWorker(processors);
+      void scheduleRepeatingJobs();
+      logger.info('⚡ BullMQ scheduler aktif (multi-instance safe)');
+    } else {
+      // Single-instance fallback
+      startScheduler();
+      startHealthMonitor();
+      startAccountCleanup();
+      logger.info('⏰ In-process scheduler aktif (Redis URL set ederek BullMQ\'ya geç)');
+    }
   } else {
-    logger.warn('Scheduler + health monitor + account cleanup başlatılmadı (DB yapılandırılmamış)');
+    logger.warn('Scheduler başlatılmadı (DB yapılandırılmamış)');
   }
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM alındı, kapatılıyor...');
   stopScheduler();
   stopHealthMonitor();
   stopAccountCleanup();
+  await stopQueue();
   process.exit(0);
 });
