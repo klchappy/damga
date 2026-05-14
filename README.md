@@ -1,401 +1,386 @@
 # Damga
 
-> **Şeffaf işyeri yoklama platformu** — NFC + QR + GPS doğrulamalı, hash chain'li, multi-tenant SaaS.
-> Personel check-in/out, vardiya, izin, mesai, gamification ve raporlama tek platformda.
+> **Şeffaf işyeri yoklama platformu.** NFC, QR, GPS, WiFi ve cihaz parmak izinden hesaplanan dürüstlük skoruyla doğrulanan, hash-zincirli denetim izine sahip, KVKK uyumlu multi-tenant SaaS.
 
-[![Production](https://img.shields.io/badge/production-canlı-green.svg)](https://damga.deploi.net) [![API](https://img.shields.io/badge/API-v1-orange.svg)](https://api.damga.deploi.net/v1/health) [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](#lisans)
+**Production:** [damga.deploi.net](https://damga.deploi.net) · **API:** `api.damga.deploi.net/v1` · **Status:** [/status](https://damga.deploi.net/status)
 
-🌐 **Production:** [damga.deploi.net](https://damga.deploi.net) · 🔌 **API:** [api.damga.deploi.net/v1](https://api.damga.deploi.net/v1) · 📚 **Docs:** [`docs/`](./docs)
+[![CI](https://img.shields.io/github/actions/workflow/status/klchappy/damga/ci.yml?branch=main)](https://github.com/klchappy/damga/actions)
+![Tests](https://img.shields.io/badge/tests-41%20passing-success)
+![License](https://img.shields.io/badge/license-Proprietary-red)
 
 ---
 
-## 🎯 Neden Damga?
+## Tek cümleyle ne yapar?
 
-İşletmelerin personel takip yönetiminde yaşadığı 5 derdi tek platformda çözer:
+Çalışanlar telefonlarını lokasyondaki NFC etiketine yaklaştırır veya QR'ı okutur; Damga 6 sinyali (NFC + QR + GPS + WiFi + cihaz fingerprint + zaman) birleştirip 0-100 arası **dürüstlük skoru** üretir, olayı hash-zincirli denetim izine yazar. Geriye dönük müdahale matematiksel olarak imkânsız.
 
-| Dert | Damga çözümü |
-|---|---|
-| Excel kaosu, manuel yoklama | Otomatik NFC/QR/GPS check-in |
-| Sahte check-in / başkası adına giriş | Hash chain + trust score + GPS doğrulama |
-| KVKK uyumsuzluk riski | KVKK uyumlu, 5 yıl saklama, audit log |
-| Kayıp mesai, eksik bordro | Otomatik overtime onay + bordro CSV (3-1) |
-| Kağıt evrak (vardiya, izin) | Self-servis mobil/web onay akışları |
+---
+
+## Hangi sektörlerde kullanılır?
+
+🍽️ Restoran zincirleri · 🚐 Lojistik & kargo · 🏭 Üretim & fabrika · 🛍️ Perakende · 🏢 Holding & kurumsal · 🛎️ Hizmet & AVM
 
 ---
 
 ## 🏗️ Mimari
 
-**Multi-tenant SaaS** — her şirket kendi izole org'una sahip. Tek kod tabanı, tek altyapı, çoklu tenant.
-
 ```
-┌─────────────────────────────────────────────────────┐
-│              damga.deploi.net (Web)                  │
-│         (React + Vite + Tailwind + Capacitor)        │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTPS + JWT
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│         api.damga.deploi.net (REST API /v1)          │
-│      (Express + TypeScript + Drizzle ORM)            │
-│  ┌──────────────┐  ┌──────────────────────────────┐ │
-│  │ requireAuth  │  │ Rate limit (per-key)          │ │
-│  │ (JWT / API)  │  │ Idempotency middleware        │ │
-│  └──────┬───────┘  └──────────────────────────────┘ │
-│         │ req.authOrgId (her sorguda zorunlu)       │
-└─────────┼───────────────────────────────────────────┘
-          ▼
-┌─────────────────────────────────────────────────────┐
-│        Supabase PostgreSQL (EU, RLS aktif)           │
-│  public.orgs / users / attendance_events / ...       │
-│  Hash chain trigger (append-only audit log)          │
-└─────────────────────────────────────────────────────┘
-          ▲
-          │ Webhook (HMAC V2)
-          ▼
-┌─────────────────────────────────────────────────────┐
-│  Dış sistemler (Lokma, müşteri ERP'leri, vb.)        │
-│  Bearer dmg_svc_xxx (service key, org-bağımsız)      │
-│  veya dmg_live_xxx (org-admin key)                   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Cloudflare (proxy, WAF, edge, HSTS, CSP)                   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+       ┌───────────────────────┴──────────────────────┐
+       ▼                                              ▼
+┌──────────────┐                              ┌──────────────┐
+│  damga-web   │                              │  damga-api   │
+│  React+Vite  │   /v1                        │  Node+Express│
+│  PWA + nginx │ ─────► api.damga.deploi.net  │  TypeScript  │
+└──────────────┘                              └──────┬───────┘
+       │                                             │
+       │                          ┌──────────────────┼──────────────────┐
+       │                          ▼                  ▼                  ▼
+       │                  ┌──────────────┐  ┌──────────────┐    ┌──────────────┐
+       │                  │  Supabase    │  │  BullMQ +    │    │  Sentry      │
+       │                  │  Postgres15  │  │  Redis       │    │  + PostHog   │
+       │                  │  + Auth      │  │  (cron jobs) │    │  + Status    │
+       │                  │  + Storage   │  └──────────────┘    └──────────────┘
+       │                  │  EU/Frankfurt│
+       │                  │  RLS deny    │
+       │                  └──────────────┘
+       │
+       │  Hetzner CX22 + Coolify (self-hosted PaaS)
+       │  + pg_dump cron → Backblaze B2 backup
+       └────────────────────────────────────────────────────────────
 ```
-
-**İzolasyon katmanları:**
-1. **Uygulama katmanı:** Her sorguda `WHERE org_id = req.authOrgId` zorunlu
-2. **DB katmanı:** RLS default-deny (36 tablo, `service_role` bypass eder)
-3. **Auth katmanı:** Supabase JWT veya API key, 3 ayrı yetki tipi
-4. **Audit katmanı:** Hash chain — geriye dönük tahrif imkansız
 
 ---
 
-## ✨ Modüller
-
-### Çalışan tarafı (mobil + web)
-- **Check-in/out** — NFC tag, QR kod veya GPS ile tek dokunuşta
-- **Geçmiş** — kendi check-in/leave/overtime kayıtları
-- **İzin** — talep, bakiye, geçmiş
-- **Vardiya** — atanmış vardiya, takas talep et
-- **Menü** — yemek planı, RSVP, puan ver
-- **Duyuru** — yorum, okundu işareti
-- **Gamification** — XP, level, streak, ödül mağazası, aylık market kredisi
-
-### Yönetici / Admin tarafı
-- **Canlı feed** — kim girdi/çıktı, geç kalanlar (real-time)
-- **Vardiya planlama** — drag-drop haftalık plan, çakışma uyarısı
-- **Mesai onay** — overtime kayıtlarını onayla, bordro CSV çıkar
-- **İzin onay** — talep değerlendirme, kota yönetimi
-- **Pending stamp approvals** — şüpheli check-in'leri manuel inceleme
-- **Bulk Excel import** — çalışan / menü / izin toplu yükleme
-- **Analytics** — heatmap (7×24), trend, top-late, departman karşılaştırma
-- **Bordro CSV (3-1)** — attendance + izin + overtime tek dosyada
-- **Audit export (KVKK)** — hash chain doğrulamalı tam event log
-
-### Platform Admin (Damga sahibi)
-- **Tüm org listesi** — kullanıcı, lokasyon, check-in metrikleri
-- **Plan değiştirme** — free/starter/pro/business/enterprise
-- **Billing katalog** — tier tanımları + fiyat + limit yönetimi
-- **Kampanyalar** — indirim kodları
-- **Service keys** — S2S API key üretme (Lokma vb. entegrasyon için)
-- **Support tickets** — müşteri destek taleplerinin merkezi
-- **Org başvuruları** — pending applications onay paneli
-- **Dış Servisler** — Damga'nın kullandığı 3. taraf hizmetlerin (Hetzner, Cloudflare, Supabase, Resend...) merkezi yönetimi
-
-### Entegrasyon / API
-- **API key sistemi** — `dmg_live_xxx` (org owner) veya `dmg_svc_xxx` (platform admin)
-- **Webhook** — outbound event push, HMAC V2 imza (Stripe pattern, replay-safe)
-- **Rate limit** — per-key, in-memory, header bilgi (`X-RateLimit-*`)
-- **Idempotency-Key** — POST/PUT/PATCH retry güvenliği, 24h cache
-- **OpenAPI 3.0 spec** — Postman/Insomnia import edilebilir (`docs/openapi.yaml`)
-- **External integrations** — org bazlı 3rd-party servis credentials (encrypted_secrets)
-
----
-
-## 🚀 Kullanım
-
-### Müşteri (yeni şirket)
-
-**Yöntem 1 — Anında kayıt (self-signup):**
-1. https://damga.deploi.net/auth/sign-up-org
-2. Şirket adı + ad-soyad + email + şifre → form
-3. KVKK + Kullanım Şartları onayı
-4. Anında **owner** olarak giriş yaparsın, kendi şirket org'un açılır
-
-**Yöntem 2 — Kurumsal başvuru:**
-1. https://damga.deploi.net/apply-org
-2. Form doldur (şirket adı, sektör, çalışan sayısı, owner şifresi)
-3. Platform admin onaylar (~24 saat)
-4. Onay sonrası belirlediğin şifre ile giriş
-
-### Çalışan
-
-1. Yöneticin sana **davet** gönderir veya manuel ekler
-2. Email/şifre veya magic link ile giriş
-3. Ana ekrandan **"Damga vur"** → NFC tap / QR scan / GPS ile check-in
-4. Mobil PWA — telefonun ana ekranına eklenebilir
-
-### Yönetici / Admin
-
-1. Sol menüden ilgili modüle git
-2. `/admin/locations` → lokasyon ekle → NFC tag veya QR kod oluştur
-3. `/admin/team` → çalışan ekle, departman ata
-4. `/admin/shifts` → vardiya planla
-5. `/manager-workforce` → günlük pending onaylar
-6. `/manager-reports` → bordro CSV indir
-
-### Entegratör (API kullanıcısı)
-
-```bash
-# 1. Org-admin key üret (kendin için, kendi org'un)
-curl -X POST https://api.damga.deploi.net/v1/api-keys \
-  -H "Authorization: Bearer <supabase_jwt>" \
-  -d '{"name":"erp-sync","scopes":["events:read","users:read"]}'
-
-# 2. Kullanım — her istekte Bearer veya X-API-Key header
-curl https://api.damga.deploi.net/v1/users \
-  -H "Authorization: Bearer dmg_live_xxx..."
-
-# 3. Webhook subscribe
-curl -X POST https://api.damga.deploi.net/v1/webhooks \
-  -H "Authorization: Bearer dmg_live_xxx" \
-  -d '{"url":"https://erp.firma.com/webhooks/damga","events":["check_in.created"]}'
-```
-
-Detaylı entegrasyon rehberi: [`docs/api-readme.md`](./docs/api-readme.md)
-Webhook imza doğrulama (Node/Python/PHP): [`docs/webhook-verify.md`](./docs/webhook-verify.md)
-OpenAPI 3.0 spec: [`docs/openapi.yaml`](./docs/openapi.yaml)
-
----
-
-## 🔧 Tech stack
+## 🔧 Tech Stack
 
 | Katman | Teknoloji |
 |---|---|
 | **Frontend** | React 18 + Vite + TypeScript + React Query + Zustand + React Router + Tailwind + Lucide + Sonner |
 | **Backend** | Express + TypeScript + Drizzle ORM + Zod + bcryptjs + web-push + Resend |
-| **Mobile** | Capacitor (iOS + Android paketleme, henüz kurulmadı — PWA aktif) |
-| **DB** | PostgreSQL 15 (Supabase, EU) — `public` schema, Drizzle migrations |
-| **Auth** | Supabase Auth (JWT) + custom `requireAuth` middleware (`req.authOrgId` scope) |
-| **QR scanner** | Native `BarcodeDetector` + jsQR fallback (5-10x hızlanma) |
-| **Push** | web-push (VAPID), iOS native APNs gelecek |
-| **Email** | Resend (transactional) |
+| **Mobile** | PWA aktif · Capacitor wrapper hazır (Android/iOS Play Store deployment bekleniyor) |
+| **DB** | PostgreSQL 15 (Supabase EU/Frankfurt) — `public` schema, Drizzle migrations, RLS default-deny (36 tablo) |
+| **Auth** | Supabase Auth JWT + 2FA TOTP + custom `requireAuth` middleware + 3 auth tipi |
+| **Job queue** | BullMQ + Redis (multi-instance safe) → REDIS_URL set olunca otomatik aktif, yoksa in-process fallback |
+| **QR scanner** | Native `BarcodeDetector` + jsQR fallback (5-10x hızlı) |
+| **Push** | web-push (VAPID) — iOS native APNs gelecek |
+| **Image** | sharp + WebP optimize (5MB JPEG → ~150 KB WebP, 25-50x küçülme) |
+| **Email** | Resend (transactional) + Svix-signed webhook (bounce/complaint tracking) |
+| **Analytics** | PostHog (EU host, KVKK uyumlu, autocapture OFF, identify SADECE user_id) |
+| **Error tracking** | Sentry (frontend + backend, KVKK filtreli) + custom spans + node profiling |
 | **Container** | Docker + Coolify (self-hosted PaaS) |
 | **Sunucu** | Hetzner CX22 (EU, €4/ay) |
-| **DNS/CDN** | Cloudflare Free tier |
-| **Error tracking** | Sentry (`@sentry/react` + `@sentry/node`, KVKK uyumlu: PII off, header filtreli) |
-| **Uptime monitoring** | **Self-hosted** — cron + `monitor_pings` tablosu, 5dk interval, public status page: `/status` |
-| **CI/CD** | GitHub Actions (typecheck + lint + build) + Coolify auto-deploy |
+| **DNS/CDN** | Cloudflare Free tier (proxy, WAF, HSTS, TLS 1.2 min) |
+| **Uptime** | Self-hosted (`monitor_pings` tablo, 5dk interval, 90 gün retention) + `/status` public page |
+| **CI/CD** | GitHub Actions (typecheck + build + 41 test) + Dependabot haftalık + Coolify auto-deploy |
+| **Lint** | ESLint v10 flat config + Prettier + TypeScript strict |
+| **Backup** | pg_dump cron + rclone B2 upload + age şifreleme + restore script + DR runbook |
+| **Secrets** | Bitwarden vault ("Damga Sistem Envanteri") |
 
 ---
 
-## 🧰 Lokal geliştirme
+## 📁 Proje Yapısı
+
+```
+damga/
+├── apps/
+│   ├── api/                    # Express + TypeScript backend
+│   │   ├── src/
+│   │   │   ├── config/         # env, logger, constants (production tuning)
+│   │   │   ├── lib/            # business logic helper'ları
+│   │   │   │   ├── account-cleanup.ts       # KVKK anonymize cron
+│   │   │   │   ├── account-lockout.ts       # Kullanıcı-bazlı brute force koruma
+│   │   │   │   ├── attendance-helpers.ts    # check-in yardımcıları
+│   │   │   │   ├── feature-flags.ts         # In-app feature flag evaluator
+│   │   │   │   ├── health-monitor.ts        # Self-hosted uptime ping
+│   │   │   │   ├── notifications.ts         # In-app + Web Push
+│   │   │   │   ├── queue.ts + redis.ts      # BullMQ distributed cron
+│   │   │   │   ├── scheduler.ts             # Leaderboard finalize (haftalık/aylık)
+│   │   │   │   ├── sentry.ts                # APM custom span helper'ları
+│   │   │   │   └── storage.ts               # Supabase Storage + sharp WebP optimize
+│   │   │   ├── routes/         # ~30 router (auth, check-in, kiosk-stamp, ...)
+│   │   │   ├── middleware/     # auth, error, idempotency, rate-limit
+│   │   │   └── modules/        # webhook-delivery, ...
+│   │   ├── tests/              # 41 Vitest test
+│   │   └── vitest.config.ts
+│   │
+│   ├── web/                    # React + Vite frontend
+│   │   ├── src/
+│   │   │   ├── pages/          # 45+ sayfa (landing, sign-in, kiosk, onboarding, ...)
+│   │   │   ├── components/     # AccountDeletion, MyStampBadge, TwoFactorAuth, ...
+│   │   │   ├── hooks/          # use-auth, use-feature-flag, use-geolocation
+│   │   │   ├── i18n/           # TR (varsayılan) + EN (iskelet)
+│   │   │   ├── lib/            # api, analytics (PostHog), sentry, supabase, env
+│   │   │   └── main.tsx
+│   │   ├── public/             # robots.txt, sitemap.xml, .well-known/security.txt
+│   │   └── nginx.conf          # HSTS + CSP enforce + Permissions-Policy
+│   │
+│   └── mobile/                 # Capacitor wrapper (Android/iOS, deploy pending)
+│
+├── packages/
+│   ├── db/
+│   │   ├── src/
+│   │   │   ├── schema/         # 45+ Drizzle schema (orgs, users, attendance_events, ...)
+│   │   │   ├── scripts/        # Setup + migration script'leri
+│   │   │   └── migrations/     # Drizzle generate çıktıları
+│   │   └── drizzle.config.ts
+│   ├── shared/                 # Type'lar, Zod schema, sabitler (apps arası)
+│   └── verification/           # Trust score + hash chain + NFC/QR HMAC
+│
+├── infra/
+│   ├── backup/
+│   │   ├── pg_dump_damga.sh    # Günlük backup (Coolify scheduled task)
+│   │   ├── pg_restore_damga.sh # Interactive restore
+│   │   └── README.md           # DR runbook
+│   └── docker-compose.yml      # Lokal Postgres
+│
+├── docs/                       # Mintlify docs site (docs.damga.deploi.net hazır)
+│   ├── mint.json
+│   ├── introduction.mdx
+│   ├── quickstart.mdx
+│   ├── kiosk-mode.mdx
+│   └── security/
+│
+├── .github/
+│   ├── workflows/ci.yml        # GitHub Actions (typecheck + lint + build + test)
+│   └── dependabot.yml          # Haftalık paket taraması (Pazartesi 06:00)
+│
+├── README.md                   # Bu dosya
+├── RUNBOOK.md                  # 5 acil durum prosedürü + SLO + postmortem
+├── SCALING.md                  # 50→1000+ müşteri yolculuğu rehberi
+├── DEPLOY.md                   # Coolify deployment
+├── eslint.config.js            # ESLint v10 flat config
+├── .prettierrc.json
+└── pnpm-workspace.yaml
+```
+
+---
+
+## ⚡ Modüller (Özellik Bazlı)
+
+### Yoklama (check-in/out)
+- **NFC + QR + GPS + WiFi + Cihaz** sinyalleri (6'sı birden trust score'a girer)
+- **Hash-zincirli audit:** her olay önceki olayın SHA-256'sıyla imzalanır
+- **Trust score 0-100** + anomali flag'leri + selfie fallback (out-of-geofence durumunda)
+- **Velocity koruma** (aynı kullanıcı 30 sn'de ikinci damga atamaz)
+- **Vardiya bazlı late penalty** (kullanıcının atanmış vardiyasına göre XP ceza/bonus)
+- **Otomatik check-in/out:** kullanıcının bugünkü son olayına göre sistem karar verir
+
+### Kiosk modu (paylaşımlı tablet) 🆕
+- Her çalışanın **kişisel QR kartı** (24 karakter Crockford Base32, bcrypt hash DB'de)
+- Lokasyona tablet bırak → manager logged-in → çalışanlar kartlarını gösterir
+- `POST /v1/kiosk-stamp` endpoint'i — operatör değil **kart sahibi** adına damga atılır
+- Audit: kiosk_operator_id metadata'da saklanır
+
+### Vardiya yönetimi
+- Template + assignment + override (kişiye özel saat)
+- Vardiya takası (shift swap) akışı
+- Mesai (overtime) otomatik tespit + manager onay
+
+### İzin yönetimi
+- Çalışan talep → manager/admin onay zinciri
+- Yıllık izin kotası (cron ile 1 Ocak'ta sıfırlanır)
+- Excel toplu import (`/admin/leaves/bulk`)
+
+### Gamification
+- XP + level + streak + shield
+- Haftalık ilk-3 (Pazartesi 09:00 finalize, BullMQ veya in-process cron)
+- Aylık ilk-3 + monthly market credit (özel ödüller, 7 gün geçerli)
+
+### KVKK + güvenlik
+- Self-serve hesap silme (30 gün grace → anonymize → 60 gün audit → hard delete)
+- 2FA TOTP (Supabase MFA + sign-in challenge)
+- Account lockout (5 fail → 15 dk kilit, kullanıcı-bazlı)
+- Hash chain audit + verify function
+- Admin MFA reset (kullanıcı cihaz kaybederse)
+- CSP enforce + HSTS 180g + Helmet
+- Per-IP + per-API-key rate limit
+- RLS default-deny (36 tablo)
+
+### API & entegrasyon
+- 3 auth tipi: **Supabase JWT** (kullanıcı), **dmg_live_** (org-admin), **dmg_svc_** (servis-servis)
+- Webhook HMAC v2 (Stripe-style timestamp+body signature)
+- Idempotency keys (Postgres tablosu, 24h TTL)
+- ~110 endpoint, OpenAPI spec
+
+### Operasyonel
+- Sentry error tracking + node profiling (%50 trace sample)
+- Self-hosted uptime monitoring + public status page
+- PostHog analytics (KVKK uyumlu, EU host)
+- Resend webhook (bounce/complaint takibi)
+- Real-time admin notification (her damgada toast + ses, 10sn poll)
+- Onboarding wizard (yeni owner için 3 adım)
+- Backup cron + restore + DR runbook
+- BullMQ distributed cron (multi-instance safe)
+- Feature flags (in-app, gated rollout, percentage targeting)
+
+---
+
+## 🚀 Hızlı Başlangıç (lokal dev)
 
 ```bash
-# 1) Bağımlılıklar
+# 1. Bağımlılıklar
 pnpm install
 
-# 2) Lokal Postgres (Docker) — opsiyonel, prod Supabase'e direkt bağlanabilirsin
+# 2. Lokal Postgres (Docker)
 docker compose -f infra/docker-compose.yml up -d
 
-# 3) .env oluştur
+# 3. .env oluştur
 cp .env.example .env
 # Lokal: DATABASE_URL=postgres://damga:damga@localhost:5433/damga
 # Prod: Supabase connection string
 
-# 4) Migration + seed
+# 4. Migration + seed
 pnpm db:generate         # Drizzle migration üret
-pnpm db:migrate          # DB'ye uygula (hash chain trigger dahil)
+pnpm db:migrate          # DB'ye uygula
 pnpm db:seed             # Örnek org + 3 user + 1 lokasyon
 
-# 5) Tüm uygulamaları başlat
+# 5. Tümünü başlat
 pnpm dev
 ```
 
 - Web: http://localhost:5273
 - API: http://localhost:4100/v1
-- Postgres (lokal): postgres://damga:damga@localhost:5433/damga
+- Postgres: postgres://damga:damga@localhost:5433/damga
 
 ### Workspace komutları
 
 ```bash
-# Typecheck (tüm paketler)
-pnpm -r typecheck
-
-# Sadece bir paket
-pnpm -F @damga/web typecheck
-pnpm -F @damga/api typecheck
-pnpm -F @damga/db typecheck
-
-# Drizzle migration
-pnpm -F @damga/db generate
-pnpm -F @damga/db migrate
-
-# Ad-hoc script (örn. RLS enable, platform_services seed)
-pnpm -F @damga/db exec dotenv -e ../../.env -- tsx src/scripts/<script>.ts
+pnpm -r typecheck                # Tüm paketler
+pnpm -F @damga/web typecheck     # Tek paket
+pnpm -F @damga/api test          # 41 test
+pnpm -F @damga/api lint          # ESLint
+pnpm format                      # Prettier
 ```
 
 ---
 
-## 🔐 Kritik prensipler
+## 🚢 Deployment
 
-1. **Sunucu zamanı tek doğru** — istemci zamanı sadece anomali tespiti için
-2. **Append-only** — `attendance_events` tablosunda UPDATE/DELETE trigger ile reddedilir
-3. **Hash chain bütünlüğü** — her event önceki event'in SHA-256 hash'ini içerir
-4. **Çoklu kanıt** — NFC + GPS + WiFi + Time + Device → trust score
-5. **Çift taraflı görünürlük** — çalışan ve yönetici aynı ham veriyi görür
-6. **API-first** — public REST API + webhook + service-to-service key
-7. **KVKK önceliği** — IP maskelenir, 5 yıl retention (İş Kanunu m.75)
-8. **Defense in depth** — uygulama katmanı org_id + DB katmanı RLS default-deny
+**Production:** Coolify auto-deploy ile her `main` push'unda 3-5 dk içinde canlıya düşer.
 
-### Trust score eşikleri
+Detay: [DEPLOY.md](./DEPLOY.md)
 
-| Puan | Karar |
+### Manuel deploy
+```bash
+git push origin main
+# Coolify webhook tetikler → build → deploy
+# Doğrulama: curl https://api.damga.deploi.net/v1/health → "sentry": true
+```
+
+---
+
+## 📚 Dokümantasyon
+
+| Dosya | İçerik |
 |---|---|
-| ≥80 | Otomatik onay |
-| 60-79 | Bayraklı kabul (admin'e bildirim) |
-| <60 | Reddedildi |
+| **README.md** | Bu dosya — genel bakış, mimari, modüller |
+| **[RUNBOOK.md](./RUNBOOK.md)** | Operasyonel rehber: 5 acil durum prosedürü, SLO, postmortem template |
+| **[SCALING.md](./SCALING.md)** | Production scaling: 50 → 1000+ müşteri yolculuğu, multi-instance, DB partitioning |
+| **[DEPLOY.md](./DEPLOY.md)** | Coolify deployment + Hetzner setup |
+| **[infra/backup/README.md](./infra/backup/README.md)** | Backup + DR (Backblaze B2, age encryption, restore prosedürü) |
+| **[docs/](./docs)** | Mintlify public docs site — kullanıcı + developer kılavuzları |
 
 ---
 
-## 🛡️ Güvenlik & KVKK
+## 🧪 Test + CI
 
-- **KVKK uyumlu** — Aydınlatma Metni (8 madde), Kullanım Şartları (10 madde), Gizlilik Politikası, Çerez Politikası
-- **RLS default-deny** — Tüm `public.*` tablolarda enabled (anon REST API erişimi kapalı)
-- **Audit log** — Her kritik aksiyon (auth, plan değişiklik, key üretme, vb.)
-- **Hash chain** — Check-in kayıtları matematiksel olarak değiştirilemez
-- **HTTPS TLS 1.3** — Cloudflare Edge SSL
-- **bcrypt** — Şifreler hash'lenir, asla düz metin
-- **Service role key** — Sadece backend, Coolify env'da, browser'da yok
-- **2FA önerilir** — Tüm yönetici hesapları için (Hetzner, Cloudflare, Supabase, GitHub, Bitwarden)
-- **Saklama:** 5 yıl (İş K. m.75)
-- **Hak talepleri:** `kvkk@deploi.net` — 30 gün içinde yanıt
-
----
-
-## 📁 Proje yapısı
-
-```
-damga/
-├── apps/
-│   ├── api/                  # Express backend (port 4100)
-│   │   ├── src/
-│   │   │   ├── config/       # env, logger, supabase client
-│   │   │   ├── middleware/   # requireAuth, idempotency, error
-│   │   │   ├── routes/       # auth, users, check-in, platform, vb.
-│   │   │   ├── modules/      # webhook-delivery, hash chain
-│   │   │   ├── lib/          # email, plan-limits, scheduler
-│   │   │   └── scripts/      # send-test-email
-│   │   └── Dockerfile
-│   └── web/                  # Vite + React (port 5273)
-│       ├── src/
-│       │   ├── components/   # layout, qr-scanner, cookie-banner, vb.
-│       │   ├── pages/        # sign-in, /platform, /admin/*, /manager/*
-│       │   ├── hooks/        # use-auth, use-mobile-device
-│       │   └── lib/          # api (axios), supabase, utils
-│       └── Dockerfile
-├── packages/
-│   ├── db/                   # Drizzle schema + migrations + scripts
-│   │   ├── src/schema/       # 14 schema dosyası
-│   │   ├── src/migrations/   # 0000..0016 SQL dosyaları
-│   │   └── src/scripts/      # enable-rls, setup-platform-services
-│   ├── shared/               # Zod validators + ortak tipler
-│   └── verification/         # Trust score, NFC/QR HMAC, Haversine, generateServiceKey
-├── docs/                     # API rehberi + OpenAPI spec + webhook verify
-├── infra/                    # docker-compose.yml (lokal Postgres)
-└── README.md (bu dosya)
+```bash
+pnpm -F @damga/api test
+# Test Files  7 passed (7)
+# Tests       41 passed (41)
+# Duration    ~2 saniye
 ```
 
----
-
-## 🌐 Production deploy (Coolify)
-
-**Sunucu:** Hetzner CX22 (Ubuntu, EU, ~€4/ay)
-**Orchestrator:** Coolify (self-hosted) — `coolify.deploi.net`
-**Auto-deploy:** `git push origin main` → webhook → ~5 dk
-
-| Container | Domain | Port |
-|---|---|---|
-| `damga-web` | `https://damga.deploi.net` | 5273 |
-| `damga-api` | `https://api.damga.deploi.net` | 4100 |
-
-Health endpoint: `https://api.damga.deploi.net/v1/health` — DB + Supabase + Resend + WebPush durumu
-
-Deploy detay: [`DEPLOY.md`](./DEPLOY.md)
+- **GitHub Actions:** typecheck + build her push'ta
+- **Dependabot:** haftalık (Pazartesi 06:00 TR) — npm + Docker + GitHub Actions
+- **Lint:** ESLint v10 flat config (0 error, 12 warning)
 
 ---
 
-## 🗺️ Yol haritası
+## 💰 Plan Tarifeleri (TRY/ay, KDV hariç)
 
-### ✅ Tamamlandı
-- Multi-tenant SaaS (org_id scoping)
-- Self-org-signup + apply-org (admin onaylı)
-- Platform admin paneli (8 sekme)
-- API entegrasyon paketi (S2S key, rate limit, webhook HMAC V2, idempotency, OpenAPI)
-- Tier limit sistemi (free/starter/pro/business/enterprise)
-- Legal sayfaları + cookie banner
-- RLS default-deny (36 tablo)
-- Email altyapısı (Resend)
-- Dış Servisler yönetim UI
-- **GitHub Actions CI** (typecheck + lint + build)
-- **Sentry error tracking** (frontend + backend, @sentry/react + @sentry/node)
-- **Self-hosted uptime monitoring** + public status page (`/status`, 5dk interval, 90 gün retention)
-
-### 🟡 Plan dahilinde
-- Stripe entegrasyonu (Iyzico stub yerine)
-- Granüler RLS politikaları (per-table policy)
-- Davet kodu sistemi
-- Capacitor iOS/Android app
-- APNs push notifications
-- Mailbox kurulumu (Cloudflare Email Routing)
-- External monitoring (UptimeRobot/BetterStack) — internal'a ek "süreç çökmesi" yakalayıcı
-
-### 🟢 Gelecek
-- Lokma yeniden kurma (ayrı Supabase, API ile entegre)
-- pg_dump otomatik haftalık yedek
-- Vitest test coverage
-- APM (application performance monitoring)
-
----
-
-## 💼 Hedef sektörler
-
-- 🍽️ Restoran & kafe zinciri (vardiyalı, multi-şube)
-- 🚐 Lojistik & kargo (saha, GPS, sürücü)
-- 🏭 Üretim & fabrika (NFC kapı, vardiyalı işçi)
-- 🛍️ Perakende mağaza (parttime, multi-lokasyon)
-- 🏢 Holding & kurumsal (departman, izin onay zinciri)
-- 🛎️ Hizmet & AVM (esnek vardiya, bordro)
-
----
-
-## 💰 Plan tarifeleri (TRY/ay)
-
-| Plan | Kullanıcı | Lokasyon | API/webhook | Fiyat |
+| Plan | Kullanıcı | Lokasyon | API/Webhook | Fiyat |
 |---|---|---|---|---|
 | **Free** | 3 | 1 | — | ₺0 |
 | **Starter** | 10 | 2 | 1 | ₺99 |
 | **Pro** | 25 | 5 | 3 | ₺299 |
 | **Business** | 100 | 20 | 10 | ₺899 |
-| **Enterprise** | Sınırsız | Sınırsız | Sınırsız | Görüş |
+| **Enterprise** | Sınırsız | Sınırsız | Sınırsız | Custom |
 
-> Şu an **ücretsiz dönem** — gelir hedefi başladığında Stripe entegrasyonu açılır.
-
----
-
-## 📧 İletişim
-
-- 🛠️ **Destek:** [destek@deploi.net](mailto:destek@deploi.net)
-- 📜 **KVKK / yasal:** [kvkk@deploi.net](mailto:kvkk@deploi.net)
-- 🌐 **Genel:** [damga@deploi.net](mailto:damga@deploi.net)
+> Iyzico subscription production henüz aktif değil — şu an manuel fatura ile beta lansman.
 
 ---
 
-## 📜 Lisans
+## 🗺️ Yol Haritası
 
-Tescilli / kapalı kaynak. © 2026 Kaan Kılıç. Tüm hakları saklıdır.
+### ✅ Tamamlandı (production'da)
+- Multi-tenant SaaS + RLS default-deny
+- 3 auth tipi (JWT + org-admin + service key)
+- Hash-zincirli audit + trust score
+- KVKK self-serve silme + 2FA TOTP + account lockout
+- **Kişisel QR + Kiosk modu** (multi-user paylaşımlı tablet)
+- Onboarding wizard + real-time admin notification
+- Public marketing landing + SEO + sitemap
+- Self-hosted uptime monitoring + public `/status`
+- Backup script + DR runbook
+- Sentry + PostHog (KVKK uyumlu)
+- Resend webhook (email delivery monitoring)
+- BullMQ + Redis distributed queue (multi-instance ready)
+- DB partitioning prep + 9 performance index + 4 analytics view
+- Feature flags + APM custom spans
+- ESLint + Prettier + 41 Vitest test
+- Mintlify docs site iskelet
+- i18n iskelet (TR + EN)
 
-Bu repo özel kullanım içindir; klonlama, türevi alma veya yeniden dağıtım yapma izni yoktur.
+### 🟡 Sıradaki (1-2 ay)
+- Iyzico subscription production (gelir akışı)
+- e-Fatura entegrasyonu (Paraşüt önerilen)
+- DPA template (kurumsal müşteri için)
+- VERBİS tescili (sen yapacaksın, yasal)
+- PostHog hesap + key
+- Backup Backblaze B2 hesap + Coolify cron
+
+### 🟢 Plan dahilinde (3-6 ay)
+- Capacitor Android (Play Store iç test)
+- Capacitor iOS (App Store)
+- APNs/FCM native push
+- SSO (Google/Microsoft OAuth)
+- DPA + SOC2 Type 1 yol haritası
+- 100+ müşteride DB partitioning migration
+- 250+ müşteride multi-instance API deployment
 
 ---
 
-## 🙏 Teşekkür
+## 🛡️ Güvenlik
 
-Damga, modern web teknolojilerine kıymet veren açık kaynak projelerinin omuzlarında yükselir: React, Vite, Drizzle ORM, Supabase, Express, Tailwind, Lucide ve daha fazlası. Hepsine teşekkürler.
+Bir güvenlik açığı bulduysanız: **guvenlik@deploi.net** ([security.txt](https://damga.deploi.net/.well-known/security.txt))
+
+Sorumlu açıklama ilkesine uyuyoruz, 7 iş günü içinde dönüş garantisi.
+
+---
+
+## 📊 Production Metrikleri (canlı)
+
+- **Health:** [`api.damga.deploi.net/v1/health`](https://api.damga.deploi.net/v1/health)
+- **Status sayfası:** [`damga.deploi.net/status`](https://damga.deploi.net/status)
+- **Uptime hedefi:** 99.5% / ay
+- **RPO:** ≤24 saat · **RTO:** ≤30 dakika
+
+---
+
+## 📞 İletişim
+
+- **Destek:** destek@deploi.net
+- **Satış:** satis@deploi.net
+- **KVKK / veri:** kvkk@deploi.net
+- **Güvenlik:** guvenlik@deploi.net
+
+---
+
+## License
+
+Proprietary © 2026 Damga / Deploi. Tüm hakları saklıdır.
