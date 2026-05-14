@@ -19,7 +19,13 @@ try {
     `,
   });
 
-  console.log(JSON.stringify({ ok: true, to: recipient, id: data?.id ?? null }, null, 2));
+  console.log(
+    JSON.stringify(
+      { ok: true, to: recipient, delivered: data.delivered, id: data.message_id ?? null },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
   console.error(
     JSON.stringify(

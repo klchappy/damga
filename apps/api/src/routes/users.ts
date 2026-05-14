@@ -10,7 +10,15 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { logger } from '../config/logger';
 import { generateStrongPassword } from '../lib/password';
 import { buildPasswordMessage, sendSms, sendWhatsApp } from '../lib/notify';
+import { sendInviteEmail, sendPasswordResetEmail } from '../lib/email';
 import { getPlanLimit } from '../lib/plan-limits';
+
+const roleLabels: Record<string, string> = {
+  owner: 'Şirket Sahibi',
+  admin: 'Yönetici',
+  manager: 'Müdür',
+  user: 'Çalışan',
+};
 
 export const usersRouter = Router();
 
@@ -214,11 +222,11 @@ usersRouter.post(
         })
         .returning();
 
-      // Şifre belirleme URL'si — generateLink ile mail GÖNDERMEDEN üret.
-      // (resetPasswordForEmail Supabase rate-limit'ine takılıyor; bu yöntem email
-      // göndermez, doğrudan kullanılabilir bir URL döner — admin link'i manuel
-      // paylaşır: WhatsApp, kurumsal mail, fiziksel teslim, vb.)
-      const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      // Şifre belirleme URL'si — generateLink ile mail GÖNDERMEDEN üret, sonra
+      // Resend üzerinden davet maili at. Resend yoksa fallback olarak link
+      // response'da döner — admin link'i manuel paylaşır.
+      const baseWeb = env.PUBLIC_WEB_URL ?? env.CLIENT_URL ?? 'https://damga.deploi.net';
+      const redirectTo = `${baseWeb}/auth/reset-password`;
       let resetLink: string | null = null;
       let resetError: string | null = null;
       try {
@@ -243,14 +251,44 @@ usersRouter.post(
         );
       }
 
+      // Davet maili at (Resend) — link varsa
+      let emailDelivery: 'email' | 'fallback_link' | 'skipped' = 'skipped';
+      let emailMessageId: string | null = null;
+      if (resetLink) {
+        const [orgRow] = await db
+          .select({ name: orgs.name })
+          .from(orgs)
+          .where(eq(orgs.id, req.authOrgId));
+        const result = await sendInviteEmail({
+          to: input.email,
+          inviterName: req.authUser.full_name,
+          orgName: orgRow?.name ?? 'Şirketin',
+          roleLabel: roleLabels[input.role] ?? input.role,
+          acceptUrl: resetLink,
+          // Supabase recovery link süresi ~1 saat
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        });
+        emailDelivery = result.delivered;
+        emailMessageId = result.message_id ?? null;
+      }
+
       logger.info(
-        { userId: user!.id, by: req.authUserId, orgId: req.authOrgId },
+        {
+          userId: user!.id,
+          by: req.authUserId,
+          orgId: req.authOrgId,
+          email_delivery: emailDelivery,
+          email_message_id: emailMessageId,
+        },
         'Admin yeni çalışan ekledi',
       );
 
       res.status(201).json({
         user,
-        /** Direkt paylaşılabilir şifre belirleme URL'si (admin kopyalar/share eder) */
+        /** Davet maili durumu: 'email' (Resend OK), 'fallback_link' (admin manuel iletmeli) */
+        email_delivery: emailDelivery,
+        email_message_id: emailMessageId,
+        /** Davet/şifre belirleme URL'si — admin manuel paylaşabilir veya mail backup */
         password_reset_link: resetLink,
         password_reset_error: resetError,
       });
@@ -337,7 +375,8 @@ usersRouter.post(
       if (!u) throw new HttpError(404, 'Çalışan bulunamadı');
 
       const supabase = getSupabaseAdmin();
-      const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      const baseWeb = env.PUBLIC_WEB_URL ?? env.CLIENT_URL ?? 'https://damga.deploi.net';
+      const redirectTo = `${baseWeb}/auth/reset-password`;
       const { data: linkData, error: linkErr } =
         await supabase.auth.admin.generateLink({
           type: 'recovery',
@@ -350,11 +389,27 @@ usersRouter.post(
           `Link üretilemedi: ${linkErr?.message ?? 'unknown'}`,
         );
       }
+      const resetLink = linkData.properties.action_link;
+      const mailResult = await sendPasswordResetEmail({
+        to: u.email,
+        resetUrl: resetLink,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+      logger.info(
+        {
+          userId: id,
+          by: req.authUserId,
+          delivery: mailResult.delivered,
+        },
+        'Admin şifre sıfırlama linki üretti',
+      );
       res.json({
         ok: true,
         email: u.email,
         full_name: u.full_name,
-        password_reset_link: linkData.properties.action_link,
+        email_delivery: mailResult.delivered,
+        email_message_id: mailResult.message_id ?? null,
+        password_reset_link: resetLink,
       });
     } catch (err) {
       next(err);

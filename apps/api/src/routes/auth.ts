@@ -15,6 +15,7 @@ import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { authLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
 import { generateStrongPassword } from '../lib/password';
+import { sendPasswordResetEmail } from '../lib/email';
 
 export const authRouter = Router();
 // authLimiter sadece sensitif POST'lara uygulanır (sign-up, magic-link,
@@ -479,7 +480,9 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
     const signInUrl = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/sign-in`;
 
     if (input.method === 'email') {
-      const redirectTo = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/reset-password`;
+      const baseWeb =
+        env.PUBLIC_WEB_URL ?? env.CLIENT_URL ?? 'https://damga.deploi.net';
+      const redirectTo = `${baseWeb}/auth/reset-password`;
       const { data, error } = await supabase.auth.admin.generateLink({
         type: 'recovery',
         email: userEmail,
@@ -488,12 +491,29 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
       if (error || !data?.properties?.action_link) {
         throw new HttpError(502, `Link üretilemedi: ${error?.message ?? 'unknown'}`);
       }
-      // Email göndermek istemediğimiz durumda link client'ta gösterilebilir
+      const resetLink = data.properties.action_link;
+      // Resend gateway ile mail at — yoksa fallback olarak action_link döner
+      const mailResult = await sendPasswordResetEmail({
+        to: userEmail,
+        resetUrl: resetLink,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+      logger.info(
+        {
+          email: userEmail,
+          delivery: mailResult.delivered,
+          message_id: mailResult.message_id ?? null,
+        },
+        'Şifre sıfırlama maili tetiklendi',
+      );
       res.json({
         ok: true,
         method: 'email',
-        delivered: 'link_generated',
-        action_link: data.properties.action_link,
+        delivered: mailResult.delivered, // 'email' | 'fallback_link'
+        message_id: mailResult.message_id ?? null,
+        // Fallback durumunda link client'ta gösterilir; email başarılıysa da
+        // backup için döneriz (UI istemezse görmezden gelir)
+        action_link: resetLink,
       });
       return;
     }

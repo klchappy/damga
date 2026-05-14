@@ -23,10 +23,26 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().min(1).optional(),
 
-  RESEND_API_KEY: z.string().optional(),
+  /** Resend e-posta gateway (opsiyonel — yoksa fallback_link mode) */
+  RESEND_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(10).optional(),
+  ),
   /** Resend webhook signing secret (svix-id, svix-timestamp, svix-signature header doğrulaması) */
-  RESEND_WEBHOOK_SECRET: z.string().optional(),
-  EMAIL_FROM: z.string().default('Damga <noreply@deploi.net>'),
+  RESEND_WEBHOOK_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  /** Resend'de verify edilmiş from adresi — örn: "Damga <noreply@damga.deploi.net>" */
+  EMAIL_FROM: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  /** Web frontend URL — invite/reset linklerinde kullanılır. Örn: https://damga.deploi.net */
+  PUBLIC_WEB_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
   CONTACT_EMAIL: z.string().email().default('damga@deploi.net'),
   SUPPORT_EMAIL: z.string().email().default('destek@deploi.net'),
   KVKK_EMAIL: z.string().email().default('kvkk@deploi.net'),
@@ -91,6 +107,7 @@ export const isConfigured = {
   supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
   redis: Boolean(env.REDIS_URL),
   resend: Boolean(env.RESEND_API_KEY),
+  email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
   webPush: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
   sentry: Boolean(env.SENTRY_DSN),
 };
