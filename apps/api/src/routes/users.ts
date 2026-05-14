@@ -187,7 +187,12 @@ usersRouter.post(
       if (matched) {
         authUserId = matched.id;
       } else {
-        const tmpPassword = Math.random().toString(36).slice(2) + 'A1!';
+        // FIX (security): Math.random().toString(36) ~36 bit entropy — brute-force
+        // 100ms'de kırılabilir. crypto.randomBytes(32) base64url = 256 bit, ayrıca
+        // password reset linki zaten gönderiliyor → bu tmpPassword sadece bir kez
+        // create için kullanılır, hemen unutulur.
+        const tmpPassword =
+          generateStrongPassword(32) + 'A1!'; // Aa-Zz, 0-9 + symbol garantili
         const { data: created, error: authErr } =
           await supabase.auth.admin.createUser({
             email: input.email,

@@ -10,12 +10,23 @@ import { createNotification } from '../lib/notifications';
 
 export const leavesRouter = Router();
 
+/**
+ * İki tarih arasındaki iş gününü hesapla (hafta sonu hariç).
+ *
+ * FIX (bug): Önceki versiyon `new Date(YYYY-MM-DD)` ile parse + `setDate` mutate
+ * kullanıyordu — DST geçişlerinde gün kayması ve `getDay()` local timezone
+ * bağımlılığı vardı. Yeni: explicit UTC parse + ms aritmetiği + getUTCDay.
+ */
 function calcBusinessDays(start: string, end: string): number {
-  const s = new Date(start);
-  const e = new Date(end);
+  const [sy, sm, sd] = start.split('-').map(Number) as [number, number, number];
+  const [ey, em, ed] = end.split('-').map(Number) as [number, number, number];
+  const startMs = Date.UTC(sy, sm - 1, sd);
+  const endMs = Date.UTC(ey, em - 1, ed);
+  if (startMs > endMs) return 0;
   let days = 0;
-  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-    const dow = d.getDay();
+  const DAY_MS = 86_400_000;
+  for (let t = startMs; t <= endMs; t += DAY_MS) {
+    const dow = new Date(t).getUTCDay(); // 0=Sun, 6=Sat
     if (dow !== 0 && dow !== 6) days++;
   }
   return days;
@@ -75,7 +86,7 @@ leavesRouter.post('/leaves', requireAuth, requireScope('leaves:write'), async (r
         end_date: input.end_date,
         half_day: input.half_day,
         reason: input.reason,
-        business_days: String(businessDays),
+        business_days: businessDays,
       })
       .returning();
     void dispatchWebhook({
@@ -231,7 +242,7 @@ leavesRouter.post(
           continue;
         }
 
-        const businessDays = String(calcBusinessDays(item.start_date, item.end_date));
+        const businessDays = calcBusinessDays(item.start_date, item.end_date);
 
         await getDb()
           .insert(leaves)

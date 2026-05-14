@@ -71,12 +71,26 @@ export const idempotencyMiddleware: RequestHandler = async (req, res, next) => {
           res.setHeader('Idempotent-Original-Created', existing.created_at.toISOString());
           return res.status(existing.response_status).json(existing.response_body);
         }
-        // İşleniyor olabilir (race) — basit MVP'de geçer
+        // FIX (race): İşleniyor olabilir — 409 ile reject et, client retry edebilir.
+        // Önceden silently devam ediyordu, duplicate side-effect riski vardı.
+        // İlk request'in tamamlanması için kısa bir süre tanı (max 5sn yaşlıysa).
+        if (ageMs < 5_000) {
+          throw new HttpError(
+            409,
+            'Bu istek henüz işleniyor — lütfen birkaç saniye sonra tekrar dene',
+            'IDEMPOTENT_REQUEST_IN_PROGRESS',
+          );
+        }
+        // 5sn'den eski ama response yok → ilk request çöktü, yeniden başlat
+        await db.delete(idempotencyKeys).where(eq(idempotencyKeys.id, existing.id));
       }
     }
 
     // Yeni kayit (response henuz yok)
-    await db
+    // FIX (race): onConflictDoNothing'in returning() ile sonucunu kontrol et.
+    // Eğer concurrent request aynı anda insert ettiyse 0 row döner — bu durumda
+    // yine 409 fırlat (race detection).
+    const inserted = await db
       .insert(idempotencyKeys)
       .values({
         key,
@@ -86,7 +100,18 @@ export const idempotencyMiddleware: RequestHandler = async (req, res, next) => {
         org_id: req.authOrgId ?? null,
         api_key_id: req.apiKeyId ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: idempotencyKeys.id });
+
+    if (inserted.length === 0) {
+      // Bizim insert yapamadık → başka bir request just before bizden bu key'i aldı
+      logger.warn({ key, method: req.method, path: req.path }, 'Idempotency race detected');
+      throw new HttpError(
+        409,
+        'Bu istek henüz işleniyor (concurrent insert)',
+        'IDEMPOTENT_REQUEST_IN_PROGRESS',
+      );
+    }
 
     // Response intercept — orjinal res.json'u sar
     // Sadece 2xx (success) ve 4xx (client error, deterministic) cache'le.

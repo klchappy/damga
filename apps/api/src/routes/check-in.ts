@@ -311,12 +311,13 @@ async function performAttendance(
   if (event.review_status === 'approved') {
     // 0) Streak hesaplama (sadece check_in için — günlük 1 kez tetiklenir)
     if (type === 'check_in') {
-      const today = new Date(event.server_time);
-      today.setHours(0, 0, 0, 0);
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      // Bugün önceden başka check_in var mı? (varsa streak değişmez)
+      // FIX (bug): Önceki versiyon `today.setHours(0,0,0,0)` kullanıyordu — bu
+      // sunucu local timezone'a göre (production'da UTC) midnight'tı. TR
+      // kullanıcısı için 03:00 TR'de "yeni gün" başlıyordu (UTC 00:00).
+      // Sonuç: gece geç check_in vuran kullanıcılar streak'lerini kaybediyordu.
+      //
+      // Çözüm: PostgreSQL'de TR timezone'da date karşılaştırması yapıyoruz.
+      // Bugün ve dün için TR-day boundary kullanılıyor.
       const [todayPriorCheckIn] = await db
         .select({ id: attendanceEvents.id })
         .from(attendanceEvents)
@@ -324,14 +325,15 @@ async function performAttendance(
           and(
             eq(attendanceEvents.user_id, req.authUserId),
             eq(attendanceEvents.type, 'check_in'),
-            gte(attendanceEvents.server_time, today),
+            // TR timezone'da aynı gün
+            sql`(${attendanceEvents.server_time} at time zone 'Europe/Istanbul')::date = (${event.server_time} at time zone 'Europe/Istanbul')::date`,
             sql`${attendanceEvents.id} <> ${event.id}`,
           ),
         )
         .limit(1);
 
       if (!todayPriorCheckIn) {
-        // Dün check_in var mı?
+        // Dün check_in var mı? (TR timezone'da dün)
         const [yesterdayCheckIn] = await db
           .select({ id: attendanceEvents.id })
           .from(attendanceEvents)
@@ -339,8 +341,7 @@ async function performAttendance(
             and(
               eq(attendanceEvents.user_id, req.authUserId),
               eq(attendanceEvents.type, 'check_in'),
-              gte(attendanceEvents.server_time, yesterday),
-              sql`${attendanceEvents.server_time} < ${today}`,
+              sql`(${attendanceEvents.server_time} at time zone 'Europe/Istanbul')::date = ((${event.server_time} at time zone 'Europe/Istanbul')::date - interval '1 day')::date`,
             ),
           )
           .limit(1);

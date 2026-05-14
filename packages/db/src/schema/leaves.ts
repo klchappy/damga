@@ -3,6 +3,7 @@ import {
   boolean,
   date,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -36,7 +37,7 @@ export const leaves = pgTable(
     approved_at: timestamp('approved_at', { withTimezone: true }),
     rejection_reason: text('rejection_reason'),
     /** Hesaplanan iş günü sayısı (hafta sonu hariç). Server hesaplar. */
-    business_days: text('business_days'),
+    business_days: integer('business_days'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
