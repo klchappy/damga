@@ -75,10 +75,51 @@ eventsRouter.get('/events', requireAuth, requireScope('events:read'), async (req
   }
 });
 
+/**
+ * Hash chain doğrulama (audit) — sadece manager+.
+ *
+ * NOT (routing order): Bu route '/events/:id'den ÖNCE tanımlanmalı, aksi
+ * halde Express ':id' parametresini "verify-chain" string'i olarak yutar
+ * ve UUID parse error fırlatır (500). Production bug yakalandı.
+ */
+eventsRouter.get(
+  '/events/verify-chain',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, "Yetki yok");
+      const result = await getDb().execute<{
+        event_id: string;
+        is_valid: boolean;
+        expected_hash: string;
+        actual_hash: string;
+        position: number;
+      }>(sql`select * from verify_hash_chain(${req.authOrgId}::uuid)`);
+      // node-postgres driver: result.rows içinde
+      const rows = (result as unknown as { rows: Array<{ is_valid: boolean }> }).rows ?? [];
+      const total = rows.length;
+      const broken = rows.filter((r) => !r.is_valid);
+      res.json({
+        total,
+        valid: total - broken.length,
+        broken: broken.length,
+        first_broken: broken[0] ?? null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 eventsRouter.get('/events/:id', requireAuth, requireScope('events:read'), async (req, res, next) => {
   try {
     if (!req.authOrgId) throw new HttpError(401, "Yetki yok");
     const id = String(req.params.id ?? '').trim();
+    // Defansif: UUID syntax kontrolü — Express routing'den kaçan keyword'leri burada da yakala
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new HttpError(400, 'Geçersiz event ID format');
+    }
     const [event] = await getDb()
       .select()
       .from(attendanceEvents)
@@ -136,33 +177,4 @@ eventsRouter.post('/events/:id/dispute', requireAuth, async (req, res, next) => 
   }
 });
 
-/** Hash chain doğrulama (audit) — sadece manager+ */
-eventsRouter.get(
-  '/events/verify-chain',
-  requireAuth,
-  requireRole('manager', 'admin', 'owner'),
-  async (req, res, next) => {
-    try {
-      if (!req.authOrgId) throw new HttpError(401, "Yetki yok");
-      const result = await getDb().execute<{
-        event_id: string;
-        is_valid: boolean;
-        expected_hash: string;
-        actual_hash: string;
-        position: number;
-      }>(sql`select * from verify_hash_chain(${req.authOrgId}::uuid)`);
-      // node-postgres driver: result.rows içinde
-      const rows = (result as unknown as { rows: Array<{ is_valid: boolean }> }).rows ?? [];
-      const total = rows.length;
-      const broken = rows.filter((r) => !r.is_valid);
-      res.json({
-        total,
-        valid: total - broken.length,
-        broken: broken.length,
-        first_broken: broken[0] ?? null,
-      });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+// Hash chain endpoint yukarıya taşındı — bu yorum geçmiş için yer tutucu.
