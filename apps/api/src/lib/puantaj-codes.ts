@@ -58,15 +58,30 @@ export interface DerivePuantajInput {
   }>;
   /** Bu ayın tüm günleri YYYY-MM-DD formatında */
   month_days: string[];
+  /**
+   * Manuel override'lar: { 'YYYY-MM-DD': code }
+   * Override varsa auto-derive bypass — gün için bu code kullanılır.
+   */
+  overrides?: Record<string, PuantajCode>;
+}
+
+export type CodeSource = 'auto' | 'override';
+
+export interface DeriveResult {
+  /** Final code per day */
+  codes: Record<string, PuantajCode>;
+  /** Hangi gün override mi, auto mu? */
+  sources: Record<string, CodeSource>;
 }
 
 /**
  * Bir kullanıcı için aylık puantaj kodlarını türet.
  *
- * Dönüş: { 'YYYY-MM-DD': PuantajCode }
+ * Dönüş: { codes, sources } — her gün için kod + kaynak (auto/override).
  */
-export function derivePuantajForUser(input: DerivePuantajInput): Record<string, PuantajCode> {
-  const result: Record<string, PuantajCode> = {};
+export function derivePuantajForUser(input: DerivePuantajInput): DeriveResult {
+  const codes: Record<string, PuantajCode> = {};
+  const sources: Record<string, CodeSource> = {};
 
   // İzin günlerini map'le (date → code)
   const leaveDayMap = new Map<string, PuantajCode>();
@@ -79,11 +94,22 @@ export function derivePuantajForUser(input: DerivePuantajInput): Record<string, 
     }
   }
 
+  const overrides = input.overrides ?? {};
+
   for (const dayStr of input.month_days) {
+    // 0. Manuel override varsa direkt o
+    const ov = overrides[dayStr];
+    if (ov) {
+      codes[dayStr] = ov;
+      sources[dayStr] = 'override';
+      continue;
+    }
+
     // 1. Onaylı izin varsa o
     const leaveCode = leaveDayMap.get(dayStr);
     if (leaveCode) {
-      result[dayStr] = leaveCode;
+      codes[dayStr] = leaveCode;
+      sources[dayStr] = 'auto';
       continue;
     }
 
@@ -92,16 +118,14 @@ export function derivePuantajForUser(input: DerivePuantajInput): Record<string, 
     const isWeekend = isWeekendDay(dayStr);
 
     if (hasCheckIn) {
-      // 2a. Check-in var + hafta sonu → RX
-      // 2b. Check-in var + hafta içi → X
-      result[dayStr] = isWeekend ? 'RX' : 'X';
+      codes[dayStr] = isWeekend ? 'RX' : 'X';
     } else {
-      // 3. Check-in yok → hafta sonu mu, hafta içi mi?
-      result[dayStr] = isWeekend ? 'H' : 'G';
+      codes[dayStr] = isWeekend ? 'H' : 'G';
     }
+    sources[dayStr] = 'auto';
   }
 
-  return result;
+  return { codes, sources };
 }
 
 /**

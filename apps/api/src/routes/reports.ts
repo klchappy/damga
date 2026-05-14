@@ -9,6 +9,7 @@ import {
   overtimeRecords,
   shiftAssignments,
   shiftTemplates,
+  puantajOverrides,
 } from '@damga/db';
 import { HttpError } from '../middleware/error';
 import { requireAuth, requireRole, requireScope } from '../middleware/auth';
@@ -18,7 +19,9 @@ import {
   PUANTAJ_CODES,
   summarizePuantaj,
   TR_MONTHS,
+  type PuantajCode,
 } from '../lib/puantaj-codes';
+import { logger } from '../config/logger';
 import { buildPuantajXlsx, type PuantajRow } from '../lib/puantaj-xlsx';
 import { orgs } from '@damga/db';
 
@@ -1249,22 +1252,81 @@ reportsRouter.get(
         leavesByUser.set(lv.user_id, arr);
       }
 
-      // Her personel için kodları türet
-      const rows: PuantajRow[] = personeller.map((per) => {
-        const codes = derivePuantajForUser({
+      // Manuel override'lar (admin/manager düzeltmeleri)
+      const overrideRows = await getDb()
+        .select({
+          user_id: puantajOverrides.user_id,
+          date: puantajOverrides.date,
+          code: puantajOverrides.code,
+          reason: puantajOverrides.reason,
+          set_by: puantajOverrides.set_by,
+          updated_at: puantajOverrides.updated_at,
+        })
+        .from(puantajOverrides)
+        .where(
+          and(
+            eq(puantajOverrides.org_id, req.authOrgId),
+            gte(puantajOverrides.date, startStr),
+            lte(puantajOverrides.date, endStr),
+          ),
+        );
+
+      const overridesByUser = new Map<string, Record<string, PuantajCode>>();
+      const overrideMetaByUser = new Map<
+        string,
+        Record<string, { reason: string | null; set_by: string; updated_at: string }>
+      >();
+      for (const ov of overrideRows) {
+        const m = overridesByUser.get(ov.user_id) ?? {};
+        m[ov.date] = ov.code as PuantajCode;
+        overridesByUser.set(ov.user_id, m);
+
+        const meta = overrideMetaByUser.get(ov.user_id) ?? {};
+        meta[ov.date] = {
+          reason: ov.reason,
+          set_by: ov.set_by,
+          updated_at: ov.updated_at.toISOString(),
+        };
+        overrideMetaByUser.set(ov.user_id, meta);
+      }
+
+      // Her personel için kodları türet (override + auto)
+      const rowsForXlsx: PuantajRow[] = [];
+      const rowsForJson: Array<
+        PuantajRow & {
+          user_id: string;
+          sources: Record<string, 'auto' | 'override'>;
+          override_meta: Record<
+            string,
+            { reason: string | null; set_by: string; updated_at: string }
+          >;
+        }
+      > = [];
+
+      for (const per of personeller) {
+        const { codes, sources } = derivePuantajForUser({
           user_id: per.id,
           checked_in_days: checkInsByUser.get(per.id) ?? new Set<string>(),
           leaves: leavesByUser.get(per.id) ?? [],
           month_days: monthDayStrs,
+          overrides: overridesByUser.get(per.id) ?? {},
         });
         const summary = summarizePuantaj(codes);
-        return {
+        const baseRow = {
           full_name: per.full_name,
           position: per.title ?? per.department ?? '',
           codes,
           summary,
         };
-      });
+        rowsForXlsx.push(baseRow);
+        rowsForJson.push({
+          ...baseRow,
+          user_id: per.id,
+          sources,
+          override_meta: overrideMetaByUser.get(per.id) ?? {},
+        });
+      }
+      const rows = rowsForXlsx; // backward-compat for xlsx path
 
       if (q.format === 'xlsx') {
         const buf = await buildPuantajXlsx({
@@ -1286,10 +1348,168 @@ reportsRouter.get(
         days_in_month: daysInMonth,
         days: monthDayStrs,
         codes: PUANTAJ_CODES,
-        rows: rows.map((r, idx) => ({
+        rows: rowsForJson.map((r, idx) => ({
           idx: idx + 1,
           ...r,
         })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /v1/reports/puantaj/override
+ *
+ * Admin/manager bir personelin belirli bir günü için manuel puantaj kodu
+ * belirler. Auto-derive'ı bypass eder (override > izin > event > weekend).
+ *
+ * Body: { user_id, date: 'YYYY-MM-DD', code: 'X|H|RX|R|IZ|G|DI|YI', reason? }
+ *
+ * Same (org_id, user_id, date) tuple varsa update edilir (upsert).
+ * Tüm değişiklikler logger.info ile audit log'a düşer (kim, ne zaman, eski/yeni kod).
+ */
+const overrideBodySchema = z.object({
+  user_id: z.string().uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD formatı'),
+  code: z.enum(['X', 'H', 'RX', 'R', 'IZ', 'G', 'DI', 'YI']),
+  reason: z.string().trim().max(500).optional().nullable(),
+});
+
+reportsRouter.post(
+  '/reports/puantaj/override',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const input = overrideBodySchema.parse(req.body);
+
+      // Target user aynı org'da mı kontrol et
+      const [target] = await getDb()
+        .select({ id: users.id, full_name: users.full_name })
+        .from(users)
+        .where(and(eq(users.id, input.user_id), eq(users.org_id, req.authOrgId)));
+      if (!target) throw new HttpError(404, 'Çalışan bulunamadı');
+
+      // Önceki değeri bul (audit için)
+      const [existing] = await getDb()
+        .select({ code: puantajOverrides.code })
+        .from(puantajOverrides)
+        .where(
+          and(
+            eq(puantajOverrides.org_id, req.authOrgId),
+            eq(puantajOverrides.user_id, input.user_id),
+            eq(puantajOverrides.date, input.date),
+          ),
+        );
+
+      const now = new Date();
+
+      // Upsert
+      await getDb()
+        .insert(puantajOverrides)
+        .values({
+          org_id: req.authOrgId,
+          user_id: input.user_id,
+          date: input.date,
+          code: input.code,
+          reason: input.reason ?? null,
+          set_by: req.authUserId,
+          updated_at: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            puantajOverrides.org_id,
+            puantajOverrides.user_id,
+            puantajOverrides.date,
+          ],
+          set: {
+            code: input.code,
+            reason: input.reason ?? null,
+            set_by: req.authUserId,
+            updated_at: now,
+          },
+        });
+
+      logger.info(
+        {
+          orgId: req.authOrgId,
+          byUserId: req.authUserId,
+          forUserId: input.user_id,
+          forUserName: target.full_name,
+          date: input.date,
+          previous_code: existing?.code ?? null,
+          new_code: input.code,
+          reason: input.reason ?? null,
+        },
+        '📋 Puantaj override',
+      );
+
+      res.json({
+        ok: true,
+        user_id: input.user_id,
+        date: input.date,
+        code: input.code,
+        reason: input.reason ?? null,
+        set_by: req.authUserId,
+        previous_code: existing?.code ?? null,
+        updated_at: now.toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * DELETE /v1/reports/puantaj/override?user_id=...&date=YYYY-MM-DD
+ *
+ * Manuel override'i kaldırır — auto-derive'a geri döner.
+ */
+reportsRouter.delete(
+  '/reports/puantaj/override',
+  requireAuth,
+  requireRole('manager', 'admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId || !req.authUserId) throw new HttpError(401, 'Yetki yok');
+      const params = z
+        .object({
+          user_id: z.string().uuid(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD formatı'),
+        })
+        .parse(req.query);
+
+      const deleted = await getDb()
+        .delete(puantajOverrides)
+        .where(
+          and(
+            eq(puantajOverrides.org_id, req.authOrgId),
+            eq(puantajOverrides.user_id, params.user_id),
+            eq(puantajOverrides.date, params.date),
+          ),
+        )
+        .returning({ code: puantajOverrides.code });
+
+      logger.info(
+        {
+          orgId: req.authOrgId,
+          byUserId: req.authUserId,
+          forUserId: params.user_id,
+          date: params.date,
+          cleared_code: deleted[0]?.code ?? null,
+        },
+        '🗑️ Puantaj override silindi',
+      );
+
+      res.json({
+        ok: true,
+        user_id: params.user_id,
+        date: params.date,
+        cleared: deleted.length > 0,
+        cleared_code: deleted[0]?.code ?? null,
       });
     } catch (err) {
       next(err);

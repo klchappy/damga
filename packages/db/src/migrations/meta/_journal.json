@@ -120,6 +120,13 @@
       "when": 1778587200000,
       "tag": "0016_external_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778771034790,
+      "tag": "0017_mean_manta",
+      "breakpoints": true
     }
   ]
 }
