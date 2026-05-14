@@ -39,6 +39,7 @@ import { AnnouncementsPage } from "@/pages/announcements";
 import { KvkkPage, TermsPage, PrivacyPage, CookiesPage } from "@/pages/legal";
 import { StatusPage } from "@/pages/status";
 import { LandingPage } from "@/pages/landing";
+import { OnboardingPage } from "@/pages/onboarding";
 import { ManagerWorkforcePage } from "@/pages/manager-workforce";
 import { MyRecordsPage } from "@/pages/my-records";
 import { SettingsHubPage } from "@/pages/settings-hub";
@@ -68,10 +69,18 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
  * Login varsa AppLayout + EmployeeHomePage (mevcut davranış).
  */
 function HomeOrLanding() {
-  const { user, loading, signInTransition } = useAuthStore();
+  const { user, org, loading, signInTransition } = useAuthStore();
   if (loading || signInTransition) return <DamgaSplash />;
   if (!user) return <LandingPage />;
   if (user.is_pending || !user.org_id) return <PendingPage />;
+  // Owner ve onboarding tamamlanmamış/atlanmamışsa wizard'a yönlendir
+  const isOwner = user.role === "owner" || user.role === "admin";
+  const needsOnboarding =
+    isOwner &&
+    org &&
+    !org.settings?.onboarding_completed_at &&
+    !org.settings?.onboarding_skipped_at;
+  if (needsOnboarding) return <Navigate to="/onboarding" replace />;
   return (
     <AppLayout>
       <EmployeeHomePage />
@@ -120,6 +129,16 @@ function AppInner() {
 
       {/* Index — anon ziyaretçi için marketing landing, auth için EmployeeHome */}
       <Route index element={<HomeOrLanding />} />
+
+      {/* Onboarding wizard (owner için ilk-girişte) — AppLayout dışında, kendi başına */}
+      <Route
+        path="/onboarding"
+        element={
+          <PrivateRoute>
+            <OnboardingPage />
+          </PrivateRoute>
+        }
+      />
 
       {/* Auth gerekli */}
       <Route

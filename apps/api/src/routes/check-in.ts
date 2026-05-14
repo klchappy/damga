@@ -14,7 +14,7 @@ import { uploadSelfie } from '../lib/storage';
 import { awardXp, computeOnTimeBonus } from '../lib/xp';
 import { detectOvertime } from '../lib/overtime';
 import { getUserShiftForDate } from '../lib/shift-lookup';
-import { createNotification } from '../lib/notifications';
+import { createNotification, notifyOrgManagers } from '../lib/notifications';
 
 export const checkInRouter = Router();
 
@@ -501,6 +501,38 @@ async function performAttendance(
     },
     `✓ ${type}`,
   );
+
+  // Yöneticilere real-time bildirim (her damga için) — KIM/NE/NEREDE/NE ZAMAN
+  // Damgalayan kullanıcı kendisi yöneticiyse kendine bildirim gitmesin.
+  const stamperName = req.authUser?.full_name ?? 'Çalışan';
+  const stamperEmail = req.authUser?.email ?? '';
+  const actionEmoji = type === 'check_in' ? '🟢' : '🔴';
+  const actionLabel = type === 'check_in' ? 'giriş yaptı' : 'çıkış yaptı';
+  const trustEmoji = trust.score >= 100 ? '✓' : trust.score >= 80 ? '⚠️' : '🚨';
+  void notifyOrgManagers({
+    orgId: req.authOrgId,
+    type: type === 'check_in' ? 'stamp_check_in' : 'stamp_check_out',
+    title: `${actionEmoji} ${stamperName} ${actionLabel}`,
+    body:
+      `📍 ${location.name}` +
+      ` · ${trustEmoji} Güven: ${trust.score}/100` +
+      (trust.flags.length > 0 ? ` · ⚠️ ${trust.flags.slice(0, 2).join(', ')}` : ''),
+    url: '/admin/live-feed',
+    excludeUserId: req.authUserId,
+    metadata: {
+      event_id: event.id,
+      stamper_user_id: req.authUserId,
+      stamper_name: stamperName,
+      stamper_email: stamperEmail,
+      location_id: location.id,
+      location_name: location.name,
+      trust_score: trust.score,
+      trust_decision: trust.decision,
+      flags: trust.flags,
+      verification_methods: trust.verification_methods,
+      server_time: event.server_time.toISOString(),
+    },
+  });
 
   // Webhook tetikle (fire-and-forget)
   void dispatchWebhook({

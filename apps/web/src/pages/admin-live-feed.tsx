@@ -73,7 +73,7 @@ export function AdminLiveFeedPage() {
     queryKey: ['admin', 'live-feed', dateFrom],
     queryFn: async () =>
       (await api.get(`/events?date_from=${dateFrom}&limit=200`)).data,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000, // canlı akış — 10sn poll
   });
 
   const items = data?.items ?? [];

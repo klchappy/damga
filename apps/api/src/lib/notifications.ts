@@ -6,8 +6,8 @@
  * çeker ve unread varsa (browser permission varsa) ekran bildirimi gösterir.
  */
 
-import { eq, and, desc, sql } from 'drizzle-orm';
-import { getDb, notifications } from '@damga/db';
+import { eq, and, desc, sql, inArray, ne } from 'drizzle-orm';
+import { getDb, notifications, users } from '@damga/db';
 import { logger } from '../config/logger';
 import { sendPushToUser } from './push';
 
@@ -88,4 +88,69 @@ export async function markAllRead(userId: string) {
     .update(notifications)
     .set({ is_read: true, read_at: new Date() })
     .where(and(eq(notifications.user_id, userId), eq(notifications.is_read, false)));
+}
+
+/**
+ * Bir org'un tüm yöneticilerine (admin + owner + manager) toplu bildirim gönderir.
+ * Damga olayı gibi yönetici dikkat etmesi gereken event'ler için.
+ *
+ * @param excludeUserId — damgalayan kişinin kendisi de admin/owner ise bildirim almasın
+ */
+export async function notifyOrgManagers(input: {
+  orgId: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  url?: string | null;
+  metadata?: Record<string, unknown>;
+  excludeUserId?: string;
+  /** Sadece bu rollerdeki kullanıcılara gönder (default: tüm yöneticiler) */
+  roles?: Array<'owner' | 'admin' | 'manager'>;
+}): Promise<{ count: number }> {
+  try {
+    const db = getDb();
+    const targetRoles = input.roles ?? ['owner', 'admin', 'manager'];
+    const managers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.org_id, input.orgId),
+          eq(users.is_active, true),
+          inArray(users.role, targetRoles),
+          input.excludeUserId ? ne(users.id, input.excludeUserId) : sql`true`,
+        ),
+      );
+    if (managers.length === 0) return { count: 0 };
+
+    // Bulk insert — tek query
+    const rows = await db
+      .insert(notifications)
+      .values(
+        managers.map((m) => ({
+          org_id: input.orgId,
+          user_id: m.id,
+          type: input.type,
+          title: input.title,
+          body: input.body ?? null,
+          url: input.url ?? null,
+          metadata: input.metadata ?? {},
+        })),
+      )
+      .returning({ id: notifications.id, user_id: notifications.user_id });
+
+    // Web push paralel (fire-and-forget, başarısızlık görmezden gelinir)
+    for (const r of rows) {
+      void sendPushToUser(r.user_id, {
+        title: input.title,
+        body: input.body ?? undefined,
+        url: input.url ?? undefined,
+        tag: `damga-${input.type}-${r.id}`,
+      }).catch(() => {});
+    }
+    return { count: rows.length };
+  } catch (e) {
+    logger.error({ err: e, type: input.type }, 'notifyOrgManagers failed');
+    return { count: 0 };
+  }
 }

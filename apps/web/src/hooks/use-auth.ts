@@ -34,6 +34,10 @@ export interface OrgSettings {
   employee_visible_pages?: EmployeePageKey[];
   /** Her damgada otomatik selfie zorla (KVKK uyumlu, ekranda bilgilendirilir) */
   auto_selfie_every_stamp?: boolean;
+  /** Onboarding tamamlandıysa ISO timestamp */
+  onboarding_completed_at?: string;
+  /** Owner "atla" derse ISO timestamp — wizard tekrar gösterilmez */
+  onboarding_skipped_at?: string;
 }
 
 export interface AuthOrg {

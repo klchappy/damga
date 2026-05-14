@@ -6,6 +6,38 @@ import { Bell, Check } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { sendBrowserNotification, getNotificationPermission } from '@/lib/notifications';
 import { formatDateTimeTr } from '@/lib/utils';
+import { useAuthStore } from '@/hooks/use-auth';
+
+/**
+ * Kısa bir "ding" sesi çal — yöneticiye yeni damga event'i geldi.
+ * Web Audio API kullanılır (mp3 dosyasına gerek yok, bundle bedavaya gelir).
+ * Kullanıcı sayfada etkileşim yapmadıysa AudioContext başlatılamaz; sessizce ignore.
+ */
+function playDing(): void {
+  try {
+    const Ctx = (window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
+    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.18); // E5
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+    setTimeout(() => ctx.close().catch(() => {}), 500);
+  } catch {
+    /* noop — bazı tarayıcılar kullanıcı interaction olmadan AudioContext açmaz */
+  }
+}
 
 interface NotificationItem {
   id: string;
@@ -45,18 +77,22 @@ export function NotificationBell() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const user = useAuthStore((s) => s.user);
+  const isManager = user && ['owner', 'admin', 'manager'].includes(user.role);
 
   const { data } = useQuery<NotifResponse>({
     queryKey: ['me', 'notifications'],
     queryFn: async () => (await api.get('/me/notifications?limit=20')).data,
-    refetchInterval: 30_000, // her 30sn poll
-    staleTime: 10_000,
+    // Yöneticiler: 10sn (canlı damga akışı izlenecek) — çalışanlar: 30sn
+    refetchInterval: isManager ? 10_000 : 30_000,
+    staleTime: 5_000,
   });
 
-  // Browser notification trigger: created_at lastSeenTs'den büyük olan unread'ler
+  // Notification trigger: created_at lastSeenTs'den büyük olan unread'ler
+  // - Sayfa görünürse: in-page toast (sonner) — admin/manager için stamp event'leri net görünsün
+  // - Sayfa arka planda + browser permission var: OS notification
   useEffect(() => {
     if (!data?.items || data.items.length === 0) return;
-    if (getNotificationPermission() !== 'granted') return;
 
     const lastSeen = getLastSeenTs();
     const fresh = data.items
@@ -73,23 +109,61 @@ export function NotificationBell() {
       return;
     }
 
-    // Sayfa odakta ve aktifse browser notif gerek yok (bell badge zaten görünür)
+    const top = fresh[0]!;
+    const isStampEvent =
+      top.type === 'stamp_check_in' || top.type === 'stamp_check_out';
+
+    // Sayfa odakta + görünür: in-page toast göster (özellikle stamp event'leri için)
     if (document.hasFocus() && !document.hidden) {
-      setLastSeenTs(new Date(fresh[0]!.created_at).getTime());
+      if (isStampEvent) {
+        // Yöneticiye damga atan kişi bildirimi — full context'le toast
+        const isCheckIn = top.type === 'stamp_check_in';
+        // Damga sesi (yönetici için)
+        playDing();
+        toast(top.title, {
+          description: top.body ?? undefined,
+          duration: 6000,
+          icon: isCheckIn ? '🟢' : '🔴',
+          action: top.url
+            ? {
+                label: 'Detay',
+                onClick: () => navigate(top.url ?? '/admin/live-feed'),
+              }
+            : undefined,
+        });
+        // Tüm yeni stamp event'leri için "fresh" listesinden sonrakileri de göster (max 3)
+        for (const f of fresh.slice(1, 3)) {
+          if (f.type === 'stamp_check_in' || f.type === 'stamp_check_out') {
+            toast(f.title, {
+              description: f.body ?? undefined,
+              duration: 5000,
+              icon: f.type === 'stamp_check_in' ? '🟢' : '🔴',
+            });
+          }
+        }
+      } else {
+        // Diğer notif türleri için kısa info toast
+        toast.info(top.title, {
+          description: top.body ?? undefined,
+          duration: 4000,
+        });
+      }
+      setLastSeenTs(new Date(top.created_at).getTime());
       return;
     }
 
-    // En yeni unread'i göster
-    const top = fresh[0]!;
-    sendBrowserNotification({
-      title: top.title,
-      body: top.body ?? undefined,
-      tag: `damga-notif-${top.id}`,
-      url: top.url ?? undefined,
-      autoClose: 8000,
-    });
+    // Sayfa arka planda: browser notification (OS-level)
+    if (getNotificationPermission() === 'granted') {
+      sendBrowserNotification({
+        title: top.title,
+        body: top.body ?? undefined,
+        tag: `damga-notif-${top.id}`,
+        url: top.url ?? undefined,
+        autoClose: 8000,
+      });
+    }
     setLastSeenTs(new Date(top.created_at).getTime());
-  }, [data]);
+  }, [data, navigate]);
 
   // Dropdown dış tıklama
   useEffect(() => {

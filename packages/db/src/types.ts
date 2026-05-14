@@ -88,6 +88,16 @@ export interface OrgSettings {
    * belirtilmiş) ve fotoğraf çekildiğinin EKRANDA bilgilendirildiği şarttır.
    */
   auto_selfie_every_stamp?: boolean;
+  /**
+   * Onboarding wizard tamamlandı mı (ilk lokasyon + ilk davet + NFC/QR test).
+   * Owner ilk org oluşturduğunda undefined; 3 adımı tamamlayınca ISO timestamp atanır.
+   * Bu alan tanımsızsa frontend `/onboarding`'a yönlendirir (skip butonuyla geçilebilir).
+   */
+  onboarding_completed_at?: string;
+  /**
+   * Owner onboarding'i geçtiyse skip işareti — frontend'e tekrar göstermesin.
+   */
+  onboarding_skipped_at?: string;
 }
 
 export interface DeviceInfo {

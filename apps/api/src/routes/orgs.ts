@@ -94,3 +94,73 @@ orgsRouter.get('/orgs/me', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * POST /v1/orgs/me/onboarding/complete
+ *
+ * Owner onboarding wizard'ı tamamladığında çağrılır. settings.onboarding_completed_at
+ * alanına ISO timestamp yazılır. Frontend bunu kontrol edip wizard'ı bir daha göstermez.
+ */
+orgsRouter.post(
+  '/orgs/me/onboarding/complete',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const db = getDb();
+      const [current] = await db
+        .select({ settings: orgs.settings })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      if (!current) throw new HttpError(404, 'Şirket bulunamadı');
+      const next = {
+        ...(current.settings ?? {}),
+        onboarding_completed_at: new Date().toISOString(),
+      };
+      await db
+        .update(orgs)
+        .set({ settings: next, updated_at: new Date() })
+        .where(eq(orgs.id, req.authOrgId));
+      logger.info({ orgId: req.authOrgId, by: req.authUserId }, '✓ Onboarding tamamlandı');
+      res.json({ ok: true, completed_at: next.onboarding_completed_at });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /v1/orgs/me/onboarding/skip
+ *
+ * Owner "şimdi atla" derse settings.onboarding_skipped_at yazılır. Tamamlanmış
+ * sayılmaz ama wizard tekrar gösterilmez.
+ */
+orgsRouter.post(
+  '/orgs/me/onboarding/skip',
+  requireAuth,
+  requireRole('admin', 'owner'),
+  async (req, res, next) => {
+    try {
+      if (!req.authOrgId) throw new HttpError(401, 'Yetki yok');
+      const db = getDb();
+      const [current] = await db
+        .select({ settings: orgs.settings })
+        .from(orgs)
+        .where(eq(orgs.id, req.authOrgId));
+      if (!current) throw new HttpError(404, 'Şirket bulunamadı');
+      const next = {
+        ...(current.settings ?? {}),
+        onboarding_skipped_at: new Date().toISOString(),
+      };
+      await db
+        .update(orgs)
+        .set({ settings: next, updated_at: new Date() })
+        .where(eq(orgs.id, req.authOrgId));
+      logger.info({ orgId: req.authOrgId, by: req.authUserId }, 'Onboarding atlandı');
+      res.json({ ok: true, skipped_at: next.onboarding_skipped_at });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
