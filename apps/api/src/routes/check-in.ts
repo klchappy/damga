@@ -13,6 +13,7 @@ import { dispatchWebhook } from '../modules/webhook-delivery';
 import { uploadSelfie } from '../lib/storage';
 import { awardXp, computeOnTimeBonus } from '../lib/xp';
 import { detectOvertime } from '../lib/overtime';
+import { getUserShiftForDate } from '../lib/shift-lookup';
 import { createNotification } from '../lib/notifications';
 
 export const checkInRouter = Router();
@@ -404,12 +405,21 @@ async function performAttendance(
       refType: 'attendance_event',
     });
 
-    // 2) Çalışma saatlerine uygunluk bonusu / cezası
+    // 2) Çalışma saatlerine uygunluk bonusu / cezası — VARDIYA BAZLI
+    // Kullanıcının O GÜN için atanmış vardiyasının saatlerini al.
+    // Vardiya yoksa: geç/erken bonus/penalty UYGULANMAZ (no_shift_assigned).
+    // Eski bug: lokasyon work_hours kullanılıyordu → 14-23 vardiyalı çalışan
+    // 14:05'te giriş yaptığında "saatlerce geç" cezası alıyordu.
+    const shift = await getUserShiftForDate({
+      orgId: req.authOrgId,
+      userId: req.authUserId,
+      serverTime: event.server_time,
+    });
     const onTime = computeOnTimeBonus({
       type,
       serverTime: event.server_time,
-      workStart: location.work_hours_start || '09:00',
-      workEnd: location.work_hours_end || '18:00',
+      workStart: shift?.start ?? null,
+      workEnd: shift?.end ?? null,
     });
     if (onTime.bonus !== 0) {
       const isPenalty = onTime.bonus < 0;

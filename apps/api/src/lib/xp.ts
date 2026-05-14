@@ -56,7 +56,11 @@ export async function awardXp(input: AwardXpInput) {
 }
 
 /**
- * Çalışma saatlerine uygunluk bonusu/cezası — basit kural seti.
+ * Çalışma saatlerine uygunluk bonusu/cezası — vardiya bazlı.
+ *
+ * **ÖNEMLİ:** workStart/workEnd kullanıcının O GÜNKÜ atanmış vardiyasının
+ * saatleridir (`shift_lookup.ts`'ten gelir). Lokasyon work_hours DEĞİL.
+ * Vardiya yoksa (null) → bonus/penalty UYGULANMAZ ({ 0, 'no_shift_assigned' }).
  *
  * check_in:
  *   - <= start             → +5 (on_time)
@@ -73,11 +77,17 @@ export async function awardXp(input: AwardXpInput) {
 export function computeOnTimeBonus(args: {
   type: 'check_in' | 'check_out';
   serverTime: Date;
-  /** Lokasyonun work_hours_start/end (HH:MM) */
-  workStart: string;
-  workEnd: string;
+  /** Vardiya start_time (HH:MM, Istanbul). null = vardiya atanmamış */
+  workStart: string | null;
+  /** Vardiya end_time (HH:MM, Istanbul). null = vardiya atanmamış */
+  workEnd: string | null;
   timezone?: string; // şimdilik kullanılmıyor (Europe/Istanbul varsayım)
 }): { bonus: number; reason: string } {
+  // Vardiya atanmamış kullanıcıya geç/erken cezası/bonusu YOK.
+  // (Eski bug: lokasyon work_hours kullanılıyordu → vardiyasız da değerlendiriliyordu)
+  if (!args.workStart || !args.workEnd) {
+    return { bonus: 0, reason: 'no_shift_assigned' };
+  }
   const [sH, sM] = args.workStart.split(':').map(Number) as [number, number];
   const [eH, eM] = args.workEnd.split(':').map(Number) as [number, number];
   const now = args.serverTime;
