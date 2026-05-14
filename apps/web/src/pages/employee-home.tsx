@@ -8,12 +8,17 @@ import { useAuthStore } from '@/hooks/use-auth';
 
 interface EventDTO {
   id: string;
+  user_id?: string;
   type: string;
   server_time: string;
   verification_score: number;
   flags: string[];
   verification_methods: string[];
+  review_status?: 'approved' | 'pending_review' | 'rejected';
+  distance_from_office_m?: number | null;
   location?: { name: string } | null;
+  /** Manager/admin/owner çağırırsa user info da gelir; çalışan kendi event'inde null kalır */
+  user?: { full_name: string; email: string; avatar_url?: string | null } | null;
 }
 
 interface MyShift {
@@ -32,9 +37,12 @@ interface MyShift {
 
 export function EmployeeHomePage() {
   const user = useAuthStore((s) => s.user);
+  const isManager = !!user && ['manager', 'admin', 'owner'].includes(user.role);
 
   const { data: eventsData, refetch } = useQuery<{ items: EventDTO[] }>({
-    queryKey: ['events', 'me'],
+    queryKey: ['events', 'home-feed', isManager ? 'org' : 'me'],
+    // Manager/admin/owner için TÜM org event'leri (kim damga vurdu görsün);
+    // çalışan için sadece kendi event'leri (API zaten otomatik filtreler ama explicit).
     queryFn: async () => (await api.get('/events?limit=10')).data,
     refetchInterval: 30_000,
   });
@@ -138,33 +146,89 @@ export function EmployeeHomePage() {
       {/* Geçmiş */}
       {events.length > 0 && (
         <div className="card">
-          <h2 className="text-xl mb-3">Son 10 damga</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl">
+              {isManager ? '⚡ Son 10 damga (tüm ekip)' : 'Son 10 damga'}
+            </h2>
+            {isManager && (
+              <Link
+                to="/admin/live-feed"
+                className="text-xs text-orange-600 hover:underline inline-flex items-center gap-0.5"
+              >
+                Tümünü gör <ArrowRight className="size-3" />
+              </Link>
+            )}
+          </div>
           <ul className="divide-y divide-orange-100">
-            {events.map((e) => (
-              <li key={e.id} className="flex items-center justify-between py-3">
-                <div>
-                  <div className="font-medium">
-                    {e.type === 'check_in' ? '⏱️ Giriş' : e.type === 'check_out' ? '🏃 Çıkış' : '📝 ' + e.type}
+            {events.map((e) => {
+              // Manager için "kim damga vurdu" görünür; çalışan kendi event'lerinde
+              // user null gelir veya kendi adıdır — biz tekrar isim göstermeyiz.
+              const showActor = isManager && e.user && e.user_id !== user?.id;
+              const isOutOfFence = (e as { review_reasons?: string[] }).review_reasons?.includes('out_of_geofence');
+              const isPending = e.review_status === 'pending_review';
+              return (
+                <li key={e.id} className="flex items-start justify-between gap-3 py-3 flex-wrap">
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    {/* Avatar / initials — sadece manager view'da */}
+                    {showActor && (
+                      <div className="flex size-9 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700 shrink-0 overflow-hidden text-sm">
+                        {e.user!.avatar_url ? (
+                          <img src={e.user!.avatar_url} alt={e.user!.full_name} className="size-full object-cover" />
+                        ) : (
+                          e.user!.full_name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                        {showActor && (
+                          <span className="font-semibold">{e.user!.full_name}</span>
+                        )}
+                        <span>
+                          {e.type === 'check_in'
+                            ? '⏱️ Giriş'
+                            : e.type === 'check_out'
+                              ? '🏃 Çıkış'
+                              : '📝 ' + e.type}
+                        </span>
+                        {isPending && (
+                          <span className="chip bg-warning/10 text-warning text-[10px]">
+                            📸 onay bekliyor
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted mt-0.5">
+                        {formatDateTimeTr(e.server_time)}
+                        {e.location && ` · 📍 ${e.location.name}`}
+                        {e.distance_from_office_m != null && (
+                          <span
+                            className={
+                              isOutOfFence ? 'text-warning ml-1 font-medium' : 'text-muted ml-1'
+                            }
+                          >
+                            ({e.distance_from_office_m}m)
+                          </span>
+                        )}
+                        {e.verification_methods.length > 0 && (
+                          <span className="ml-1">· {e.verification_methods.join('+')}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted">
-                    {formatDateTimeTr(e.server_time)}
-                    {e.location && ` · ${e.location.name}`}
-                    {e.verification_methods.length > 0 && ` · ${e.verification_methods.join('+')}`}
-                  </div>
-                </div>
-                <span
-                  className={`chip ${
-                    e.verification_score >= 80
-                      ? 'bg-success/10 text-success'
-                      : e.verification_score >= 60
-                        ? 'bg-warning/10 text-warning'
-                        : 'bg-danger/10 text-danger'
-                  }`}
-                >
-                  {e.verification_score}/100
-                </span>
-              </li>
-            ))}
+                  <span
+                    className={`chip shrink-0 ${
+                      e.verification_score >= 80
+                        ? 'bg-success/10 text-success'
+                        : e.verification_score >= 60
+                          ? 'bg-warning/10 text-warning'
+                          : 'bg-danger/10 text-danger'
+                    }`}
+                  >
+                    {e.verification_score}/100
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

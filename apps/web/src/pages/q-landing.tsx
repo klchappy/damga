@@ -16,6 +16,7 @@ import { useAuthStore } from '@/hooks/use-auth';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { api, getErrorMessage } from '@/lib/api';
 import { generateDeviceId } from '@/lib/utils';
+import { SelfieCaptureModal } from '@/components/selfie-capture';
 
 export function QLandingPage() {
   const { locationId } = useParams<{ locationId: string }>();
@@ -34,6 +35,18 @@ export function QLandingPage() {
     serverTime: string | null;
     score: number;
     distance: number | null;
+    pendingReview: boolean;
+  } | null>(null);
+
+  // Backend anomali tespit edip selfie isterse modal aç → upload sonrası
+  // payload'a selfie_url ekleyip /stamp'i yeniden çağır.
+  const [selfiePrompt, setSelfiePrompt] = useState<{
+    reasons: string[];
+    reason_messages?: string[];
+    distance_m?: number | null;
+    geofence_radius_m?: number | null;
+    auto: boolean;
+    pendingPayload: Record<string, unknown>;
   } | null>(null);
 
   useEffect(() => {
@@ -73,9 +86,9 @@ export function QLandingPage() {
     !lastTodayType || lastTodayType === 'check_out' ? 'check_in' : 'check_out';
 
   const stampMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (extra?: { selfie_url?: string }) => {
       const pos = await geo.getCurrent();
-      const { data } = await api.post('/stamp', {
+      const payload = {
         location_id: locationId,
         client_time: new Date().toISOString(),
         device_id: generateDeviceId(),
@@ -88,26 +101,53 @@ export function QLandingPage() {
         latitude: pos.latitude,
         longitude: pos.longitude,
         gps_accuracy_m: pos.accuracy,
-      });
-      return {
-        ...data,
-        type: (data.type ?? nextAction) as 'check_in' | 'check_out',
-        distance: data.distance_from_office_m,
+        ...(extra?.selfie_url ? { selfie_url: extra.selfie_url } : {}),
       };
+      const { data } = await api.post('/stamp', payload);
+      return { data, payload };
     },
-    onSuccess: (d) => {
-      const actor = d.user?.full_name ?? user?.full_name ?? 'Kullanici';
-      const label = d.type === 'check_in' ? 'giris' : 'cikis';
+    onSuccess: ({ data, payload }) => {
+      // FIX (bug): Backend `needs_selfie: true` dönerse damga HENÜZ KAYDEDİLMEMİŞTİR.
+      // Önceki versiyon bu durumu fark etmeyip sahte "kaydedildi" gösterip ana sayfaya
+      // yönlendiriyordu → kullanıcı damganın yok olduğunu fark ediyordu.
+      if (data?.needs_selfie) {
+        setSelfiePrompt({
+          reasons: data.reasons ?? [],
+          reason_messages: data.reason_messages,
+          distance_m: data.distance_m,
+          geofence_radius_m: data.geofence_radius_m,
+          auto: !!data.auto,
+          pendingPayload: payload,
+        });
+        const msg =
+          data.message ??
+          'Konum doğrulanamadı — yönetici onayı için selfie çekmen gerekiyor.';
+        toast.warning(msg);
+        return;
+      }
+
+      // Normal kayıt akışı
+      const type = (data.type ?? nextAction) as 'check_in' | 'check_out';
+      const actor = data.user?.full_name ?? user?.full_name ?? 'Kullanıcı';
+      const label = type === 'check_in' ? 'giriş' : 'çıkış';
+      const isPending = data.review_status === 'pending_review';
+
       setStamped({
-        type: d.type,
+        type,
         userName: actor,
-        locationName: d.location?.name ?? null,
-        serverTime: d.server_time ?? null,
-        score: d.verification_score,
-        distance: d.distance ?? null,
+        locationName: data.location?.name ?? null,
+        serverTime: data.server_time ?? null,
+        score: data.verification_score,
+        distance: data.distance_from_office_m ?? null,
+        pendingReview: isPending,
       });
       void refetchToday();
-      toast.success(`${actor} icin ${label} kaydedildi`);
+
+      if (isPending) {
+        toast.success(`📸 ${actor} için ${label} kaydedildi — yönetici onayı bekleniyor`);
+      } else {
+        toast.success(`${actor} için ${label} kaydedildi · trust ${data.verification_score}/100`);
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -132,15 +172,21 @@ export function QLandingPage() {
   }
 
   if (stamped) {
-    const title =
-      stamped.type === 'check_in'
-        ? `${stamped.userName} icin giris kaydedildi`
-        : `${stamped.userName} icin cikis kaydedildi`;
+    const labelTr = stamped.type === 'check_in' ? 'Giriş' : 'Çıkış';
+    const title = stamped.pendingReview
+      ? `${stamped.userName} için ${labelTr.toLowerCase()} — onay bekleniyor`
+      : `${stamped.userName} için ${labelTr.toLowerCase()} kaydedildi`;
 
     return (
       <CardWrapper>
         <div className="space-y-3 text-center">
-          <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-success/10 text-success">
+          <div
+            className={`mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl ${
+              stamped.pendingReview
+                ? 'bg-warning/10 text-warning'
+                : 'bg-success/10 text-success'
+            }`}
+          >
             <CheckCircle2 className="size-9" />
           </div>
           <h1 className="font-display text-2xl">{title}</h1>
@@ -153,9 +199,14 @@ export function QLandingPage() {
             Trust skor: <strong className="text-ink">{stamped.score}/100</strong>
             {stamped.distance != null && <> · {Math.round(stamped.distance)}m mesafe</>}
           </p>
+          {stamped.pendingReview && (
+            <p className="text-xs text-warning">
+              📸 Selfie ile birlikte kaydedildi. Yöneticin onayladığında nihai olur.
+            </p>
+          )}
           {stamped.serverTime && (
             <p className="text-xs text-muted">
-              Islem zamani: {new Date(stamped.serverTime).toLocaleString('tr-TR')}
+              İşlem zamanı: {new Date(stamped.serverTime).toLocaleString('tr-TR')}
             </p>
           )}
           <div className="flex justify-center gap-2 pt-2">
@@ -163,7 +214,7 @@ export function QLandingPage() {
               Ana sayfa
             </Link>
             <Link to="/history" className="btn-outline text-sm">
-              Gecmisim
+              Geçmişim
             </Link>
           </div>
         </div>
@@ -210,7 +261,7 @@ export function QLandingPage() {
 
       <button
         type="button"
-        onClick={() => stampMut.mutate()}
+        onClick={() => stampMut.mutate(undefined)}
         disabled={stampMut.isPending || geo.loading}
         className="btn-primary w-full py-3 text-base"
       >
@@ -221,7 +272,7 @@ export function QLandingPage() {
         ) : (
           <LogOut className="size-5" />
         )}
-        {nextAction === 'check_in' ? 'Girisi Damgala' : 'Cikisi Damgala'}
+        {nextAction === 'check_in' ? 'Girişi Damgala' : 'Çıkışı Damgala'}
       </button>
 
       {stampMut.isError && (
@@ -233,9 +284,26 @@ export function QLandingPage() {
 
       <div className="text-center text-xs text-muted">
         <Link to="/" className="underline-offset-4 hover:text-orange-600 hover:underline">
-          QR'i tarayip damga vurmadan ana sayfaya git
+          QR'i tarayıp damga vurmadan ana sayfaya git
         </Link>
       </div>
+
+      {/* Backend selfie istiyorsa modal aç — kullanıcı selfie çeker, upload eder,
+          biz de selfie_url ile /stamp'i yeniden çağırırız (artık kayıt yapılır). */}
+      {selfiePrompt && (
+        <SelfieCaptureModal
+          reasons={selfiePrompt.reasons}
+          reasonMessages={selfiePrompt.reason_messages}
+          distanceMeters={selfiePrompt.distance_m ?? null}
+          geofenceRadiusM={selfiePrompt.geofence_radius_m ?? null}
+          autoCapture={selfiePrompt.auto}
+          onClose={() => setSelfiePrompt(null)}
+          onUploaded={(selfieUrl) => {
+            setSelfiePrompt(null);
+            stampMut.mutate({ selfie_url: selfieUrl });
+          }}
+        />
+      )}
     </CardWrapper>
   );
 }

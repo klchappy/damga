@@ -61,7 +61,6 @@ const REASON_TR: Record<string, string> = {
 export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean }) {
   const qc = useQueryClient();
   const [viewing, setViewing] = useState<PendingReview | null>(null);
-  const [decision, setDecision] = useState<'approve' | 'reject' | null>(null);
   const [notes, setNotes] = useState('');
 
   const { data, isLoading } = useQuery<{ items: PendingReview[] }>({
@@ -84,7 +83,6 @@ export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean
       );
       void qc.invalidateQueries({ queryKey: ['admin', 'pending-reviews'] });
       setViewing(null);
-      setDecision(null);
       setNotes('');
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -195,24 +193,11 @@ export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean
 
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => {
-                    setViewing(it);
-                    setDecision('approve');
-                  }}
-                  className="btn-primary flex-1 text-xs"
+                  onClick={() => setViewing(it)}
+                  className="btn-outline flex-1 text-xs"
                   disabled={reviewMut.isPending}
                 >
-                  <CheckCircle2 className="size-3.5" /> Onayla
-                </button>
-                <button
-                  onClick={() => {
-                    setViewing(it);
-                    setDecision('reject');
-                  }}
-                  className="btn-outline flex-1 text-xs border-danger/40 text-danger hover:bg-danger/5"
-                  disabled={reviewMut.isPending}
-                >
-                  <XCircle className="size-3.5" /> Reddet
+                  <ShieldCheck className="size-3.5" /> İncele
                 </button>
               </div>
             </div>
@@ -223,18 +208,25 @@ export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean
       {viewing && (
         <ReviewDetailModal
           item={viewing}
-          decision={decision}
           notes={notes}
           onNotesChange={setNotes}
-          onDecisionChange={setDecision}
           onClose={() => {
             setViewing(null);
-            setDecision(null);
             setNotes('');
           }}
-          onSubmit={() =>
-            decision &&
-            reviewMut.mutate({ id: viewing.id, decision, notes: notes.trim() || undefined })
+          onApprove={() =>
+            reviewMut.mutate({
+              id: viewing.id,
+              decision: 'approve',
+              notes: notes.trim() || undefined,
+            })
+          }
+          onReject={() =>
+            reviewMut.mutate({
+              id: viewing.id,
+              decision: 'reject',
+              notes: notes.trim() || undefined,
+            })
           }
           isPending={reviewMut.isPending}
         />
@@ -245,21 +237,19 @@ export function AdminPendingReviewsPage({ compact = false }: { compact?: boolean
 
 function ReviewDetailModal({
   item,
-  decision,
   notes,
   onNotesChange,
-  onDecisionChange,
   onClose,
-  onSubmit,
+  onApprove,
+  onReject,
   isPending,
 }: {
   item: PendingReview;
-  decision: 'approve' | 'reject' | null;
   notes: string;
   onNotesChange: (v: string) => void;
-  onDecisionChange: (d: 'approve' | 'reject' | null) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  onApprove: () => void;
+  onReject: () => void;
   isPending: boolean;
 }) {
   return (
@@ -354,42 +344,32 @@ function ReviewDetailModal({
           />
         </div>
 
+        {/* Tek-tıkla karar: Reddet veya Onayla — eski 2-adımlı (önce seç, sonra Kararı uygula)
+            akış kaldırıldı (gereksiz tıklama). Buton'a basınca direkt mutation tetiklenir. */}
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button
             type="button"
-            onClick={() => onDecisionChange('reject')}
+            onClick={onReject}
             disabled={isPending}
-            className={`btn-outline border-danger/40 text-danger hover:bg-danger/5 text-sm ${
-              decision === 'reject' ? 'ring-2 ring-danger/40' : ''
-            }`}
+            className="btn-outline border-danger/40 text-danger hover:bg-danger/5 text-sm"
           >
-            <XCircle className="size-4" /> Reddet
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+            Reddet
           </button>
           <button
             type="button"
-            onClick={() => onDecisionChange('approve')}
+            onClick={onApprove}
             disabled={isPending}
-            className={`btn-primary text-sm ${
-              decision === 'approve' ? 'ring-2 ring-orange-400' : ''
-            }`}
+            className="btn-primary text-sm"
           >
-            <CheckCircle2 className="size-4" /> Onayla
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            Onayla
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={!decision || isPending}
-          className="btn-primary w-full"
-        >
-          {isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ShieldCheck className="size-4" />
-          )}
-          Kararı uygula
-        </button>
+        <p className="text-[11px] text-muted text-center">
+          Karar tek tıklamada uygulanır. Gerekçe yazarak iz bırakabilirsin (opsiyonel).
+        </p>
       </div>
     </div>
   );
