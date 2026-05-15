@@ -28,7 +28,7 @@ export function LanguageSwitcher() {
           onClick={() => void i18n.changeLanguage(l.code)}
           className={`px-2.5 py-1 rounded-md text-sm font-medium transition ${
             current === l.code
-              ? 'bg-blue-600 text-white'
+              ? 'bg-purple-700 text-white'
               : 'text-zinc-600 hover:bg-zinc-100'
           }`}
           aria-label={l.label}

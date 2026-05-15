@@ -142,7 +142,7 @@ export function LandingPage() {
       <nav className="border-b border-zinc-100 bg-white/80 backdrop-blur sticky top-0 z-30">
         <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 font-bold">
-            <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+            <span className="w-7 h-7 rounded-lg bg-purple-700 text-white flex items-center justify-center">
               <Stamp className="w-4 h-4" />
             </span>
             Damga
@@ -159,7 +159,7 @@ export function LandingPage() {
             </Link>
             <Link
               to="/auth/sign-up-org"
-              className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 font-medium"
+              className="rounded-lg bg-purple-700 hover:bg-purple-800 text-white px-4 py-1.5 font-medium"
             >
               Ücretsiz başla
             </Link>
@@ -169,12 +169,12 @@ export function LandingPage() {
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-4 py-16 md:py-24 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 text-blue-700 px-3 py-1 text-xs font-medium mb-6">
+        <div className="inline-flex items-center gap-2 rounded-full bg-purple-50 text-purple-800 px-3 py-1 text-xs font-medium mb-6">
           <Sparkles className="w-3.5 h-3.5" />
           Şeffaf, manipülasyona kapalı işyeri yoklama
         </div>
         <h1 className="text-4xl md:text-6xl font-bold tracking-tight max-w-3xl mx-auto leading-tight">
-          Çalışanların geliş-gidişi <span className="text-blue-600">kanıtlı</span> ve şeffaf
+          Çalışanların geliş-gidişi <span className="text-purple-700">kanıtlı</span> ve şeffaf
         </h1>
         <p className="mt-6 text-lg md:text-xl text-zinc-600 max-w-2xl mx-auto">
           NFC, QR, GPS, WiFi ve cihaz parmak izinden hesaplanan dürüstlük skoru.
@@ -183,7 +183,7 @@ export function LandingPage() {
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
             to="/auth/sign-up-org"
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 font-semibold shadow-sm hover:shadow-md transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white px-6 py-3 font-semibold shadow-sm hover:shadow-md transition"
           >
             Ücretsiz başla
             <ArrowRight className="w-4 h-4" />
@@ -231,8 +231,8 @@ export function LandingPage() {
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {FEATURES.map((f) => (
-            <div key={f.title} className="p-6 rounded-2xl border border-zinc-100 hover:border-blue-200 hover:shadow-sm transition">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+            <div key={f.title} className="p-6 rounded-2xl border border-zinc-100 hover:border-purple-200 hover:shadow-sm transition">
+              <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center mb-4">
                 <f.Icon className="w-5 h-5" />
               </div>
               <h3 className="font-semibold text-lg">{f.title}</h3>
@@ -279,12 +279,12 @@ export function LandingPage() {
               key={p.name}
               className={`rounded-2xl p-6 border-2 ${
                 p.highlighted
-                  ? 'border-blue-600 bg-blue-50/50 shadow-lg relative'
+                  ? 'border-purple-700 bg-purple-50/50 shadow-lg relative'
                   : 'border-zinc-100'
               }`}
             >
               {p.highlighted && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-700 text-white text-xs font-bold px-3 py-1 rounded-full">
                   EN POPÜLER
                 </div>
               )}
@@ -306,7 +306,7 @@ export function LandingPage() {
                 to="/auth/sign-up-org"
                 className={`mt-6 block text-center rounded-lg py-2.5 font-semibold transition ${
                   p.highlighted
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    ? 'bg-purple-700 hover:bg-purple-800 text-white'
                     : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900'
                 }`}
               >
@@ -317,7 +317,7 @@ export function LandingPage() {
         </div>
         <p className="text-center text-xs text-zinc-500 mt-8">
           KDV dahil değildir · İhtiyacın daha büyük mü?{' '}
-          <a href="mailto:satis@deploi.net" className="text-blue-600 hover:underline">
+          <a href="mailto:satis@deploi.net" className="text-purple-700 hover:underline">
             satis@deploi.net
           </a>
         </p>
@@ -337,19 +337,19 @@ export function LandingPage() {
             izi ile veri bütünlüğü sürekli doğrulanır.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm">
-            <Link to="/legal/kvkk" className="text-blue-600 hover:underline">
+            <Link to="/legal/kvkk" className="text-purple-700 hover:underline">
               KVKK Aydınlatma Metni
             </Link>
             <span className="text-zinc-300">·</span>
-            <Link to="/legal/privacy" className="text-blue-600 hover:underline">
+            <Link to="/legal/privacy" className="text-purple-700 hover:underline">
               Gizlilik Politikası
             </Link>
             <span className="text-zinc-300">·</span>
-            <Link to="/legal/terms" className="text-blue-600 hover:underline">
+            <Link to="/legal/terms" className="text-purple-700 hover:underline">
               Hizmet Şartları
             </Link>
             <span className="text-zinc-300">·</span>
-            <Link to="/status" className="text-blue-600 hover:underline">
+            <Link to="/status" className="text-purple-700 hover:underline">
               Sistem Durumu
             </Link>
           </div>
@@ -358,14 +358,14 @@ export function LandingPage() {
 
       {/* CTA */}
       <section className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <Users className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+        <Users className="w-12 h-12 text-purple-700 mx-auto mb-4" />
         <h2 className="text-3xl md:text-4xl font-bold">Ekibinin bugün başlamasına izin ver</h2>
         <p className="mt-4 text-zinc-600">
           3 kullanıcıya kadar daima ücretsiz. 2 dakikada ilk lokasyonunu kuruyorsun.
         </p>
         <Link
           to="/auth/sign-up-org"
-          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 font-semibold shadow-md hover:shadow-lg transition"
+          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white px-8 py-3.5 font-semibold shadow-md hover:shadow-lg transition"
         >
           Ücretsiz hesap aç
           <ArrowRight className="w-4 h-4" />
@@ -376,7 +376,7 @@ export function LandingPage() {
       <footer className="border-t border-zinc-100">
         <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-zinc-500 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center">
+            <span className="w-6 h-6 rounded-md bg-purple-700 text-white flex items-center justify-center">
               <Stamp className="w-3.5 h-3.5" />
             </span>
             <span className="font-semibold text-zinc-700">Damga</span>

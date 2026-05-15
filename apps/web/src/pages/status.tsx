@@ -98,7 +98,7 @@ export function StatusPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
+            <div className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center text-white">
               <Activity className="w-5 h-5" />
             </div>
             <div>
@@ -108,7 +108,7 @@ export function StatusPage() {
           </div>
           <a
             href="https://damga.deploi.net"
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-purple-700 hover:underline"
           >
             damga.deploi.net →
           </a>
@@ -155,7 +155,7 @@ export function StatusPage() {
               onClick={() => setRange(r.key)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 range === r.key
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-purple-700 text-white'
                   : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700'
               }`}
             >
@@ -215,7 +215,7 @@ function ServiceCard({ svc }: { svc: ServiceStatus }) {
           <Icon className="w-5 h-5 text-zinc-500" />
           <div>
             <div className="font-semibold">{info.name}</div>
-            <a href={info.url} className="text-xs text-blue-600 hover:underline">
+            <a href={info.url} className="text-xs text-purple-700 hover:underline">
               {info.url}
             </a>
           </div>
