@@ -10,6 +10,7 @@ import { logger } from '../config/logger';
 import { runWeekly, runMonthly, runAnnualLeaveReset as _annualReset, expireOldCredits } from './scheduler';
 import { runPings } from './health-monitor';
 import { anonymizeReadyUsers, hardDeleteOldUsers } from './account-cleanup';
+import { runWeeklySnapshot } from './hetzner-snapshot';
 
 export async function runWeeklyLeaderboardFinalize(): Promise<void> {
   await runWeekly();
@@ -50,4 +51,15 @@ export async function runAccountCleanup(): Promise<void> {
   const anon = await anonymizeReadyUsers();
   const hard = await hardDeleteOldUsers();
   logger.info({ anonymized: anon.count, hardDeleted: hard.count }, '✓ account-cleanup tamam');
+}
+
+export async function runWeeklyHetznerSnapshot(): Promise<void> {
+  const result = await runWeeklySnapshot();
+  if (result.skipped) {
+    logger.info({ reason: result.skipped }, 'Hetzner snapshot skipped (env eksik)');
+    return;
+  }
+  if (result.errors.length > 0) {
+    logger.warn({ errors: result.errors }, 'Hetzner snapshot kısmi hata');
+  }
 }

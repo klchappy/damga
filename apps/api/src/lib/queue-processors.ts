@@ -46,4 +46,8 @@ export const processors: Record<string, Processor> = {
     const { runMonitorPingsRetention } = await import('./scheduler-jobs');
     await runMonitorPingsRetention();
   },
+  'weekly-hetzner-snapshot': async () => {
+    const { runWeeklyHetznerSnapshot } = await import('./scheduler-jobs');
+    await runWeeklyHetznerSnapshot();
+  },
 };

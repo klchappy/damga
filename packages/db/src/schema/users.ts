@@ -57,6 +57,10 @@ export const users = pgTable(
     deletion_scheduled_at: timestamp('deletion_scheduled_at', { withTimezone: true }),
     /** Kullanıcının silme nedeni (opsiyonel feedback) */
     deletion_reason: text('deletion_reason'),
+    /** KVKK aydınlatma metni onay zaman damgası (sign-up'ta checkbox tıklandı) */
+    kvkk_accepted_at: timestamp('kvkk_accepted_at', { withTimezone: true }),
+    /** Hangi versiyondaki KVKK metni onaylandı (gelecek revizyonlar için) */
+    kvkk_consent_version: text('kvkk_consent_version'),
     /** Anonymize edildiği tarih (full_name='[Silinmiş]' vs olduğunda doldurulur) */
     deleted_at: timestamp('deleted_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

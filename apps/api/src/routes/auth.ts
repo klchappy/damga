@@ -22,6 +22,14 @@ export const authRouter = Router();
 // resolve-identifier, forgot). /auth/me GET'i her sayfa yüklenmesinde
 // çağrıldığı için MUAF — apiLimiter (300/dk) yeterli koruma sağlar.
 
+/**
+ * KVKK aydınlatma metni versiyonu — `apps/web/src/pages/legal.tsx` KvkkPage
+ * son güncelleme tarihine eşit. Metin değiştiğinde bu sabit güncellenir;
+ * yeni kullanıcılar bu version'la onay verir, eski kullanıcılar yeniden onay
+ * istemek isterse `kvkk_consent_version` farkından tespit edilir.
+ */
+const KVKK_CONSENT_VERSION = '2026-05-15';
+
 function getSupabaseAdmin() {
   if (!isConfigured.supabase) {
     throw new HttpError(503, 'Supabase yapılandırılmamış', 'SUPABASE_NOT_CONFIGURED');
@@ -129,6 +137,7 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
     }
 
     // Damga DB profile (org_id null + is_pending=true)
+    // KVKK: client onayı zaten schema zorunluluğu; burada zaman damgası + version kaydet
     const [user] = await db
       .insert(users)
       .values({
@@ -141,6 +150,8 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
         role,
         department: input.department ?? 'Diğer',
         is_pending: isPending,
+        kvkk_accepted_at: new Date(),
+        kvkk_consent_version: KVKK_CONSENT_VERSION,
       })
       .returning();
 
@@ -279,6 +290,8 @@ authRouter.post('/sign-up-org', requireSupabaseAuth, async (req, res, next) => {
         department: 'Diğer',
         is_active: true,
         is_pending: false,
+        kvkk_accepted_at: new Date(),
+        kvkk_consent_version: KVKK_CONSENT_VERSION,
       })
       .returning();
     if (!u) throw new HttpError(500, 'Kullanıcı kaydı oluşturulamadı');

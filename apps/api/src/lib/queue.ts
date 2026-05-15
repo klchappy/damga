@@ -73,6 +73,8 @@ const REPEAT_JOBS: RepeatJobDef[] = [
   { name: 'account-cleanup', pattern: '0 4 * * *', jobId: 'account-cleanup' },
   // Her gün 03:00 TR — monitor_pings 90+ gün retention
   { name: 'monitor-pings-retention', pattern: '0 3 * * *', jobId: 'pings-retention' },
+  // Her Pazar 03:00 TR — Hetzner haftalık snapshot + 28+ gün rotation
+  { name: 'weekly-hetzner-snapshot', pattern: '0 3 * * 0', jobId: 'hetzner-snapshot' },
 ];
 
 /**
