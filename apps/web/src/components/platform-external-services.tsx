@@ -221,13 +221,27 @@ export function PlatformExternalServices({ enabled = true }: { enabled?: boolean
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const [creatingNew, setCreatingNew] = useState(false);
+
   function openCreate() {
     setEditingId(null);
     setDraft(EMPTY_DRAFT);
-    setModalOpen(true);
+    setCreatingNew(true);
+    // Sayfa başına scroll — formu görsün
+    setTimeout(() => {
+      document
+        .getElementById('platform-services-new-form')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   }
 
   function openEdit(s: PlatformExternalService) {
+    if (editingId === s.id) {
+      // Toggle close
+      closeForm();
+      return;
+    }
+    setCreatingNew(false);
     setEditingId(s.id);
     setDraft({
       name: s.name,
@@ -243,14 +257,15 @@ export function PlatformExternalServices({ enabled = true }: { enabled?: boolean
       icon: s.icon ?? 'Server',
       display_order: s.display_order,
     });
-    setModalOpen(true);
   }
 
-  function closeModal() {
-    setModalOpen(false);
+  function closeForm() {
     setEditingId(null);
+    setCreatingNew(false);
     setDraft(EMPTY_DRAFT);
   }
+  // closeModal alias — eski kullanım için
+  const closeModal = closeForm;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -348,204 +363,252 @@ export function PlatformExternalServices({ enabled = true }: { enabled?: boolean
           Bu kategoride servis yok.
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredServices.map((s) => (
-            <ServiceCard
-              key={s.id}
-              service={s}
-              onEdit={() => openEdit(s)}
-              onDelete={() => handleDelete(s)}
-            />
-          ))}
-        </div>
-      )}
-
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <form
-            onSubmit={handleSubmit}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-2xl"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg">
-                {editingId ? 'Servisi Düzenle' : 'Yeni Servis Ekle'}
-              </h3>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="btn-ghost p-1.5 text-muted"
-                aria-label="Kapat"
-              >
-                <X className="size-4" />
-              </button>
+        <div className="space-y-3">
+          {/* Yeni servis inline form — grid'in TEPESinde full-width */}
+          {creatingNew && (
+            <div id="platform-services-new-form">
+              <InlineForm
+                draft={draft}
+                setDraft={setDraft}
+                onSubmit={handleSubmit}
+                onCancel={closeForm}
+                isEditing={false}
+                isPending={createMutation.isPending}
+              />
             </div>
+          )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <label className="label">Ad *</label>
-                <input
-                  className="input mt-1"
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="Örn: Hetzner Cloud"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="label">Kategori *</label>
-                <select
-                  className="input mt-1"
-                  value={draft.category}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      category: e.target.value as ServiceFormDraft['category'],
-                    })
-                  }
+          {/* Servisler grid'i — kart inline expanded olunca o satır full-width olur */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredServices.map((s) => {
+              const isExpanded = editingId === s.id;
+              return (
+                <div
+                  key={s.id}
+                  className={isExpanded ? 'sm:col-span-2 lg:col-span-3' : undefined}
                 >
-                  {SERVICE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {CATEGORY_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="label">Durum</label>
-                <select
-                  className="input mt-1"
-                  value={draft.status}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      status: e.target.value as ServiceFormDraft['status'],
-                    })
-                  }
-                >
-                  {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="label">Panel / Dashboard URL *</label>
-                <input
-                  type="url"
-                  className="input mt-1"
-                  value={draft.dashboard_url}
-                  onChange={(e) => setDraft({ ...draft, dashboard_url: e.target.value })}
-                  placeholder="https://console.hetzner.cloud"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="label">Hesap (email / kullanıcı)</label>
-                <input
-                  className="input mt-1"
-                  value={draft.account_identifier}
-                  onChange={(e) =>
-                    setDraft({ ...draft, account_identifier: e.target.value })
-                  }
-                  placeholder="kaanklc498@gmail.com"
-                />
-              </div>
-
-              <div>
-                <label className="label">Plan</label>
-                <input
-                  className="input mt-1"
-                  value={draft.plan}
-                  onChange={(e) => setDraft({ ...draft, plan: e.target.value })}
-                  placeholder="Free · CX22 €4/ay"
-                />
-              </div>
-
-              <div>
-                <label className="label">Bitwarden Note (referans)</label>
-                <input
-                  className="input mt-1"
-                  value={draft.bitwarden_note_name}
-                  onChange={(e) =>
-                    setDraft({ ...draft, bitwarden_note_name: e.target.value })
-                  }
-                  placeholder="Damga Sistem Envanteri"
-                />
-              </div>
-
-              <div>
-                <label className="label">Icon</label>
-                <select
-                  className="input mt-1"
-                  value={draft.icon}
-                  onChange={(e) => setDraft({ ...draft, icon: e.target.value })}
-                >
-                  {Object.keys(ICON_MAP).map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="label">Notlar (markdown)</label>
-                <textarea
-                  className="input mt-1"
-                  rows={4}
-                  value={draft.notes}
-                  onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                  placeholder="Region: EU, Pro'ya yükseltilecek..."
-                />
-              </div>
-
-              <div>
-                <label className="label">Sıra (display_order)</label>
-                <input
-                  type="number"
-                  className="input mt-1"
-                  value={draft.display_order}
-                  onChange={(e) =>
-                    setDraft({ ...draft, display_order: Number(e.target.value) || 0 })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={closeModal} className="btn-ghost text-sm">
-                İptal
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-                className="btn-primary text-sm"
-              >
-                {(createMutation.isPending || updateMutation.isPending) && (
-                  <Loader2 className="size-3.5 animate-spin" />
-                )}
-                {editingId ? 'Güncelle' : 'Ekle'}
-              </button>
-            </div>
-          </form>
+                  <ServiceCard
+                    service={s}
+                    isExpanded={isExpanded}
+                    onToggle={() => openEdit(s)}
+                    onDelete={() => handleDelete(s)}
+                  />
+                  {isExpanded && (
+                    <div className="mt-2">
+                      <InlineForm
+                        draft={draft}
+                        setDraft={setDraft}
+                        onSubmit={handleSubmit}
+                        onCancel={closeForm}
+                        isEditing={true}
+                        isPending={updateMutation.isPending}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </section>
   );
 }
 
+// Inline form — kart altında ya da grid başında render edilir, modal yerine.
+// Tüm veri giriş alanları her zaman görünür — collapsible accordion için ideal.
+function InlineForm({
+  draft,
+  setDraft,
+  onSubmit,
+  onCancel,
+  isEditing,
+  isPending,
+}: {
+  draft: ServiceFormDraft;
+  setDraft: (d: ServiceFormDraft) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
+  isEditing: boolean;
+  isPending: boolean;
+}) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="rounded-xl border-2 border-orange-300 bg-orange-50/30 p-4 space-y-3"
+    >
+      <div className="flex items-center justify-between pb-2 border-b border-orange-200">
+        <div className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-orange-500 animate-pulse" />
+          <h3 className="font-display text-sm font-semibold text-orange-700">
+            {isEditing ? 'Servisi Düzenle' : 'Yeni Servis Ekle'}
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="p-1 rounded hover:bg-orange-100 text-orange-600"
+          aria-label="Kapat"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label className="label text-xs">Ad *</label>
+          <input
+            className="input mt-1"
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            placeholder="Örn: Hetzner Cloud"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Kategori *</label>
+          <select
+            className="input mt-1"
+            value={draft.category}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                category: e.target.value as ServiceFormDraft['category'],
+              })
+            }
+          >
+            {SERVICE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label text-xs">Durum</label>
+          <select
+            className="input mt-1"
+            value={draft.status}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                status: e.target.value as ServiceFormDraft['status'],
+              })
+            }
+          >
+            {Object.entries(STATUS_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="label text-xs">Panel / Dashboard URL *</label>
+          <input
+            type="url"
+            className="input mt-1"
+            value={draft.dashboard_url}
+            onChange={(e) => setDraft({ ...draft, dashboard_url: e.target.value })}
+            placeholder="https://console.hetzner.cloud"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Hesap (email / kullanıcı)</label>
+          <input
+            className="input mt-1"
+            value={draft.account_identifier}
+            onChange={(e) => setDraft({ ...draft, account_identifier: e.target.value })}
+            placeholder="kaanklc498@gmail.com"
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Plan</label>
+          <input
+            className="input mt-1"
+            value={draft.plan}
+            onChange={(e) => setDraft({ ...draft, plan: e.target.value })}
+            placeholder="Free · CX22 €4/ay"
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Bitwarden Note (referans)</label>
+          <input
+            className="input mt-1"
+            value={draft.bitwarden_note_name}
+            onChange={(e) => setDraft({ ...draft, bitwarden_note_name: e.target.value })}
+            placeholder="Damga Sistem Envanteri"
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Icon</label>
+          <select
+            className="input mt-1"
+            value={draft.icon}
+            onChange={(e) => setDraft({ ...draft, icon: e.target.value })}
+          >
+            {Object.keys(ICON_MAP).map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="label text-xs">Notlar (markdown)</label>
+          <textarea
+            className="input mt-1"
+            rows={3}
+            value={draft.notes}
+            onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+            placeholder="Region: EU, Pro'ya yükseltilecek..."
+          />
+        </div>
+
+        <div>
+          <label className="label text-xs">Sıra (display_order)</label>
+          <input
+            type="number"
+            className="input mt-1"
+            value={draft.display_order}
+            onChange={(e) =>
+              setDraft({ ...draft, display_order: Number(e.target.value) || 0 })
+            }
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2 border-t border-orange-200">
+        <button type="button" onClick={onCancel} className="btn-ghost text-sm">
+          İptal
+        </button>
+        <button type="submit" disabled={isPending} className="btn-primary text-sm">
+          {isPending && <Loader2 className="size-3.5 animate-spin" />}
+          {isEditing ? 'Güncelle' : 'Ekle'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ServiceCard({
   service,
-  onEdit,
+  isExpanded,
+  onToggle,
   onDelete,
 }: {
   service: PlatformExternalService;
-  onEdit: () => void;
+  isExpanded: boolean;
+  onToggle: () => void;
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -556,9 +619,11 @@ function ServiceCard({
     <div
       className={cn(
         'group relative rounded-xl border bg-white transition flex flex-col',
-        service.status === 'active'
-          ? 'border-zinc-200 hover:border-orange-300 hover:shadow-sm'
-          : 'border-zinc-200 opacity-60',
+        isExpanded
+          ? 'border-orange-400 shadow-md'
+          : service.status === 'active'
+            ? 'border-zinc-200 hover:border-orange-300 hover:shadow-sm'
+            : 'border-zinc-200 opacity-60',
       )}
     >
       {/* Status dot top-right (her zaman tutarlı pozisyon) */}
@@ -632,12 +697,12 @@ function ServiceCard({
                 <button
                   onClick={() => {
                     setMenuOpen(false);
-                    onEdit();
+                    onToggle();
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-orange-50"
                 >
                   <Pencil className="size-3.5" />
-                  Düzenle
+                  {isExpanded ? 'Kapat' : 'Düzenle'}
                 </button>
                 <button
                   onClick={() => {
