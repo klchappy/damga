@@ -84,9 +84,15 @@ resendWebhookRouter.post(
         return res.status(400).json({ error: 'Timestamp out of range (replay protection)' });
       }
 
-      // Raw body — express.json middleware tarafından parse edilmiş halini stringify et
-      // (gerçek raw byte için ayrı middleware lazım ama çoğu zaman JSON.stringify yeterli)
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      // FIX (Y13 — production audit): RAW body kullan. apps/api/src/index.ts'te
+      // bu route için express.raw middleware tanımlandı, req.body Buffer geliyor.
+      // Eski versiyon JSON.stringify(req.body) yapıyordu → key sırası farklı olabilir,
+      // HMAC mismatch. Şimdi byte-level identical → signature doğru.
+      const rawBody = Buffer.isBuffer(req.body)
+        ? req.body.toString('utf-8')
+        : typeof req.body === 'string'
+          ? req.body
+          : JSON.stringify(req.body); // legacy fallback
 
       const valid = verifySvixSignature({
         secret,
@@ -101,11 +107,8 @@ resendWebhookRouter.post(
         return res.status(401).json({ error: 'Invalid signature' });
       }
 
-      // Payload parse
-      const payload =
-        typeof req.body === 'object' && req.body !== null
-          ? (req.body as Record<string, unknown>)
-          : JSON.parse(rawBody);
+      // Payload parse — JSON sadece signature doğrulandıktan sonra
+      const payload = JSON.parse(rawBody) as Record<string, unknown>;
 
       const eventType = (payload.type as string) ?? 'unknown';
       const dataField = (payload.data ?? {}) as Record<string, unknown>;

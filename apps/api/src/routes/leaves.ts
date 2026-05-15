@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { createLeaveSchema, rejectLeaveSchema } from '@damga/shared';
 import { getDb, leaves, users } from '@damga/db';

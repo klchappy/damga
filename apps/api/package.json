@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --max-warnings 9999"
+    "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
     "@damga/db": "workspace:*",
@@ -34,6 +34,7 @@
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "pino-pretty": "^13.0.0",
+    "rate-limit-redis": "^5.0.0",
     "resend": "^4.0.1",
     "sharp": "^0.34.5",
     "web-push": "^3.6.7",

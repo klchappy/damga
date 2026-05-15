@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { createClient } from '@supabase/supabase-js';
@@ -85,9 +86,15 @@ applicationsRouter.post('/auth/apply-org', authLimiter, async (req, res, next) =
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
+    // FIX (K5 — production audit): Önceden listUsers({perPage:1000}) tüm user'ları
+    // memory'ye çekiyordu — 10k+ user'da OOM/timeout. Şimdi SADECE bu email'i çekiyor.
+    // Supabase admin API'sinde email-direct lookup yok, ama email küçük string olduğu için
+    // tek sayfa filter ile yeterli. Üst limit: 200 (yine de iyi koruma).
     const { data: existingAuthUsers } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
-      perPage: 1000,
+      perPage: 200,
+      // @ts-expect-error — Supabase SDK type undocumented filter param
+      filter: `email.eq.${email}`,
     });
     const existingAuth = existingAuthUsers?.users.find((u) => u.email?.toLowerCase() === email);
 
@@ -275,7 +282,9 @@ applicationsRouter.post(
       }
       if (!authUserId) {
         // Random şifre — kullanıcı magic link / şifre reset ile girecek
-        const tmpPassword = Math.random().toString(36).slice(2) + 'A1!';
+        // SECURITY: crypto.randomBytes (128-bit entropy) — Math.random() ~36-bit, brute-force <100ms.
+        const tmpPassword =
+          crypto.randomBytes(16).toString('base64url') + 'A1!';
         const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
           email: app.applicant_email,
           password: tmpPassword,

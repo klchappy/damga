@@ -14,7 +14,6 @@ import { HttpError } from '../middleware/error';
 import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { authLimiter } from '../middleware/rate-limit';
 import { logger } from '../config/logger';
-import { generateStrongPassword } from '../lib/password';
 import { sendPasswordResetEmail } from '../lib/email';
 
 export const authRouter = Router();
@@ -138,22 +137,39 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
 
     // Damga DB profile (org_id null + is_pending=true)
     // KVKK: client onayı zaten schema zorunluluğu; burada zaman damgası + version kaydet
-    const [user] = await db
-      .insert(users)
-      .values({
-        org_id: orgId,
-        auth_user_id: authData.user.id,
-        email: input.email.toLowerCase(),
-        username: input.username?.trim().toLowerCase() || null,
-        phone: input.phone?.trim() || null,
-        full_name: input.full_name,
-        role,
-        department: input.department ?? 'Diğer',
-        is_pending: isPending,
-        kvkk_accepted_at: new Date(),
-        kvkk_consent_version: KVKK_CONSENT_VERSION,
-      })
-      .returning();
+    // FIX (Y5 — TOCTOU race): pre-check race olabilir; UNIQUE constraint violation'ı
+    // (PostgreSQL 23505) 500 yerine 409'a map et — kullanıcı net hata mesajı görür.
+    let user;
+    try {
+      [user] = await db
+        .insert(users)
+        .values({
+          org_id: orgId,
+          auth_user_id: authData.user.id,
+          email: input.email.toLowerCase(),
+          username: input.username?.trim().toLowerCase() || null,
+          phone: input.phone?.trim() || null,
+          full_name: input.full_name,
+          role,
+          department: input.department ?? 'Diğer',
+          is_pending: isPending,
+          kvkk_accepted_at: new Date(),
+          kvkk_consent_version: KVKK_CONSENT_VERSION,
+        })
+        .returning();
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string; constraint?: string };
+      if (pgErr?.code === '23505') {
+        // UNIQUE constraint — concurrent sign-up'la çakışma
+        const field =
+          pgErr.constraint?.includes('email') ? 'e-posta'
+          : pgErr.constraint?.includes('username') ? 'kullanıcı adı'
+          : pgErr.constraint?.includes('phone') ? 'telefon'
+          : 'kayıt';
+        throw new HttpError(409, `Bu ${field} zaten kayıtlı`, 'EMAIL_EXISTS');
+      }
+      throw err;
+    }
 
     logger.info(
       { userId: user!.id, orgId, isPending },
@@ -191,7 +207,7 @@ authRouter.post('/sign-up', authLimiter, async (req, res, next) => {
  * Body: { org_name, full_name?, accept_terms: true }
  * Idempotent: zaten kayıtlıysa mevcut user + org dön.
  */
-authRouter.post('/sign-up-org', requireSupabaseAuth, async (req, res, next) => {
+authRouter.post('/sign-up-org', authLimiter, requireSupabaseAuth, async (req, res, next) => {
   try {
     if (!req.supabaseAuth) throw new HttpError(401, 'Yetki yok');
     const input = z
@@ -490,7 +506,6 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
     }
 
     const supabase = getSupabaseAdmin();
-    const signInUrl = `${env.CLIENT_URL ?? 'https://damga.deploi.net'}/auth/sign-in`;
 
     if (input.method === 'email') {
       const baseWeb =
@@ -531,7 +546,12 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
       return;
     }
 
-    // SMS / WhatsApp → yeni şifre üret + ata + mesaj olarak ilet
+    // SMS / WhatsApp → KVKK/PCI uyumlu: yeni şifre ÜRETME, Supabase recovery
+    // link gönder. Kullanıcı SMS'teki link'e tıklar ve şifresini KENDİSİ koyar.
+    //
+    // FIX (K11 — production audit): Eski versiyon plaintext yeni şifreyi SMS'te
+    // gönderiyordu (SMS interception → şifre çalınması, KVKK md.12 ihlali).
+    // Yeni: recovery link (60dk TTL, tek kullanımlık) SMS olarak iletilir.
     if (!userPhone) {
       throw new HttpError(
         400,
@@ -540,20 +560,24 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
       );
     }
 
-    const newPassword = generateStrongPassword(14);
-    const { error: pwErr } = await supabase.auth.admin.updateUserById(authUserId, {
-      password: newPassword,
+    const baseWebForSms =
+      env.PUBLIC_WEB_URL ?? env.CLIENT_URL ?? 'https://damga.deploi.net';
+    const smsRedirectTo = `${baseWebForSms}/auth/reset-password`;
+    const { data: smsData, error: smsLinkErr } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email: userEmail,
+      options: { redirectTo: smsRedirectTo },
     });
-    if (pwErr) {
-      throw new HttpError(502, `Şifre güncellenemedi: ${pwErr.message}`);
+    if (smsLinkErr || !smsData?.properties?.action_link) {
+      throw new HttpError(502, `Link üretilemedi: ${smsLinkErr?.message ?? 'unknown'}`);
     }
+    const recoveryLink = smsData.properties.action_link;
 
-    const { buildPasswordMessage, sendSms, sendWhatsApp } = await import('../lib/notify');
-    const message = buildPasswordMessage({
-      recipientName: userFullName ?? '',
-      password: newPassword,
-      signInUrl,
-    });
+    const { sendSms, sendWhatsApp } = await import('../lib/notify');
+    const recipientName = userFullName ? userFullName.split(' ')[0] : 'Merhaba';
+    const message =
+      `${recipientName}, Damga şifre sıfırlama bağlantın:\n${recoveryLink}\n` +
+      `60 dakika geçerli. Sen istemediysen yoksay.`;
 
     const result =
       input.method === 'sms'
@@ -562,18 +586,16 @@ authRouter.post('/forgot', authLimiter, async (req, res, next) => {
 
     logger.info(
       { authUserId, method: input.method, sent: result.sent },
-      'Forgot password (yeni şifre üretildi+iletildi)',
+      'Forgot password recovery link SMS/WhatsApp üzerinden gönderildi',
     );
 
     res.json({
       ok: true,
       method: input.method,
       delivered: result.sent ? 'sent' : 'fallback',
-      // Gateway konfig'siz veya fail olduğunda client kullanıcıya share linki sunar
-      fallback_url: result.fallback_url ?? null,
-      // Gateway konfig'liyse şifreyi yine de döndürürüz (admin gözetiminde değil — dönmemeli)
-      // → güvenlik için sadece fallback durumunda dön
-      password: result.sent ? null : newPassword,
+      // SMS gateway fail olursa kullanıcı/admin manuel share için link döner
+      fallback_url: result.fallback_url ?? (!result.sent ? recoveryLink : null),
+      // GÜVENLIK: plaintext şifre artık dönmüyor — sadece recovery link
       error: result.error ?? null,
     });
   } catch (err) {

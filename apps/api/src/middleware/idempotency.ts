@@ -13,7 +13,7 @@
  * IMPORTANT: requireAuth'tan sonra mount edilmeli (org_id/api_key_id resolve icin).
  * Apply pattern: state-changing route'larda inline (router.post('/x', requireAuth, idempotency, ...)).
  */
-import type { RequestHandler, Response } from 'express';
+import type { RequestHandler } from 'express';
 import { createHash } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { getDb, idempotencyKeys } from '@damga/db';

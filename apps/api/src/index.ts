@@ -68,6 +68,14 @@ app.use(
   }),
 );
 
+// FIX (Y13 — production audit): Resend webhook route'una RAW body ver (HMAC verify için).
+// Eğer JSON parser önce çalışırsa, JSON.stringify(req.body) re-encode HMAC'ı bozar.
+// Bu middleware tüm json()'dan ÖNCE gelmeli, sadece /v1/webhooks/resend için aktif.
+app.use(
+  '/v1/webhooks/resend',
+  express.raw({ type: 'application/json', limit: '64kb' }),
+);
+
 app.use(express.json({ limit: '512kb' }));
 app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/v1/health' } }));
 

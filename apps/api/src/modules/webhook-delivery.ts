@@ -92,14 +92,26 @@ export async function deliverWebhook(
         .select({ c: webhooks.failure_count })
         .from(webhooks)
         .where(eq(webhooks.id, webhookId));
+      const newFailCount = (current?.c ?? 0) + 1;
+      // FIX (K3 — production audit): 10 ardışık fail sonrası webhook'u devre dışı
+      // bırak. Aksi takdirde "ölü endpoint" sürekli retry tüketir + sahibine de
+      // bilgilendirme yapılmadan silent shut-off oluyordu.
+      const shouldDisable = newFailCount >= 10;
       await db
         .update(webhooks)
         .set({
-          failure_count: (current?.c ?? 0) + 1,
+          failure_count: newFailCount,
           last_failure_at: new Date(),
           last_failure_reason: `${res.status}: ${respText.slice(0, 200)}`,
+          ...(shouldDisable ? { is_active: false } : {}),
         })
         .where(eq(webhooks.id, webhookId));
+      if (shouldDisable) {
+        logger.warn(
+          { webhookId, url, failureCount: newFailCount },
+          'Webhook 10 ardışık fail sonrası auto-disable edildi',
+        );
+      }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown';

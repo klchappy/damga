@@ -9,7 +9,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useAuthStore,
   signOut,
@@ -64,12 +64,26 @@ export function AppLayout({ children }: { children?: React.ReactNode } = {}) {
   const can = (key: EmployeePageKey) => visibleSet.has(key);
   const canRecords = !!user;
   const showMobileShell = isMobileDevice;
+  const queryClient = useQueryClient();
 
   const handleLogout = async () => {
     await signOut();
     useAuthStore.getState().setUser(null);
     useAuthStore.getState().setOrg(null);
     useAuthStore.getState().setSession(null);
+    // SECURITY: Logout sırasında tüm cached query'leri temizle — aksi takdirde
+    // sonraki kullanıcı önceki kullanıcının verilerini (notifications, profile,
+    // org listesi vb.) görür. K6 (production audit bulgusu).
+    queryClient.clear();
+    try {
+      // Supabase auth token + custom storage temizle
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('sb-') || k.startsWith('damga-'))
+        .forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+    } catch {
+      /* SSR / private mode */
+    }
     navigate("/auth/sign-in", { replace: true });
   };
 

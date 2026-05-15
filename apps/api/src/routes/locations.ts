@@ -6,7 +6,7 @@ import {
   createNfcTagSchema,
   createQrCodeSchema,
 } from '@damga/shared';
-import { signNfcTag, signQrCode, signQrCodeUrl } from '@damga/verification';
+import { signNfcTag, signQrCodeUrl } from '@damga/verification';
 import { randomBytes } from 'node:crypto';
 import { getDb, orgs, locations, locationNfcTags, locationQrCodes } from '@damga/db';
 import { env } from '../config/env';

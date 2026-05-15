@@ -6,7 +6,6 @@ import {
   rewards,
   userRedemptions,
   users,
-  xpTransactions,
   monthlyMarketCredits,
 } from '@damga/db';
 import { HttpError } from '../middleware/error';

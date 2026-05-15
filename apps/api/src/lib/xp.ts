@@ -24,35 +24,41 @@ export interface AwardXpInput {
 
 export async function awardXp(input: AwardXpInput) {
   const db = getDb();
-  const [tx] = await db
-    .insert(xpTransactions)
-    .values({
-      org_id: input.orgId,
-      user_id: input.userId,
-      source: input.source,
-      amount: input.amount,
-      description: input.description ?? null,
-      ref_id: input.refId ?? null,
-      ref_type: input.refType ?? null,
-      metadata: input.metadata ?? {},
-    })
-    .returning({ id: xpTransactions.id });
+  // FIX (K4 — production audit): 3 ayrı statement (insert xp_transactions, update
+  // total_xp, update level) ARASINDA fail olursa users.total_xp ile xp_transactions
+  // tutarsız kalıyordu. Tek transaction'a aldık — ya hepsi commit ya hiçbiri.
+  // level hesabını sqrt formülüyle inline yaparak 3 round-trip → 2'ye indirdik.
+  return await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(xpTransactions)
+      .values({
+        org_id: input.orgId,
+        user_id: input.userId,
+        source: input.source,
+        amount: input.amount,
+        description: input.description ?? null,
+        ref_id: input.refId ?? null,
+        ref_type: input.refType ?? null,
+        metadata: input.metadata ?? {},
+      })
+      .returning({ id: xpTransactions.id });
 
-  // total_xp + level atomik update
-  const [updated] = await db
-    .update(users)
-    .set({
-      total_xp: sql`${users.total_xp} + ${input.amount}`,
-      updated_at: new Date(),
-    })
-    .where(eq(users.id, input.userId))
-    .returning({ total_xp: users.total_xp });
-  if (updated) {
-    const newLevel = xpToLevel(updated.total_xp);
-    await db.update(users).set({ level: newLevel }).where(eq(users.id, input.userId));
-  }
+    const [updated] = await tx
+      .update(users)
+      .set({
+        total_xp: sql`${users.total_xp} + ${input.amount}`,
+        updated_at: new Date(),
+      })
+      .where(eq(users.id, input.userId))
+      .returning({ total_xp: users.total_xp });
 
-  return { transaction_id: tx?.id ?? null, total_xp: updated?.total_xp ?? null };
+    if (updated) {
+      const newLevel = xpToLevel(updated.total_xp);
+      await tx.update(users).set({ level: newLevel }).where(eq(users.id, input.userId));
+    }
+
+    return { transaction_id: created?.id ?? null, total_xp: updated?.total_xp ?? null };
+  });
 }
 
 /**

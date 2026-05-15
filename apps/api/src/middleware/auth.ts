@@ -323,14 +323,27 @@ export const requirePlatformAdminUser: RequestHandler = async (req, _res, next) 
   }
 };
 
-/** API key scope kontrolü */
+/**
+ * API key scope kontrolü.
+ *
+ * Tasarım gereği iki ayrı yetki modeli vardır:
+ *   - JWT auth (UI kullanıcısı): role + org_id filter ile korunur (requireRole + endpoint'in
+ *     kendi org_id filter'ı). Scope check ATLANIR — UI'daki user'a scope claim'ı eklemek
+ *     yerine endpoint-level role guard kullanılır.
+ *   - API key auth (programmatic): scope-restricted. `dmg_live_xxx` key sadece tanımlı
+ *     scope'lara erişebilir; her şey explicit.
+ *
+ * Bu fonksiyon SADECE API key'leri filtreler. JWT user'larda requireRole + endpoint
+ * içindeki `req.authOrgId` filtresi yeterli koruma sağlar.
+ */
 export function requireScope(scope: string): RequestHandler {
   return (req, _res, next) => {
+    // JWT auth: scope concept'i yok, role-based auth ile yönetilir
     if (!req.apiKeyScopes) {
-      // JWT auth'a izin ver (scope sadece API key'leri kısıtlar)
       next();
       return;
     }
+    // API key auth: scope explicit eşleşmeli
     if (!req.apiKeyScopes.includes(scope)) {
       next(new HttpError(403, `Scope eksik: ${scope}`, 'MISSING_SCOPE'));
       return;

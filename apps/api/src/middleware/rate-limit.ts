@@ -1,5 +1,32 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Options } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import { env } from '../config/env';
+import { getRedis } from '../lib/redis';
+import { logger } from '../config/logger';
+
+/**
+ * Redis backed store — distributed deploy'da rate limit doğru sayılır.
+ * Y3 (production audit fix): in-memory store multi-instance'da bypass'a açıktı.
+ *
+ * REDIS_URL yoksa undefined → express-rate-limit default in-memory'ye düşer
+ * (development veya single-instance deploy için OK, ama production'da Redis ŞART).
+ */
+function createStore(): Options['store'] | undefined {
+  const redis = getRedis();
+  if (!redis) {
+    logger.warn(
+      'Rate limit Redis backend yok — in-memory fallback (multi-instance deploy\'da limit bypass riski)',
+    );
+    return undefined;
+  }
+  return new RedisStore({
+    // @ts-expect-error — ioredis send_command/sendCommand interface farkı
+    sendCommand: (...args: string[]) => redis.call(...args),
+    prefix: 'rl:',
+  });
+}
+
+const store = createStore();
 
 /**
  * Genel API limiter — /v1/* tümüne uygulanır.
@@ -12,6 +39,7 @@ export const apiLimiter = rateLimit({
   max: env.RATE_LIMIT_MAX < 300 ? 300 : env.RATE_LIMIT_MAX,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  store,
   message: { error: 'Çok fazla istek', code: 'RATE_LIMITED' },
 });
 
@@ -29,6 +57,7 @@ export const authLimiter = rateLimit({
   max: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  store,
   message: { error: 'Çok fazla auth denemesi', code: 'AUTH_RATE_LIMITED' },
 });
 
@@ -38,5 +67,6 @@ export const checkInLimiter = rateLimit({
   max: 6,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  store,
   message: { error: 'Çok hızlı check-in denemesi', code: 'CHECKIN_RATE_LIMITED' },
 });

@@ -42,7 +42,21 @@ export interface BuildXlsxParams {
   brandColor?: string;
 }
 
+/**
+ * FIX (Y6 — production audit): OOM koruması. ExcelJS in-memory buffer üretir;
+ * 50k+ satır → memory spike + serialize timeout. Kullanıcıya net hata mesajı ver,
+ * silent crash yerine. İleride streaming için ExcelJS.stream.xlsx kullanılabilir.
+ */
+const XLSX_MAX_ROWS = 50_000;
+
 export async function buildXlsxBuffer(p: BuildXlsxParams): Promise<Buffer> {
+  if (p.rows.length > XLSX_MAX_ROWS) {
+    throw new Error(
+      `XLSX limit aşıldı: ${p.rows.length} satır > ${XLSX_MAX_ROWS}. ` +
+        `Lütfen tarih aralığını küçült veya filtre kullan.`,
+    );
+  }
+
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Damga';
   wb.created = new Date();

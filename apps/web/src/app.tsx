@@ -35,6 +35,7 @@ import { AdminIntegrationsPage } from "@/pages/admin-integrations";
 import { AdminKitchenPage } from "@/pages/admin-kitchen";
 import { MealFeedbackPage } from "@/pages/meal-feedback";
 import { AdminRewardsPage } from "@/pages/admin-rewards";
+import { NotFoundPage } from "@/pages/not-found";
 import { EmployeePageGate } from "@/components/employee-page-gate";
 import { MenuPage } from "@/pages/menu";
 import { MenuFeedbackPage } from "@/pages/menu-feedback";
@@ -525,7 +526,7 @@ function AppInner() {
         />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

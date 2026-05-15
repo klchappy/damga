@@ -156,7 +156,12 @@ export function SignInPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className={`space-y-3 ${mfaChallenge ? 'opacity-50 pointer-events-none' : ''}`}>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className={`space-y-3 ${mfaChallenge ? 'opacity-50 pointer-events-none' : ''}`}
+          aria-hidden={mfaChallenge ? 'true' : undefined}
+          inert={mfaChallenge ? '' : undefined}
+        >
           <div>
             <label className="label">E-posta, kullanıcı adı veya telefon</label>
             <div className="relative mt-1">
