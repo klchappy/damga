@@ -173,6 +173,7 @@ export function AdminSettingsPage() {
       : DEFAULT_EMPLOYEE_PAGES,
   );
 
+  const [activeTab, setActiveTab] = useState<TabKey>('visibility');
   const [selected, setSelected] = useState<Set<EmployeePageKey>>(initialVisible);
   const [autoSelfie, setAutoSelfie] = useState<boolean>(
     !!org?.settings?.auto_selfie_every_stamp,
@@ -237,230 +238,315 @@ export function AdminSettingsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-6 space-y-5">
+    <div className="container mx-auto max-w-4xl px-4 py-6 space-y-5">
+      {/* Hero */}
       <div className="flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-lg bg-orange-500 text-white">
           <SettingsIcon className="size-6" />
         </div>
         <div>
-          <h1 className="font-display text-3xl">Şirket Ayarları</h1>
+          <h1 className="font-display text-3xl">Ayarlar</h1>
           <p className="text-sm text-muted">
-            Şirket deneyimi, güvenlik davranışı ve bağlantılı yönetim alanları.
+            Çalışan deneyimi, güvenlik ve yönetim kısayolları.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
-      <div className="card space-y-4">
-        <div className="flex items-start gap-2">
-          <ShieldCheck className="size-5 text-orange-500 mt-0.5 shrink-0" />
-          <div className="text-sm text-muted">
-            <strong className="text-ink">Yönetici/Admin'ler hepsini görür.</strong> Bu seçimler
-            yalnızca <strong className="text-ink">çalışan</strong> rolündeki kullanıcıları
-            etkiler. Sade bir deneyim için sadece gerekli sayfaları açık bırak.
-          </div>
-        </div>
-
-        <hr className="border-orange-100" />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {PAGE_OPTIONS.map((opt) => {
-            const isOn = opt.alwaysOn || selected.has(opt.key);
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => toggle(opt.key, opt.alwaysOn)}
-                disabled={opt.alwaysOn}
-                className={`text-left rounded-lg border-2 p-3 transition ${
-                  isOn
-                    ? 'border-orange-400 bg-orange-50/60'
-                    : 'border-orange-100 bg-white hover:border-orange-200'
-                } ${opt.alwaysOn ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-ink">{opt.label}</div>
-                    <div className="text-xs text-muted mt-0.5">{opt.desc}</div>
-                  </div>
-                  <div
-                    className={`shrink-0 mt-0.5 inline-flex size-5 items-center justify-center rounded-full ${
-                      isOn ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-400'
-                    }`}
-                  >
-                    {isOn ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-                  </div>
-                </div>
-                {opt.alwaysOn && (
-                  <div className="mt-1 text-[10px] uppercase tracking-wider text-orange-600">
-                    Sabit · kapatılamaz
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <hr className="border-orange-100" />
-
-        {/* Güvenlik & doğrulama */}
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wider text-orange-600">
-            Güvenlik & Doğrulama
-          </div>
-
-          <ToggleRow
-            checked={autoSelfie}
-            onChange={(v) => {
-              setAutoSelfie(v);
-              setDirty(true);
-            }}
-            icon={<Camera className="size-4 text-orange-500" />}
-            label="Her damgada otomatik selfie"
-            desc="Çalışan damga vurduğunda 3 saniye geri sayım sonra otomatik selfie çekilir ve kayda eklenir. KVKK gereği ekranda bilgilendirilir."
-            warn="KVKK aydınlatma metnine bu maddeyi eklemen önerilir."
-          />
-
-          <ToggleRow
-            checked={allowOutside}
-            onChange={(v) => {
-              setAllowOutside(v);
-              setDirty(true);
-            }}
-            icon={<MapPin className="size-4 text-orange-500" />}
-            label="Geofence dışı damgaya izin"
-            desc="Açık olursa: lokasyon dışı GPS damgası selfie istemeden kabul edilir. Saha çalışanları, dış ekip için."
-            warn="Sahtekarlık riskini artırır. Sadece güvendiğin org'lar için aç."
-          />
-        </div>
-
-        <hr className="border-orange-100" />
-
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+      {/* Tab Navigation — mobile + desktop friendly */}
+      <div className="flex flex-wrap gap-1 p-1 bg-orange-50 rounded-xl border border-orange-100">
+        {TABS.map((t) => (
           <button
+            key={t.key}
             type="button"
-            onClick={reset}
-            disabled={saveMutation.isPending}
-            className="text-xs text-muted underline-offset-4 hover:underline hover:text-orange-600"
+            onClick={() => setActiveTab(t.key)}
+            className={`flex-1 min-w-fit flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === t.key
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-orange-700 hover:bg-orange-100'
+            }`}
           >
-            Önerilen sade preset'e döndür
+            <t.Icon className="size-4" />
+            <span className="hidden sm:inline">{t.label}</span>
+            <span className="sm:hidden">{t.shortLabel}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => saveMutation.mutate()}
-            disabled={!dirty || saveMutation.isPending}
-            className="btn-primary"
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
-            Kaydet
-          </button>
-        </div>
+        ))}
       </div>
 
-      <aside className="space-y-4">
-        <div className="card space-y-3">
-          <div className="flex items-center gap-2">
-            <Plug className="size-5 text-orange-600" />
-            <h2 className="font-display text-lg">Bağlantılı Alanlar</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            <QuickLink
-              to="/admin/team"
-              icon={<Users className="size-4" />}
-              title="Ekip"
-              desc="Kullanıcı, rol ve şifre"
-            />
-            <QuickLink
-              to="/admin/departments"
-              icon={<Tags className="size-4" />}
-              title="Departman"
-              desc="Organizasyon sınıfları"
-            />
-            <QuickLink
-              to="/admin/locations"
-              icon={<MapPin className="size-4" />}
-              title="Lokasyon"
-              desc="NFC, QR ve geofence"
-            />
-            <QuickLink
-              to="/manager/schedule"
-              icon={<CalendarClock className="size-4" />}
-              title="Vardiya Planı"
-              desc="Haftalık ekip çizelgesi"
-            />
-            <QuickLink
-              to="/admin/shifts"
-              icon={<Clock3 className="size-4" />}
-              title="Vardiya Şablonları"
-              desc="Saat ve mesai eşiği"
-            />
-            <QuickLink
-              to="/admin/overtime"
-              icon={<Clock3 className="size-4" />}
-              title="Fazla Mesai"
-              desc="Onay ve bordro çıktısı"
-            />
-            <QuickLink
-              to="/admin/live-feed"
-              icon={<Radio className="size-4" />}
-              title="Canlı Kayıtlar"
-              desc="Anlık damga akışı"
-            />
-            <QuickLink
-              to="/admin/redemptions"
-              icon={<Gift className="size-4" />}
-              title="Ödül Teslimleri"
-              desc="Market talepleri"
-            />
-            <QuickLink
-              to="/admin/bulk-import"
-              icon={<Upload className="size-4" />}
-              title="Toplu Aktarım"
-              desc="Menü ve izin import"
-            />
-            {isPlatformAdmin && (
-              <QuickLink
-                to="/admin/integrations"
-                icon={<Webhook className="size-4" />}
-                title="API & Entegrasyon"
-                desc="Key, webhook ve servisler"
-              />
-            )}
-          </div>
-        </div>
+      {/* Tab content */}
+      <div className="card space-y-4 min-h-[400px]">
+        {/* TAB 1: Görünüm — çalışanların hangi sayfaları göreceği */}
+        {activeTab === 'visibility' && (
+          <>
+            <div className="flex items-start gap-2 pb-3 border-b border-orange-100">
+              <Eye className="size-5 text-orange-500 mt-0.5 shrink-0" />
+              <div>
+                <h2 className="font-display text-lg">Çalışan Sayfa Görünürlüğü</h2>
+                <p className="text-sm text-muted mt-0.5">
+                  Yönetici/admin hepsini görür. Bu seçimler sadece <strong>çalışan</strong> rolündekileri etkiler.
+                </p>
+              </div>
+            </div>
 
-        <div className="card space-y-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-orange-600" />
-            <h2 className="font-display text-lg">Sistem Özeti</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <MiniStat label="API key" value={isPlatformAdmin ? (integrationStatus?.counts.active_api_keys ?? '—') : 'ana admin'} />
-            <MiniStat label="Webhook" value={isPlatformAdmin ? (integrationStatus?.counts.active_webhooks ?? '—') : 'ana admin'} />
-          </div>
-          {isPlatformAdmin ? (
-            <div className="space-y-2 text-sm">
-              <ServiceRow label="Database" ok={integrationStatus?.services.database} />
-              <ServiceRow label="Supabase" ok={integrationStatus?.services.supabase} />
-              <ServiceRow label="Resend" ok={integrationStatus?.services.resend} />
-              <ServiceRow label="Web Push" ok={integrationStatus?.services.web_push} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {PAGE_OPTIONS.map((opt) => {
+                const isOn = opt.alwaysOn || selected.has(opt.key);
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => toggle(opt.key, opt.alwaysOn)}
+                    disabled={opt.alwaysOn}
+                    className={`text-left rounded-lg border-2 p-3 transition ${
+                      isOn
+                        ? 'border-orange-400 bg-orange-50/60'
+                        : 'border-orange-100 bg-white hover:border-orange-200'
+                    } ${opt.alwaysOn ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-ink">{opt.label}</div>
+                        <div className="text-xs text-muted mt-0.5">{opt.desc}</div>
+                      </div>
+                      <div
+                        className={`shrink-0 mt-0.5 inline-flex size-5 items-center justify-center rounded-full ${
+                          isOn ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-400'
+                        }`}
+                      >
+                        {isOn ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
+                      </div>
+                    </div>
+                    {opt.alwaysOn && (
+                      <div className="mt-1 text-[10px] uppercase tracking-wider text-orange-600">
+                        Sabit · kapatılamaz
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div className="rounded-md bg-cream p-3 text-xs text-muted">
-              API, webhook ve dış servis bağlantıları sadece sistem ana admini tarafından yönetilir.
-              İhtiyaç olduğunda Destek Talebi oluştur.
+
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-orange-100">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={saveMutation.isPending}
+                className="text-xs text-muted underline-offset-4 hover:underline hover:text-orange-600"
+              >
+                Önerilen sade preset'e döndür
+              </button>
+              <button
+                type="button"
+                onClick={() => saveMutation.mutate()}
+                disabled={!dirty || saveMutation.isPending}
+                className="btn-primary"
+              >
+                {saveMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                Kaydet
+              </button>
             </div>
-          )}
-        </div>
-      </aside>
+          </>
+        )}
+
+        {/* TAB 2: Güvenlik — selfie + geofence ayarları */}
+        {activeTab === 'security' && (
+          <>
+            <div className="flex items-start gap-2 pb-3 border-b border-orange-100">
+              <ShieldCheck className="size-5 text-orange-500 mt-0.5 shrink-0" />
+              <div>
+                <h2 className="font-display text-lg">Güvenlik & Doğrulama</h2>
+                <p className="text-sm text-muted mt-0.5">
+                  Damga vurma akışındaki doğrulama davranışları. Hatalı ayar sahtekârlık riskini artırır.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <ToggleRow
+                checked={autoSelfie}
+                onChange={(v) => {
+                  setAutoSelfie(v);
+                  setDirty(true);
+                }}
+                icon={<Camera className="size-4 text-orange-500" />}
+                label="Her damgada otomatik selfie"
+                desc="Çalışan damga vurduğunda 3 saniye geri sayım sonra otomatik selfie çekilir ve kayda eklenir. KVKK gereği ekranda bilgilendirilir."
+                warn="KVKK aydınlatma metnine bu maddeyi eklemen önerilir."
+              />
+
+              <ToggleRow
+                checked={allowOutside}
+                onChange={(v) => {
+                  setAllowOutside(v);
+                  setDirty(true);
+                }}
+                icon={<MapPin className="size-4 text-orange-500" />}
+                label="Geofence dışı damgaya izin"
+                desc="Açık olursa: lokasyon dışı GPS damgası selfie istemeden kabul edilir. Saha çalışanları, dış ekip için."
+                warn="Sahtekarlık riskini artırır. Sadece güvendiğin org'lar için aç."
+              />
+            </div>
+
+            <div className="flex items-center justify-end pt-3 border-t border-orange-100">
+              <button
+                type="button"
+                onClick={() => saveMutation.mutate()}
+                disabled={!dirty || saveMutation.isPending}
+                className="btn-primary"
+              >
+                {saveMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                Kaydet
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* TAB 3: Yönetim Kısayolları */}
+        {activeTab === 'shortcuts' && (
+          <>
+            <div className="flex items-start gap-2 pb-3 border-b border-orange-100">
+              <Plug className="size-5 text-orange-500 mt-0.5 shrink-0" />
+              <div>
+                <h2 className="font-display text-lg">Yönetim Kısayolları</h2>
+                <p className="text-sm text-muted mt-0.5">
+                  En sık kullanılan admin sayfalarına hızlı erişim.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <QuickLink
+                to="/admin/team"
+                icon={<Users className="size-4" />}
+                title="Ekip"
+                desc="Kullanıcı, rol ve şifre"
+              />
+              <QuickLink
+                to="/admin/departments"
+                icon={<Tags className="size-4" />}
+                title="Departman"
+                desc="Organizasyon sınıfları"
+              />
+              <QuickLink
+                to="/admin/locations"
+                icon={<MapPin className="size-4" />}
+                title="Lokasyon"
+                desc="NFC, QR ve geofence"
+              />
+              <QuickLink
+                to="/manager/schedule"
+                icon={<CalendarClock className="size-4" />}
+                title="Vardiya Planı"
+                desc="Haftalık ekip çizelgesi"
+              />
+              <QuickLink
+                to="/admin/shifts"
+                icon={<Clock3 className="size-4" />}
+                title="Vardiya Şablonları"
+                desc="Saat ve mesai eşiği"
+              />
+              <QuickLink
+                to="/admin/overtime"
+                icon={<Clock3 className="size-4" />}
+                title="Fazla Mesai"
+                desc="Onay ve bordro çıktısı"
+              />
+              <QuickLink
+                to="/admin/live-feed"
+                icon={<Radio className="size-4" />}
+                title="Canlı Kayıtlar"
+                desc="Anlık damga akışı"
+              />
+              <QuickLink
+                to="/admin/redemptions"
+                icon={<Gift className="size-4" />}
+                title="Ödül Teslimleri"
+                desc="Market talepleri"
+              />
+              <QuickLink
+                to="/admin/bulk-import"
+                icon={<Upload className="size-4" />}
+                title="Toplu Aktarım"
+                desc="Menü ve izin import"
+              />
+              {isPlatformAdmin && (
+                <QuickLink
+                  to="/admin/integrations"
+                  icon={<Webhook className="size-4" />}
+                  title="API & Entegrasyon"
+                  desc="Key, webhook ve servisler"
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        {/* TAB 4: Sistem Durumu */}
+        {activeTab === 'system' && (
+          <>
+            <div className="flex items-start gap-2 pb-3 border-b border-orange-100">
+              <ShieldCheck className="size-5 text-orange-500 mt-0.5 shrink-0" />
+              <div>
+                <h2 className="font-display text-lg">Sistem Durumu</h2>
+                <p className="text-sm text-muted mt-0.5">
+                  API key, webhook ve dış servis sağlığı.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <MiniStat
+                label="API key"
+                value={
+                  isPlatformAdmin ? integrationStatus?.counts.active_api_keys ?? '—' : 'ana admin'
+                }
+              />
+              <MiniStat
+                label="Webhook"
+                value={
+                  isPlatformAdmin ? integrationStatus?.counts.active_webhooks ?? '—' : 'ana admin'
+                }
+              />
+            </div>
+
+            {isPlatformAdmin ? (
+              <div className="space-y-2 text-sm">
+                <ServiceRow label="Database" ok={integrationStatus?.services.database} />
+                <ServiceRow label="Supabase" ok={integrationStatus?.services.supabase} />
+                <ServiceRow label="Resend (E-posta)" ok={integrationStatus?.services.resend} />
+                <ServiceRow label="Web Push" ok={integrationStatus?.services.web_push} />
+              </div>
+            ) : (
+              <div className="rounded-md bg-cream p-3 text-xs text-muted">
+                API, webhook ve dış servis bağlantıları sistem ana admini tarafından yönetilir.
+                İhtiyaç olduğunda{' '}
+                <Link to="/support" className="text-orange-600 underline">
+                  Destek Talebi
+                </Link>{' '}
+                oluştur.
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 }
+
+const TABS = [
+  { key: 'visibility' as const, label: 'Görünüm', shortLabel: '👁️', Icon: Eye },
+  { key: 'security' as const, label: 'Güvenlik', shortLabel: '🔐', Icon: ShieldCheck },
+  { key: 'shortcuts' as const, label: 'Kısayollar', shortLabel: '🔗', Icon: Plug },
+  { key: 'system' as const, label: 'Sistem', shortLabel: '📊', Icon: SettingsIcon },
+];
+type TabKey = (typeof TABS)[number]['key'];
 
 function QuickLink({
   to,

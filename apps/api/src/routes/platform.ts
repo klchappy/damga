@@ -16,6 +16,10 @@ import { getDb, apiKeys, auditLog, platformServices } from '@damga/db';
 import { requireAuth, requireSupabaseAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/error';
 import { ensurePlanCatalogTable } from '../lib/plan-limits';
+import { env } from '../config/env';
+import { logger } from '../config/logger';
+import { sendNotificationEmail } from '../lib/email';
+import { createNotification } from '../lib/notifications';
 
 export const platformRouter = Router();
 const ARRAY_SEPARATOR = '\u001f';
@@ -565,9 +569,10 @@ platformRouter.post('/support/tickets', requireAuth, async (req, res, next) => {
     if (!req.authUser || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
     await ensureSupportTicketsTable();
     const orgCheck = await getDb().execute(
-      sql`SELECT 1 FROM public.orgs o WHERE o.id = ${req.authOrgId} AND ${DAMGA_ORG_FILTER}`,
+      sql`SELECT name FROM public.orgs o WHERE o.id = ${req.authOrgId} AND ${DAMGA_ORG_FILTER}`,
     );
     if (orgCheck.rows.length === 0) throw new HttpError(403, 'Bu organizasyon Damga kapsamında değil');
+    const orgName = String((orgCheck.rows[0] as { name?: string } | undefined)?.name ?? 'Şirket');
 
     const input = createSupportTicketSchema.parse(req.body);
 
@@ -594,6 +599,7 @@ platformRouter.post('/support/tickets', requireAuth, async (req, res, next) => {
           )
           RETURNING id, created_at::text`,
     );
+    const ticketId = String((r.rows[0] as { id?: string } | undefined)?.id ?? '');
 
     void getDb()
       .insert(auditLog)
@@ -602,14 +608,75 @@ platformRouter.post('/support/tickets', requireAuth, async (req, res, next) => {
         actor_user_id: req.authUser.id,
         action: 'support.ticket_created',
         target_type: 'support_ticket',
-        target_id: String((r.rows[0] as { id?: string } | undefined)?.id ?? ''),
+        target_id: ticketId,
         details: { subject: input.subject, category: input.category, priority: input.priority },
         ip_address: req.ip,
         user_agent: req.get('user-agent') ?? null,
       })
       .catch(() => {});
 
+    // FIX: Platform admin'e bildirim email at — destek talebinden anlık haber al.
+    // Önceki versiyon sadece audit log düşürüyordu, hiçbir kanaldan bildirim yoktu.
+    const PLATFORM_ADMIN_EMAIL = env.KVKK_EMAIL || env.CONTACT_EMAIL || 'kvkk@deploi.net';
+    const priorityEmoji =
+      input.priority === 'urgent' ? '🚨' : input.priority === 'high' ? '⚠️' : '📩';
+    void sendNotificationEmail({
+      to: PLATFORM_ADMIN_EMAIL,
+      title: `${priorityEmoji} Yeni Destek Talebi (${input.priority})`,
+      body:
+        `Şirket: ${orgName}\n` +
+        `Talep eden: ${req.authUser.full_name} (${req.authUser.email})\n` +
+        `Kategori: ${input.category}\n` +
+        `Öncelik: ${input.priority}\n` +
+        `\nKonu: ${input.subject}\n\n${input.message}`,
+      actionUrl: 'https://damga.deploi.net/platform?tab=support',
+      actionLabel: 'Talebi Görüntüle',
+      tag: 'support_new',
+    }).catch((err) => {
+      logger.warn({ err: err.message, ticketId }, 'Support new ticket email failed');
+    });
+
     res.status(201).json({ item: r.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// FIX: Kullanıcı kendi destek taleplerini ve yanıtlarını görür.
+// Önceki sistemde böyle bir endpoint yoktu — kullanıcı talebini gönderdikten
+// sonra hiçbir yerden takip edemiyordu.
+//
+// GET /me/support-tickets — kendi org içindeki kendi taleplerini listeler
+platformRouter.get('/me/support-tickets', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.authUser || !req.authOrgId) throw new HttpError(401, 'Yetki yok');
+    await ensureSupportTicketsTable();
+    const r = await getDb().execute(
+      sql`SELECT
+            id,
+            subject,
+            message,
+            category,
+            priority,
+            status,
+            platform_notes,
+            created_at::text,
+            updated_at::text,
+            resolved_at::text
+          FROM public.support_tickets
+          WHERE requester_user_id = ${req.authUser.id}
+            AND org_id = ${req.authOrgId}
+          ORDER BY
+            CASE status
+              WHEN 'open' THEN 1
+              WHEN 'waiting' THEN 2
+              WHEN 'in_progress' THEN 3
+              ELSE 4
+            END,
+            created_at DESC
+          LIMIT 50`,
+    );
+    res.json({ items: r.rows, count: r.rows.length });
   } catch (err) {
     next(err);
   }
@@ -723,8 +790,22 @@ platformRouter.patch('/platform/support-tickets/:id', ...platformGuard, async (r
             resolved_at = ${resolvedAt},
             updated_at = now()
           WHERE id = ${id}
-          RETURNING id, status, priority, assigned_to_email, platform_notes, updated_at::text, resolved_at::text`,
+          RETURNING id, org_id, requester_user_id, requester_email, requester_name,
+                    subject, status, priority, assigned_to_email, platform_notes,
+                    updated_at::text, resolved_at::text`,
     );
+    const updated = r.rows[0] as
+      | {
+          id: string;
+          org_id: string | null;
+          requester_user_id: string | null;
+          requester_email: string;
+          requester_name: string | null;
+          subject: string;
+          status: string;
+          platform_notes: string | null;
+        }
+      | undefined;
 
     void getDb()
       .insert(auditLog)
@@ -744,11 +825,61 @@ platformRouter.patch('/platform/support-tickets/:id', ...platformGuard, async (r
       })
       .catch(() => {});
 
+    // FIX: Kullanıcıya yanıt bildirimi — status değiştiyse veya admin notu eklendiyse.
+    // Önceki versiyon hiçbir bildirim göndermiyordu, kullanıcı yanıtı asla bilmiyor.
+    if (updated) {
+      const statusChanged = existing.status !== updated.status;
+      const notesChanged = (existing.platform_notes ?? '') !== (updated.platform_notes ?? '');
+      const shouldNotify = statusChanged || notesChanged;
+
+      if (shouldNotify) {
+        const statusLabel = STATUS_LABELS[updated.status] ?? updated.status;
+        const adminReply = updated.platform_notes && notesChanged ? updated.platform_notes : null;
+
+        const body =
+          `Talebin "${updated.subject}" — durum: ${statusLabel}.\n` +
+          (adminReply ? `\nYönetici yanıtı:\n${adminReply}\n` : '') +
+          `\nTalep numarası: ${updated.id}`;
+
+        void sendNotificationEmail({
+          to: updated.requester_email,
+          title: `Destek Talebine Yanıt — ${statusLabel}`,
+          body,
+          actionUrl: 'https://damga.deploi.net/support',
+          actionLabel: 'Talebi Görüntüle',
+          tag: 'support_reply',
+        }).catch((err) => {
+          logger.warn({ err: err.message, ticketId: id }, 'Support reply email failed');
+        });
+
+        // In-app bildirim (org user'ı için)
+        if (updated.requester_user_id && updated.org_id) {
+          void createNotification({
+            orgId: updated.org_id,
+            userId: updated.requester_user_id,
+            type: 'support_reply',
+            title: `📨 Destek Talebine Yanıt — ${statusLabel}`,
+            body: adminReply ? adminReply.slice(0, 200) : `Talep durumu: ${statusLabel}`,
+            url: '/support',
+            metadata: { ticket_id: updated.id, status: updated.status },
+          }).catch(() => {});
+        }
+      }
+    }
+
     res.json({ item: r.rows[0] });
   } catch (err) {
     next(err);
   }
 });
+
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Açık',
+  in_progress: 'İncelemede',
+  waiting: 'Yanıt Bekliyor',
+  resolved: 'Çözüldü',
+  closed: 'Kapatıldı',
+};
 
 // ─── GET /platform/stats — platform geneli istatistikler ───────────────
 
