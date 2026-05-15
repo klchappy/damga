@@ -160,7 +160,6 @@ export function SignInPage() {
           onSubmit={handleSubmit(onSubmit)}
           className={`space-y-3 ${mfaChallenge ? 'opacity-50 pointer-events-none' : ''}`}
           aria-hidden={mfaChallenge ? 'true' : undefined}
-          inert={mfaChallenge ? '' : undefined}
         >
           <div>
             <label className="label">E-posta, kullanıcı adı veya telefon</label>
