@@ -19,3 +19,4 @@ export * from './email-events';
 export * from './auth-attempts';
 export * from './feature-flags';
 export * from './puantaj-overrides';
+export * from './meals';

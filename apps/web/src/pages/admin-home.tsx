@@ -8,6 +8,7 @@ import {
   Database,
   Webhook,
   ChevronRight,
+  ChefHat,
   Tags,
   Building2,
   Settings as SettingsIcon,
@@ -128,14 +129,12 @@ export function AdminHomePage() {
           title="Departmanlar"
           desc="Satış, Sevk, Muhasebe, Diğer + yeni departman ekle (renk + slug)."
         />
-        {isPlatformAdmin && (
-          <AdminCard
-            to="/admin/integrations"
-            icon={<Webhook className="size-6" />}
-            title="API & Entegrasyonlar"
-            desc="API key, webhook, endpoint ve mail servis durumlarını tek kompakt panelden yönet."
-          />
-        )}
+        <AdminCard
+          to="/admin/kitchen"
+          icon={<ChefHat className="size-6" />}
+          title="Mutfak & Yemekhane"
+          desc="Yemekhane için QR oluştur; personel günde 1 kez puan + yorum verir, 30 XP kazanır."
+        />
         <AdminCard
           to="/manager/reports"
           icon={<Database className="size-6" />}

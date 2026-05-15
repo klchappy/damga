@@ -27,6 +27,7 @@ import { statusRouter } from './status';
 import { stampCredentialsRouter } from './stamp-credentials';
 import { resendWebhookRouter } from './webhooks-resend';
 import { featureFlagsRouter } from './feature-flags';
+import { mealsRouter } from './meals';
 import { idempotencyMiddleware } from '../middleware/idempotency';
 
 export const apiRouter = Router();
@@ -62,6 +63,7 @@ apiRouter.use(integrationsRouter);
 apiRouter.use(stampCredentialsRouter);
 apiRouter.use(resendWebhookRouter);
 apiRouter.use(featureFlagsRouter);
+apiRouter.use(mealsRouter);
 
 apiRouter.get('/', (_req, res) => {
   res.json({
