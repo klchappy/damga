@@ -180,8 +180,39 @@ const PLAN_LIMITS: Record<string, { users: string; locations: string; api: strin
   enterprise: { users: 'Sınırsız', locations: 'Sınırsız', api: 'Sınırsız' },
 };
 
+type PlatformTab = 'companies' | 'billing' | 'services' | 'support';
+
+const PLATFORM_TABS: Array<{
+  key: PlatformTab;
+  label: string;
+  shortLabel: string;
+  Icon: typeof Building2;
+}> = [
+  { key: 'companies', label: 'Şirketler', shortLabel: '🏢', Icon: Building2 },
+  { key: 'billing', label: 'Üyelikler', shortLabel: '💳', Icon: CreditCard },
+  { key: 'services', label: 'Servisler', shortLabel: '🔑', Icon: Shield },
+  { key: 'support', label: 'Destek', shortLabel: '🛟', Icon: LifeBuoy },
+];
+
+interface TabCountContext {
+  applications: OrgApplication[];
+  tickets: SupportTicket[];
+  orgs: PlatformOrg[];
+  users: PlatformUser[];
+  services: ServiceKey[];
+  plans: BillingPlan[];
+}
+
+const TAB_COUNTS: Record<PlatformTab, (ctx: TabCountContext) => number> = {
+  companies: (ctx) => ctx.applications.length,
+  billing: (ctx) => ctx.plans.length,
+  services: (ctx) => ctx.services.filter((s) => s.is_active).length,
+  support: (ctx) => ctx.tickets.length,
+};
+
 export function PlatformPage() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<PlatformTab>('companies');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [campaignDraft, setCampaignDraft] = useState({
     code: '',
@@ -425,6 +456,48 @@ export function PlatformPage() {
         </div>
       )}
 
+      {/* Tab navigation — section'lara ayırarak sayfayı sade tutar */}
+      <div className="flex flex-wrap gap-1 p-1 bg-orange-50 rounded-xl border border-orange-100">
+        {PLATFORM_TABS.map((t) => {
+          const count = TAB_COUNTS[t.key]({
+            applications,
+            tickets,
+            orgs,
+            users: accessUsers,
+            services: serviceKeys,
+            plans: billingPlans,
+          });
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              className={`flex-1 min-w-fit flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === t.key
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'text-orange-700 hover:bg-orange-100'
+              }`}
+            >
+              <t.Icon className="size-4" />
+              <span className="hidden sm:inline">{t.label}</span>
+              <span className="sm:hidden">{t.shortLabel}</span>
+              {count > 0 && (
+                <span
+                  className={`ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-bold px-1 ${
+                    activeTab === t.key ? 'bg-white text-orange-600' : 'bg-orange-200 text-orange-700'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ============= TAB: Üyelik Tipleri & Fiyat ============= */}
+      {activeTab === 'billing' && (
+      <>
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg flex items-center gap-2">
@@ -567,7 +640,12 @@ export function PlatformPage() {
           </div>
         </div>
       </section>
+      </>
+      )}
 
+      {/* ============= TAB: Servis Keyleri & Dış Servisler ============= */}
+      {activeTab === 'services' && (
+      <>
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -686,6 +764,13 @@ export function PlatformPage() {
         </div>
       </section>
 
+      <PlatformExternalServices enabled={isPlatformAdmin} />
+      </>
+      )}
+
+      {/* ============= TAB: Şirketler & Başvurular ============= */}
+      {activeTab === 'companies' && (
+      <>
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg flex items-center gap-2">
@@ -813,80 +898,6 @@ export function PlatformPage() {
               text="Aşağıdaki şirket satırına tıklayınca plan, destek ve erişim bilgileri açılır."
             />
           )}
-        </section>
-
-        <section className="card">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="font-display text-lg flex items-center gap-2">
-              <LifeBuoy className="size-5 text-orange-600" />
-              Destek Talepleri
-            </h2>
-            <span className="text-xs text-muted">{tickets.length} aktif kayıt</span>
-          </div>
-
-          <div className="space-y-2">
-            {tickets.map((ticket) => (
-              <div key={ticket.id} className="rounded-lg border border-orange-100 bg-white p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="truncate text-sm font-semibold">{ticket.subject}</h3>
-                      <Badge tone={ticket.status === 'open' ? 'orange' : 'blue'}>
-                        {STATUS_LABEL[ticket.status]}
-                      </Badge>
-                      <Badge tone={ticket.priority === 'urgent' || ticket.priority === 'high' ? 'red' : 'stone'}>
-                        {PRIORITY_LABEL[ticket.priority]}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted">{ticket.message}</p>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
-                      <span>{ticket.org_name ?? 'Org yok'}</span>
-                      <span>{ticket.requester_name || ticket.requester_email}</span>
-                      <span>{formatDate(ticket.created_at)}</span>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 gap-1">
-                    {ticket.status === 'open' && (
-                      <button
-                        type="button"
-                        className="btn-secondary px-2 py-1 text-xs"
-                        onClick={() =>
-                          updateTicketMutation.mutate({ id: ticket.id, status: 'in_progress' })
-                        }
-                      >
-                        İşleme Al
-                      </button>
-                    )}
-                    {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
-                      <button
-                        type="button"
-                        className="btn-primary px-2 py-1 text-xs"
-                        onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'resolved' })}
-                      >
-                        Çözüldü
-                      </button>
-                    )}
-                    {ticket.status !== 'closed' && (
-                      <button
-                        type="button"
-                        className="btn-ghost px-2 py-1 text-xs text-danger"
-                        onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'closed' })}
-                      >
-                        Reddet/Kapat
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {tickets.length === 0 && (
-              <EmptyState
-                icon={<CheckCircle2 className="size-5" />}
-                title="Açık destek talebi yok"
-                text="Yeni talepler burada şirket, kullanıcı ve öncelik bilgisiyle görünecek."
-              />
-            )}
-          </div>
         </section>
 
         <section className="card">
@@ -1029,8 +1040,6 @@ export function PlatformPage() {
         </div>
       </section>
 
-      <PlatformExternalServices enabled={isPlatformAdmin} />
-
       {stats?.plan_breakdown && stats.plan_breakdown.length > 0 && (
         <section className="card">
           <h2 className="font-display mb-3 flex items-center gap-2 text-lg">
@@ -1060,6 +1069,87 @@ export function PlatformPage() {
             })}
           </div>
         </section>
+      )}
+      </>
+      )}
+
+      {/* ============= TAB: Destek Talepleri ============= */}
+      {activeTab === 'support' && (
+      <>
+      <section className="card">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg flex items-center gap-2">
+            <LifeBuoy className="size-5 text-orange-600" />
+            Destek Talepleri
+          </h2>
+          <span className="text-xs text-muted">{tickets.length} aktif kayıt</span>
+        </div>
+
+        <div className="space-y-2">
+          {tickets.map((ticket) => (
+            <div key={ticket.id} className="rounded-lg border border-orange-100 bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate text-sm font-semibold">{ticket.subject}</h3>
+                    <Badge tone={ticket.status === 'open' ? 'orange' : 'blue'}>
+                      {STATUS_LABEL[ticket.status]}
+                    </Badge>
+                    <Badge tone={ticket.priority === 'urgent' || ticket.priority === 'high' ? 'red' : 'stone'}>
+                      {PRIORITY_LABEL[ticket.priority]}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 line-clamp-3 text-xs text-muted whitespace-pre-wrap">{ticket.message}</p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span>{ticket.org_name ?? 'Org yok'}</span>
+                    <span>{ticket.requester_name || ticket.requester_email}</span>
+                    <span>{formatDate(ticket.created_at)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {ticket.status === 'open' && (
+                    <button
+                      type="button"
+                      className="btn-secondary px-2 py-1 text-xs"
+                      onClick={() =>
+                        updateTicketMutation.mutate({ id: ticket.id, status: 'in_progress' })
+                      }
+                    >
+                      İşleme Al
+                    </button>
+                  )}
+                  {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                    <button
+                      type="button"
+                      className="btn-primary px-2 py-1 text-xs"
+                      onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'resolved' })}
+                    >
+                      Çözüldü
+                    </button>
+                  )}
+                  {ticket.status !== 'closed' && (
+                    <button
+                      type="button"
+                      className="btn-ghost px-2 py-1 text-xs text-danger"
+                      onClick={() => updateTicketMutation.mutate({ id: ticket.id, status: 'closed' })}
+                    >
+                      Reddet/Kapat
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {tickets.length === 0 && (
+            <EmptyState
+              icon={<CheckCircle2 className="size-5" />}
+              title="Açık destek talebi yok"
+              text="Yeni talepler burada şirket, kullanıcı ve öncelik bilgisiyle görünecek."
+            />
+          )}
+        </div>
+      </section>
+      </>
       )}
     </div>
   );
