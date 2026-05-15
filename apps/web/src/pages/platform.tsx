@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   Loader2,
   MapPin,
+  Plug,
   Shield,
   UserCog,
   Users,
@@ -20,6 +21,7 @@ import {
 import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { PlatformExternalServices } from '@/components/platform-external-services';
+import { AdminIntegrationsPage } from '@/pages/admin-integrations';
 
 interface PlatformOrg {
   id: string;
@@ -180,7 +182,7 @@ const PLAN_LIMITS: Record<string, { users: string; locations: string; api: strin
   enterprise: { users: 'Sınırsız', locations: 'Sınırsız', api: 'Sınırsız' },
 };
 
-type PlatformTab = 'companies' | 'billing' | 'services' | 'support';
+type PlatformTab = 'companies' | 'billing' | 'services' | 'api' | 'support';
 
 const PLATFORM_TABS: Array<{
   key: PlatformTab;
@@ -191,6 +193,7 @@ const PLATFORM_TABS: Array<{
   { key: 'companies', label: 'Şirketler', shortLabel: '🏢', Icon: Building2 },
   { key: 'billing', label: 'Üyelikler', shortLabel: '💳', Icon: CreditCard },
   { key: 'services', label: 'Servisler', shortLabel: '🔑', Icon: Shield },
+  { key: 'api', label: 'API & Webhook', shortLabel: '🔌', Icon: Plug },
   { key: 'support', label: 'Destek', shortLabel: '🛟', Icon: LifeBuoy },
 ];
 
@@ -207,6 +210,7 @@ const TAB_COUNTS: Record<PlatformTab, (ctx: TabCountContext) => number> = {
   companies: (ctx) => ctx.applications.length,
   billing: (ctx) => ctx.plans.length,
   services: (ctx) => ctx.services.filter((s) => s.is_active).length,
+  api: () => 0,
   support: (ctx) => ctx.tickets.length,
 };
 
@@ -1070,6 +1074,15 @@ export function PlatformPage() {
           </div>
         </section>
       )}
+      </>
+      )}
+
+      {/* ============= TAB: API & Webhook ============= */}
+      {activeTab === 'api' && (
+      <>
+      <div className="-mx-1">
+        <AdminIntegrationsPage />
+      </div>
       </>
       )}
 
