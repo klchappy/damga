@@ -165,15 +165,30 @@ export function PlatformExternalServices({ enabled = true }: { enabled?: boolean
   });
 
   const services = data?.items ?? [];
-  const grouped = useMemo(() => {
-    const map = new Map<string, PlatformExternalService[]>();
+  const [activeCategory, setActiveCategory] = useState<'all' | string>('all');
+
+  // Kategori bazında sayım (filter chip'lerde göstermek için)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
     for (const s of services) {
-      const arr = map.get(s.category) ?? [];
-      arr.push(s);
-      map.set(s.category, arr);
+      counts[s.category] = (counts[s.category] ?? 0) + 1;
     }
-    return map;
+    return counts;
   }, [services]);
+
+  // Aktif kategori filtresi + display_order'a göre sıralama
+  const filteredServices = useMemo(() => {
+    const list =
+      activeCategory === 'all'
+        ? services
+        : services.filter((s) => s.category === activeCategory);
+    return [...list].sort((a, b) => {
+      // Önce kategori (display_order grubunda kalsın), sonra display_order, sonra ad
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order;
+      return a.name.localeCompare(b.name);
+    });
+  }, [services, activeCategory]);
 
   const createMutation = useMutation({
     mutationFn: async (input: ServiceFormDraft) =>
@@ -260,55 +275,87 @@ export function PlatformExternalServices({ enabled = true }: { enabled?: boolean
 
   return (
     <section className="card">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      {/* Header */}
+      <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
           <h2 className="font-display flex items-center gap-2 text-lg">
             <Cloud className="size-5 text-orange-600" />
             Dış Servisler
+            <span className="ml-1 chip bg-orange-50 text-orange-700 text-[10px] border border-orange-100">
+              {services.length}
+            </span>
           </h2>
           <p className="mt-1 text-xs text-muted">
-            Damga'nın kullandığı 3. taraf hizmetlerin merkezi.
-            Hassas key/şifreler Bitwarden'da; burada sadece panel linki + hesap + plan + not.
+            Damga'nın kullandığı 3. taraf hizmetler. Hassas key'ler Bitwarden'da;
+            burada sadece panel + hesap + plan + not.
           </p>
         </div>
-        <button onClick={openCreate} className="btn-primary text-xs">
+        <button onClick={openCreate} className="btn-primary text-xs whitespace-nowrap">
           <Plus className="size-3.5" />
           Yeni Servis
         </button>
       </div>
 
+      {/* Category filter chips */}
+      {services.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveCategory('all')}
+            className={cn(
+              'rounded-full px-3 py-1 text-[11px] font-medium transition',
+              activeCategory === 'all'
+                ? 'bg-orange-500 text-white'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200',
+            )}
+          >
+            Hepsi · {services.length}
+          </button>
+          {SERVICE_CATEGORIES.filter((c) => (categoryCounts[c] ?? 0) > 0).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={cn(
+                'rounded-full px-3 py-1 text-[11px] font-medium transition',
+                activeCategory === cat
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200',
+              )}
+            >
+              {CATEGORY_LABELS[cat] ?? cat} · {categoryCounts[cat]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Services grid — tek tutarlı responsive grid */}
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="size-6 animate-spin text-orange-600" />
         </div>
       ) : services.length === 0 ? (
-        <p className="text-center text-sm text-muted py-8">Henüz servis kaydı yok.</p>
+        <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50/40 p-8 text-center">
+          <Cloud className="mx-auto size-8 text-orange-300 mb-2" />
+          <p className="text-sm text-muted">Henüz dış servis kaydı yok.</p>
+          <button onClick={openCreate} className="btn-primary text-xs mt-3">
+            <Plus className="size-3.5" />
+            İlk servisini ekle
+          </button>
+        </div>
+      ) : filteredServices.length === 0 ? (
+        <p className="text-center text-sm text-muted py-8">
+          Bu kategoride servis yok.
+        </p>
       ) : (
-        <div className="space-y-4">
-          {Array.from(grouped.entries()).map(([cat, items]) => (
-            <div key={cat}>
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  className={cn(
-                    'rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                    CATEGORY_COLORS[cat] ?? 'bg-stone-100 text-stone-700',
-                  )}
-                >
-                  {CATEGORY_LABELS[cat] ?? cat}
-                </span>
-                <span className="text-[10px] text-muted">{items.length} servis</span>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {items.map((s) => (
-                  <ServiceCard
-                    key={s.id}
-                    service={s}
-                    onEdit={() => openEdit(s)}
-                    onDelete={() => handleDelete(s)}
-                  />
-                ))}
-              </div>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredServices.map((s) => (
+            <ServiceCard
+              key={s.id}
+              service={s}
+              onEdit={() => openEdit(s)}
+              onDelete={() => handleDelete(s)}
+            />
           ))}
         </div>
       )}
@@ -502,58 +549,86 @@ function ServiceCard({
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const categoryLabel = CATEGORY_LABELS[service.category] ?? service.category;
+  const categoryColor = CATEGORY_COLORS[service.category] ?? 'bg-stone-100 text-stone-700';
+
   return (
     <div
       className={cn(
-        'group relative rounded-lg border border-orange-100 bg-white p-3',
-        service.status !== 'active' && 'opacity-70',
+        'group relative rounded-xl border bg-white transition flex flex-col',
+        service.status === 'active'
+          ? 'border-zinc-200 hover:border-orange-300 hover:shadow-sm'
+          : 'border-zinc-200 opacity-60',
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 text-white">
-          <ServiceIcon name={service.icon} className="size-5" />
+      {/* Status dot top-right (her zaman tutarlı pozisyon) */}
+      <span
+        className={cn(
+          'absolute top-2.5 right-2.5 size-2 rounded-full',
+          service.status === 'active'
+            ? 'bg-emerald-500'
+            : service.status === 'setup_pending'
+              ? 'bg-amber-500'
+              : service.status === 'deprecated'
+                ? 'bg-rose-500'
+                : 'bg-zinc-300',
+        )}
+        title={STATUS_LABELS[service.status]}
+      />
+
+      <div className="p-3 flex items-start gap-2.5 flex-1 min-w-0">
+        {/* Icon — daha küçük (40 → 32), full orange instead of gradient */}
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white">
+          <ServiceIcon name={service.icon} className="size-4" />
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          {/* Title + category chip aynı satırda, sağda kebab menu var */}
+          <div className="flex items-center gap-1.5 pr-5">
             <h3 className="truncate font-display text-sm font-semibold">{service.name}</h3>
             <span
               className={cn(
-                'rounded px-1.5 py-0.5 text-[9px] font-medium uppercase',
-                STATUS_COLORS[service.status],
+                'rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide shrink-0',
+                categoryColor,
               )}
             >
-              {STATUS_LABELS[service.status]}
+              {categoryLabel}
             </span>
           </div>
-          {service.plan && (
-            <p className="mt-0.5 truncate text-[11px] text-muted">{service.plan}</p>
-          )}
-          {service.account_identifier && (
-            <p className="mt-0.5 truncate font-mono text-[10px] text-muted">
-              {service.account_identifier}
-            </p>
-          )}
+
+          {/* Plan + hesap */}
+          <div className="mt-0.5 space-y-0">
+            {service.plan && (
+              <p className="truncate text-[11px] text-muted">{service.plan}</p>
+            )}
+            {service.account_identifier && (
+              <p className="truncate font-mono text-[10px] text-zinc-500">
+                {service.account_identifier}
+              </p>
+            )}
+          </div>
+
+          {/* Not — max 2 satır */}
           {service.notes && (
-            <p className="mt-1 line-clamp-2 text-[11px] text-body/80">{service.notes}</p>
+            <p className="mt-1.5 line-clamp-2 text-[11px] text-zinc-600 leading-snug">
+              {service.notes}
+            </p>
           )}
         </div>
 
-        <div className="relative">
+        {/* Kebab menu — sağ üstte, status dot'tan ayrı */}
+        <div className="relative shrink-0 -mr-1 -mt-1">
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="btn-ghost p-1 text-muted"
+            className="p-1 rounded hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700"
             aria-label="Menü"
           >
             <MoreVertical className="size-4" />
           </button>
           {menuOpen && (
             <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setMenuOpen(false)}
-              />
-              <div className="absolute right-0 top-7 z-20 w-40 rounded-md border border-orange-100 bg-white py-1 shadow-lg">
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-7 z-20 w-36 rounded-md border border-zinc-200 bg-white py-1 shadow-lg">
                 <button
                   onClick={() => {
                     setMenuOpen(false);
@@ -580,27 +655,31 @@ function ServiceCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      {/* Actions footer — kompakt, kart alt çizgisi */}
+      <div className="flex items-center gap-0 border-t border-zinc-100">
         <a
           href={service.dashboard_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-primary flex-1 text-[11px]"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium text-orange-600 hover:bg-orange-50 transition"
         >
           <ExternalLink className="size-3" />
-          Panel'e git
+          Panel
         </a>
         {service.bitwarden_note_name && (
-          <a
-            href="https://vault.bitwarden.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            title={`Bitwarden'da bak: ${service.bitwarden_note_name}`}
-            className="btn-ghost text-[11px] border border-orange-100"
-          >
-            <KeyRound className="size-3" />
-            Sırlar
-          </a>
+          <>
+            <span className="w-px h-5 bg-zinc-200" />
+            <a
+              href="https://vault.bitwarden.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Bitwarden: ${service.bitwarden_note_name}`}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium text-zinc-600 hover:bg-zinc-50 transition"
+            >
+              <KeyRound className="size-3" />
+              Sırlar
+            </a>
+          </>
         )}
       </div>
     </div>
