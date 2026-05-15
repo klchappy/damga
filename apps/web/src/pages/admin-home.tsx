@@ -172,10 +172,10 @@ export function AdminHomePage() {
           desc="Tüm çalışanların damgalarını canlı izle. Her damgada konum doğrulama durumu (yeşil/sarı/gri) gözükür."
         />
         <AdminCard
-          to="/admin/redemptions"
+          to="/admin/rewards"
           icon={<Gift className="size-6" />}
-          title="Ödül Talepleri"
-          desc="Çalışanların satın aldığı ödülleri burada teslim et veya iptal et (XP iade)."
+          title="Ödül Marketi"
+          desc="Ödül + puan tanımla, standart vs. aylık top-3 marketi yönet, talepleri onayla."
           badge={pendingRedemptions > 0 ? pendingRedemptions : undefined}
         />
         <AdminCard

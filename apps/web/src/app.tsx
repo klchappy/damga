@@ -34,6 +34,7 @@ import { AdminBulkImportPage } from "@/pages/admin-bulk-import";
 import { AdminIntegrationsPage } from "@/pages/admin-integrations";
 import { AdminKitchenPage } from "@/pages/admin-kitchen";
 import { MealFeedbackPage } from "@/pages/meal-feedback";
+import { AdminRewardsPage } from "@/pages/admin-rewards";
 import { EmployeePageGate } from "@/components/employee-page-gate";
 import { MenuPage } from "@/pages/menu";
 import { MenuFeedbackPage } from "@/pages/menu-feedback";
@@ -344,6 +345,14 @@ function AppInner() {
           element={
             <RoleGate roles={["admin", "owner", "manager"]}>
               <AdminKitchenPage />
+            </RoleGate>
+          }
+        />
+        <Route
+          path="admin/rewards"
+          element={
+            <RoleGate roles={["admin", "owner"]}>
+              <AdminRewardsPage />
             </RoleGate>
           }
         />
