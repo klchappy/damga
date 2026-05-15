@@ -18,7 +18,7 @@
  *   sendXlsx(res, buf, 'bordro-2026-05.xlsx');
  *
  * Tasarım:
- *   - Header satırı mor (#7e22ce) arka plan, beyaz bold font, freeze edilmiş
+ *   - Header satırı mor (#f97316) arka plan, beyaz bold font, freeze edilmiş
  *   - Çift sıralı zebra (very light purple)
  *   - AutoFilter header'a eklenir
  *   - Title + subtitle opsiyonel — büyük başlık ve italic altyazı
@@ -48,7 +48,7 @@ export async function buildXlsxBuffer(p: BuildXlsxParams): Promise<Buffer> {
   wb.created = new Date();
 
   const ws = wb.addWorksheet(p.sheetName.slice(0, 31));
-  const brand = (p.brandColor ?? '7e22ce').replace('#', '');
+  const brand = (p.brandColor ?? 'f97316').replace('#', '');
 
   // 1. Title (opsiyonel)
   let row = 1;
@@ -85,7 +85,7 @@ export async function buildXlsxBuffer(p: BuildXlsxParams): Promise<Buffer> {
     };
     cell.alignment = { vertical: 'middle', horizontal: 'left' };
     cell.border = {
-      bottom: { style: 'thin', color: { argb: 'FF7e22ce' } },
+      bottom: { style: 'thin', color: { argb: 'FFf97316' } },
     };
   });
   ws.getRow(row).height = 22;

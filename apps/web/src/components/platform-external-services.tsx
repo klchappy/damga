@@ -94,7 +94,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   infra: 'bg-blue-100 text-blue-700',
-  database: 'bg-purple-100 text-purple-700',
+  database: 'bg-orange-100 text-orange-500',
   email: 'bg-rose-100 text-rose-700',
   auth: 'bg-amber-100 text-amber-700',
   push: 'bg-cyan-100 text-cyan-700',

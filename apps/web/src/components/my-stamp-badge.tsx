@@ -88,10 +88,10 @@ export function MyStampBadge() {
           <style>
             body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; }
             .card {
-              max-width: 480px; margin: 0 auto; border: 2px solid #7e22ce;
+              max-width: 480px; margin: 0 auto; border: 2px solid #f97316;
               border-radius: 24px; padding: 32px; text-align: center;
             }
-            h1 { color: #7e22ce; margin: 0 0 8px; }
+            h1 { color: #f97316; margin: 0 0 8px; }
             .org { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
             .name { font-size: 24px; font-weight: bold; margin-top: 16px; }
             .role { color: #6b7280; font-size: 14px; }
@@ -119,9 +119,9 @@ export function MyStampBadge() {
   };
 
   return (
-    <div className="rounded-xl border border-purple-200 bg-purple-50/40 p-4 space-y-3">
+    <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
       <div className="flex items-start gap-3">
-        <div className="size-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+        <div className="size-10 rounded-lg bg-orange-100 text-orange-500 flex items-center justify-center shrink-0">
           <ScanLine className="size-5" />
         </div>
         <div className="flex-1">
@@ -135,7 +135,7 @@ export function MyStampBadge() {
 
       {/* Mevcut credential durumu */}
       {active && !freshValue && (
-        <div className="rounded-lg bg-white border border-purple-100 p-3 text-sm space-y-1">
+        <div className="rounded-lg bg-white border border-orange-100 p-3 text-sm space-y-1">
           <div className="flex items-center justify-between">
             <span className="font-medium">Aktif kartın var</span>
             <span className="text-xs text-muted">#{active.credential_prefix.slice(0, 4)}…</span>
@@ -156,8 +156,8 @@ export function MyStampBadge() {
 
       {/* Yeni üretilen QR'ı GÖSTER (tek seferlik) */}
       {freshValue && qrDataUrl && (
-        <div className="rounded-lg bg-white border-2 border-purple-300 p-4 text-center space-y-3">
-          <p className="text-sm font-semibold text-purple-800">
+        <div className="rounded-lg bg-white border-2 border-orange-300 p-4 text-center space-y-3">
+          <p className="text-sm font-semibold text-orange-600">
             ⚠️ Bu QR sadece şimdi görünür — yazdırıp kaydet
           </p>
           <img src={qrDataUrl} alt="Kişisel QR" className="mx-auto w-48 h-48" />

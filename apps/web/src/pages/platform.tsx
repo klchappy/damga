@@ -144,7 +144,7 @@ interface ServiceKey {
 const PLAN_COLOR: Record<string, string> = {
   free: 'bg-stone-100 text-stone-700',
   starter: 'bg-blue-100 text-blue-700',
-  pro: 'bg-purple-100 text-purple-700',
+  pro: 'bg-orange-100 text-orange-500',
   business: 'bg-emerald-100 text-emerald-700',
   enterprise: 'bg-amber-100 text-amber-700',
 };
@@ -1081,14 +1081,14 @@ function StatCard({
   const gradients = {
     orange: 'from-orange-500 to-orange-700',
     blue: 'from-blue-500 to-blue-700',
-    purple: 'from-purple-500 to-purple-700',
+    purple: 'from-orange-500 to-orange-500',
     emerald: 'from-emerald-500 to-emerald-700',
     rose: 'from-rose-500 to-rose-700',
   } as const;
   const textColors = {
     orange: 'text-orange-700',
     blue: 'text-blue-700',
-    purple: 'text-purple-700',
+    purple: 'text-orange-500',
     emerald: 'text-emerald-700',
     rose: 'text-rose-700',
   } as const;
@@ -1146,7 +1146,7 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: string }) 
     green: 'bg-emerald-100 text-emerald-800',
     red: 'bg-rose-100 text-rose-800',
     stone: 'bg-stone-100 text-stone-700',
-    purple: 'bg-purple-100 text-purple-800',
+    purple: 'bg-orange-100 text-orange-600',
   };
   return (
     <span className={cn('inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium', tones[tone])}>

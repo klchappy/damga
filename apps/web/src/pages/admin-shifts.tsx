@@ -111,7 +111,7 @@ export function AdminShiftsPage() {
                     <Clock className="size-3.5" />
                     {s.start_time} – {s.end_time}
                     {s.end_time <= s.start_time && (
-                      <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] bg-orange-100 text-orange-500 px-1.5 py-0.5 rounded">
                         gece
                       </span>
                     )}
@@ -282,7 +282,7 @@ function ShiftFormModal({
               onChange={(e) => setForm({ ...form, end_time: e.target.value })}
             />
             {form.end_time <= form.start_time && (
-              <p className="text-[10px] text-purple-600 mt-1">
+              <p className="text-[10px] text-orange-600 mt-1">
                 Gece vardiyası (ertesi gün biter)
               </p>
             )}

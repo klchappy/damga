@@ -123,9 +123,9 @@ export function ManagerReportsPage() {
       {/* Puantaj — geleneksel X/H/RX/R/IZ/G/DI/YI kodlu renkli tablo */}
       <Link
         to="/manager/puantaj"
-        className="card flex items-center gap-4 hover:border-[#1d6f8a] transition group"
+        className="card flex items-center gap-4 hover:border-[#f97316] transition group"
       >
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1d6f8a] to-[#145a6e] text-white shrink-0">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f97316] to-[#c2410c] text-white shrink-0">
           <ClipboardCheck className="size-7" />
         </div>
         <div className="flex-1">
@@ -135,7 +135,7 @@ export function ManagerReportsPage() {
             Excel çıktısı bordro & muhasebe için hazır.
           </div>
         </div>
-        <ArrowRight className="size-5 text-zinc-400 group-hover:text-[#1d6f8a] transition shrink-0" />
+        <ArrowRight className="size-5 text-zinc-400 group-hover:text-[#f97316] transition shrink-0" />
       </Link>
 
       {/* Rapor indirme kartları — CSV (muhasebeye) ve Excel (kendiniz için, biçimli) */}
@@ -309,11 +309,11 @@ function ExportCard({
 }) {
   const ringClass =
     highlight === 'purple'
-      ? 'border-purple-200 bg-purple-50/40'
+      ? 'border-orange-200 bg-orange-50/40'
       : '';
   const iconBg =
     highlight === 'purple'
-      ? 'bg-purple-100 text-purple-700'
+      ? 'bg-orange-100 text-orange-500'
       : 'bg-orange-100 text-orange-700';
 
   return (

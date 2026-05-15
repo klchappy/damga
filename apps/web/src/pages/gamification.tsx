@@ -277,7 +277,7 @@ function TabButton({
         active
           ? 'border-orange-500 bg-orange-500 text-white'
           : highlighted
-            ? 'border-purple-200 bg-purple-50/40 text-purple-700 hover:border-purple-400'
+            ? 'border-orange-200 bg-orange-50/40 text-orange-500 hover:border-orange-400'
             : 'border-orange-100 bg-white text-muted hover:border-orange-200 hover:text-ink'
       }`}
     >
@@ -286,7 +286,7 @@ function TabButton({
       {badge != null && badge > 0 && (
         <span
           className={`ml-1 inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[10px] font-bold ${
-            active ? 'bg-white text-orange-600' : 'bg-purple-500 text-white'
+            active ? 'bg-white text-orange-600' : 'bg-orange-500 text-white'
           }`}
         >
           {badge}
@@ -776,10 +776,10 @@ function RewardCard({
       </div>
 
       <div className="flex items-center gap-1.5 text-sm">
-        <Coins className={`size-4 ${isPurple ? 'text-purple-500' : 'text-orange-500'}`} />
+        <Coins className={`size-4 ${isPurple ? 'text-orange-500' : 'text-orange-500'}`} />
         <span
           className={`font-display font-semibold ${
-            isPurple ? 'text-purple-600' : 'text-orange-600'
+            isPurple ? 'text-orange-600' : 'text-orange-600'
           }`}
         >
           {r.cost_xp.toLocaleString('tr-TR')}
@@ -798,7 +798,7 @@ function RewardCard({
         className={`w-full text-xs py-2 rounded-md font-medium transition flex items-center justify-center gap-1.5 ${
           canAfford
             ? isPurple
-              ? 'bg-purple-500 text-white hover:bg-purple-600'
+              ? 'bg-orange-500 text-white hover:bg-orange-600'
               : 'bg-orange-500 text-white hover:bg-orange-600'
             : 'bg-orange-100 text-orange-300 cursor-not-allowed'
         }`}
@@ -843,7 +843,7 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
   if (!market) {
     return (
       <div className="card flex justify-center py-12">
-        <Loader2 className="size-5 animate-spin text-purple-500" />
+        <Loader2 className="size-5 animate-spin text-orange-500" />
       </div>
     );
   }
@@ -851,8 +851,8 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
   if (!market.has_access) {
     return (
       <div className="space-y-4">
-        <div className="card text-center py-10 space-y-3 border-purple-200">
-          <div className="size-14 mx-auto rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
+        <div className="card text-center py-10 space-y-3 border-orange-200">
+          <div className="size-14 mx-auto rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
             <Lock className="size-6" />
           </div>
           <div>
@@ -863,9 +863,9 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
             </p>
           </div>
         </div>
-        <div className="card bg-purple-50/40 border-purple-200 text-xs space-y-1.5">
-          <div className="font-medium text-purple-700 mb-1">Program kuralları</div>
-          <ul className="space-y-1 text-purple-700 list-disc list-inside">
+        <div className="card bg-orange-50/40 border-orange-200 text-xs space-y-1.5">
+          <div className="font-medium text-orange-500 mb-1">Program kuralları</div>
+          <ul className="space-y-1 text-orange-500 list-disc list-inside">
             <li>Ay sonunda ilk 3 personele otomatik kredi yatırılır</li>
             <li>Kredi tutarı = o ay kazanılan XP + sıralama bonusu (2.000 / 1.000 / 500)</li>
             <li>Krediler yalnızca bu kataloğa özel ödüllerde geçerlidir</li>
@@ -921,14 +921,14 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
       </div>
 
       {/* Toplam */}
-      <div className="card flex items-center justify-between gap-3 bg-purple-50/40 border-purple-200">
+      <div className="card flex items-center justify-between gap-3 bg-orange-50/40 border-orange-200">
         <div className="flex items-center gap-2">
-          <Coins className="size-5 text-purple-500" />
+          <Coins className="size-5 text-orange-500" />
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted">
               Harcanabilir
             </div>
-            <div className="font-display text-2xl text-purple-700">
+            <div className="font-display text-2xl text-orange-500">
               {market.total_remaining}
               <span className="text-xs text-muted ml-1 font-sans">kredi</span>
             </div>
@@ -936,7 +936,7 @@ function MonthlyTab({ market }: { market?: MonthlyMarketResp }) {
         </div>
         <Link
           to="/me/redemptions"
-          className="text-xs text-purple-600 hover:underline"
+          className="text-xs text-orange-600 hover:underline"
         >
           Talep listesi →
         </Link>
@@ -1066,8 +1066,8 @@ function RewardFormModal({
               onClick={() => setForm({ ...form, market_type: 'monthly_top3' })}
               className={`text-xs px-3 py-2 rounded-md border-2 transition ${
                 form.market_type === 'monthly_top3'
-                  ? 'border-purple-500 bg-purple-50 text-purple-700'
-                  : 'border-orange-100 text-muted hover:border-purple-200'
+                  ? 'border-orange-500 bg-orange-50 text-orange-500'
+                  : 'border-orange-100 text-muted hover:border-orange-200'
               }`}
             >
               <ShoppingBag className="size-3.5 mx-auto mb-0.5" />

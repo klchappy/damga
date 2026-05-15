@@ -225,7 +225,7 @@ export function ManagerPuantajPage() {
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-[#1d6f8a] text-white">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-[#f97316] text-white">
             <ClipboardCheck className="size-6" />
           </div>
           <div>
@@ -233,7 +233,7 @@ export function ManagerPuantajPage() {
             <p className="text-sm text-muted">
               {data?.org_name ?? ''} — {data?.month_name ?? ''} {data?.year ?? ''}
               {canEdit && (
-                <span className="ml-2 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">
+                <span className="ml-2 text-[10px] bg-orange-100 text-orange-500 px-1.5 py-0.5 rounded font-medium">
                   düzenleme aktif
                 </span>
               )}
@@ -266,7 +266,7 @@ export function ManagerPuantajPage() {
       {/* Loading / error / empty */}
       {isLoading && (
         <div className="card flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-[#1d6f8a]" />
+          <Loader2 className="w-6 h-6 animate-spin text-[#f97316]" />
         </div>
       )}
 
@@ -289,19 +289,19 @@ export function ManagerPuantajPage() {
             <thead>
               <tr>
                 <th
-                  className="bg-[#1d6f8a] text-white px-1 py-1 sticky top-0 z-10"
+                  className="bg-[#f97316] text-white px-1 py-1 sticky top-0 z-10"
                   style={{ width: 28 }}
                 >
                   #
                 </th>
                 <th
-                  className="bg-[#1d6f8a] text-white px-2 py-1 text-left sticky top-0 z-10"
+                  className="bg-[#f97316] text-white px-2 py-1 text-left sticky top-0 z-10"
                   style={{ minWidth: 140 }}
                 >
                   Adı Soyadı
                 </th>
                 <th
-                  className="bg-[#1d6f8a] text-white px-2 py-1 text-left sticky top-0 z-10"
+                  className="bg-[#f97316] text-white px-2 py-1 text-left sticky top-0 z-10"
                   style={{ minWidth: 130 }}
                 >
                   Pozisyon
@@ -314,7 +314,7 @@ export function ManagerPuantajPage() {
                     <th
                       key={dateStr}
                       className={`text-white text-center px-0 py-1 sticky top-0 z-10 ${
-                        wknd ? 'bg-[#8a7d1d]' : 'bg-[#1d6f8a]'
+                        wknd ? 'bg-[#ca8a04]' : 'bg-[#f97316]'
                       }`}
                       style={{ width: 32, minWidth: 32 }}
                       title={`${wkd} ${parseInt(day, 10)}`}
@@ -325,7 +325,7 @@ export function ManagerPuantajPage() {
                   );
                 })}
                 <th
-                  className="bg-[#145a6e] text-white px-1 py-1 sticky top-0 z-10"
+                  className="bg-[#c2410c] text-white px-1 py-1 sticky top-0 z-10"
                   style={{ minWidth: 50 }}
                   title="Çalıştığı Gün (X+RX)"
                 >
@@ -333,21 +333,21 @@ export function ManagerPuantajPage() {
                   <div className="text-[10px] font-bold">Çalış</div>
                 </th>
                 <th
-                  className="bg-[#145a6e] text-white px-1 py-1 sticky top-0 z-10"
+                  className="bg-[#c2410c] text-white px-1 py-1 sticky top-0 z-10"
                   style={{ minWidth: 40 }}
                   title="Resmi Tatil Çalışması"
                 >
                   RX
                 </th>
                 <th
-                  className="bg-[#145a6e] text-white px-1 py-1 sticky top-0 z-10"
+                  className="bg-[#c2410c] text-white px-1 py-1 sticky top-0 z-10"
                   style={{ minWidth: 40 }}
                   title="Hafta Tatili"
                 >
                   H
                 </th>
                 <th
-                  className="bg-[#145a6e] text-white px-1 py-1 sticky top-0 z-10"
+                  className="bg-[#c2410c] text-white px-1 py-1 sticky top-0 z-10"
                   style={{ minWidth: 40 }}
                   title="Rapor"
                 >
@@ -359,7 +359,7 @@ export function ManagerPuantajPage() {
               {data.rows.map((row, i) => (
                 <tr
                   key={row.user_id}
-                  className={i % 2 === 1 ? 'bg-[#f0f5f8]' : 'bg-white'}
+                  className={i % 2 === 1 ? 'bg-[#fff7ed]' : 'bg-white'}
                 >
                   <td className="text-center text-[11px] text-zinc-500 font-bold border border-zinc-200 px-1 py-1">
                     {row.idx}
@@ -375,7 +375,7 @@ export function ManagerPuantajPage() {
                     const isOverride = row.sources[dateStr] === 'override';
                     const meta = row.override_meta[dateStr];
                     const wknd = isWeekend(dateStr);
-                    let bg = wknd ? '#fffde0' : '#f0f0f0';
+                    let bg = wknd ? '#fefce8' : '#f0f0f0';
                     let fg = wknd ? '#ccc' : '#bbb';
                     let txt = '';
                     if (code) {
@@ -411,7 +411,7 @@ export function ManagerPuantajPage() {
                         </div>
                         {isOverride && (
                           <span
-                            className="absolute top-0.5 right-0.5 inline-block w-1.5 h-1.5 rounded-full bg-purple-600 border border-white"
+                            className="absolute top-0.5 right-0.5 inline-block w-1.5 h-1.5 rounded-full bg-orange-600 border border-white"
                             title="Manuel düzeltme"
                           />
                         )}
@@ -449,33 +449,33 @@ export function ManagerPuantajPage() {
               <tr>
                 <td
                   colSpan={3}
-                  className="text-right pr-2 py-1.5 bg-[#e0eaf0] border-t-2 border-[#1d6f8a] font-bold text-[11px]"
+                  className="text-right pr-2 py-1.5 bg-[#fff7ed] border-t-2 border-[#f97316] font-bold text-[11px]"
                 >
                   Toplam ({data.rows.length} kişi):
                 </td>
                 {data.days.map((dateStr) => (
-                  <td key={dateStr} className="bg-[#e0eaf0] border border-zinc-200" />
+                  <td key={dateStr} className="bg-[#fff7ed] border border-zinc-200" />
                 ))}
                 <td
-                  className="text-center bg-[#e0eaf0] border border-zinc-200 font-bold text-[11px]"
+                  className="text-center bg-[#fff7ed] border border-zinc-200 font-bold text-[11px]"
                   style={{ color: '#1a5e00' }}
                 >
                   {data.rows.reduce((s, r) => s + r.summary.worked, 0)}
                 </td>
                 <td
-                  className="text-center bg-[#e0eaf0] border border-zinc-200 font-bold text-[11px]"
+                  className="text-center bg-[#fff7ed] border border-zinc-200 font-bold text-[11px]"
                   style={{ color: '#1a2e6e' }}
                 >
                   {data.rows.reduce((s, r) => s + r.summary.rx_count, 0)}
                 </td>
                 <td
-                  className="text-center bg-[#e0eaf0] border border-zinc-200 font-bold text-[11px]"
+                  className="text-center bg-[#fff7ed] border border-zinc-200 font-bold text-[11px]"
                   style={{ color: '#5c5c00' }}
                 >
                   {data.rows.reduce((s, r) => s + r.summary.h_count, 0)}
                 </td>
                 <td
-                  className="text-center bg-[#e0eaf0] border border-zinc-200 font-bold text-[11px]"
+                  className="text-center bg-[#fff7ed] border border-zinc-200 font-bold text-[11px]"
                   style={{ color: '#7a0000' }}
                 >
                   {data.rows.reduce((s, r) => s + r.summary.r_count, 0)}
@@ -533,7 +533,7 @@ export function ManagerPuantajPage() {
                   disabled={setOverride.isPending}
                   className={`flex items-center gap-1.5 px-2 py-1.5 rounded text-[11px] border transition disabled:opacity-50 ${
                     isCurrent
-                      ? 'border-purple-600 ring-1 ring-purple-300'
+                      ? 'border-orange-600 ring-1 ring-orange-300'
                       : 'border-zinc-200 hover:border-zinc-400'
                   }`}
                   title={cm?.tr}
@@ -611,11 +611,11 @@ export function ManagerPuantajPage() {
                 </div>
               );
             })}
-            <div className="inline-flex items-center gap-2 px-2 py-1 rounded text-[11px] border border-purple-200 bg-purple-50">
+            <div className="inline-flex items-center gap-2 px-2 py-1 rounded text-[11px] border border-orange-200 bg-orange-50">
               <span className="relative inline-flex items-center justify-center w-7 h-5 rounded bg-zinc-100">
-                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-purple-600 border border-white" />
+                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-600 border border-white" />
               </span>
-              <span className="text-purple-700">Manuel düzeltilmiş hücre</span>
+              <span className="text-orange-500">Manuel düzeltilmiş hücre</span>
             </div>
           </div>
           <p className="text-xs text-muted mt-3 leading-relaxed">

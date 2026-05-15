@@ -79,7 +79,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 // TEMPLATES
 // ============================================================================
 
-const BRAND_COLOR = '#7e22ce'; // Damga mor — purple-700
+const BRAND_COLOR = '#f97316'; // Damga turuncu — orange-500
 const BRAND_INITIALS = 'Dm';
 const BRAND_NAME = 'Damga';
 const BRAND_TAGLINE = 'Personel Takip ve Bordro Platformu';
@@ -96,14 +96,14 @@ function wrapHtml(title: string, body: string): string {
   return `<!DOCTYPE html>
 <html lang="tr">
 <head><meta charset="UTF-8"><title>${escape(title)}</title></head>
-<body style="margin:0;padding:0;background:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <div style="max-width:560px;margin:32px auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e9d5ff;">
+<body style="margin:0;padding:0;background:#fff7ed;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
+  <div style="max-width:560px;margin:32px auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #fed7aa;">
     <div style="text-align:center;margin-bottom:24px;">
       <div style="display:inline-block;width:48px;height:48px;background:${BRAND_COLOR};color:#fff;border-radius:10px;line-height:48px;font-size:18px;font-weight:700;letter-spacing:0.5px;">${BRAND_INITIALS}</div>
       <h1 style="margin:12px 0 0;color:${BRAND_COLOR};font-size:18px;">${BRAND_NAME}</h1>
     </div>
     ${body}
-    <hr style="border:none;border-top:1px solid #e9d5ff;margin:24px 0;">
+    <hr style="border:none;border-top:1px solid #fed7aa;margin:24px 0;">
     <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">
       ${BRAND_NAME} — ${BRAND_TAGLINE}<br>
       Bu mail otomatik gönderildi; cevap vermenize gerek yok.<br>

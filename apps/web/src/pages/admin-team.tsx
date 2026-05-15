@@ -51,7 +51,7 @@ const ROLE_TR: Record<User['role'], string> = {
 const ROLE_BADGE: Record<User['role'], string> = {
   employee: 'bg-slate-100 text-slate-700',
   manager: 'bg-blue-100 text-blue-700',
-  admin: 'bg-purple-100 text-purple-700',
+  admin: 'bg-orange-100 text-orange-500',
   owner: 'bg-orange-500 text-white',
 };
 
