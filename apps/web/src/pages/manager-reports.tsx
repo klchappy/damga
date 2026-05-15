@@ -183,7 +183,7 @@ export function ManagerReportsPage() {
             desc="Hash chain doğrulamalı tüm event log — denetçiye verilebilir"
             onCsv={() => downloadCsv('audit-export', 'audit')}
             loadingCsv={downloading === 'audit-export:csv'}
-            highlight="purple"
+            highlight="accent"
           />
         )}
       </div>
@@ -305,14 +305,14 @@ function ExportCard({
   onXlsx?: () => void;
   loadingCsv?: boolean;
   loadingXlsx?: boolean;
-  highlight?: 'purple';
+  highlight?: 'accent';
 }) {
   const ringClass =
-    highlight === 'purple'
+    highlight === 'accent'
       ? 'border-orange-200 bg-orange-50/40'
       : '';
   const iconBg =
-    highlight === 'purple'
+    highlight === 'accent'
       ? 'bg-orange-100 text-orange-500'
       : 'bg-orange-100 text-orange-700';
 

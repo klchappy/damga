@@ -435,7 +435,7 @@ export function PlatformPage() {
             sub={`${summary.total_departments} departman`}
             color="blue"
           />
-          <StatCard icon={<MapPin className="size-4" />} label="Lokasyon" value={summary.total_locations} color="purple" />
+          <StatCard icon={<MapPin className="size-4" />} label="Lokasyon" value={summary.total_locations} color="orange" />
           <StatCard
             icon={<Activity className="size-4" />}
             label="Damga"
@@ -1179,19 +1179,17 @@ function StatCard({
   label: string;
   value: number;
   sub?: string;
-  color: 'orange' | 'blue' | 'purple' | 'emerald' | 'rose';
+  color: 'orange' | 'blue' | 'emerald' | 'rose';
 }) {
   const gradients = {
     orange: 'from-orange-500 to-orange-700',
     blue: 'from-blue-500 to-blue-700',
-    purple: 'from-orange-500 to-orange-500',
     emerald: 'from-emerald-500 to-emerald-700',
     rose: 'from-rose-500 to-rose-700',
   } as const;
   const textColors = {
     orange: 'text-orange-700',
     blue: 'text-blue-700',
-    purple: 'text-orange-500',
     emerald: 'text-emerald-700',
     rose: 'text-rose-700',
   } as const;
@@ -1249,7 +1247,6 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: string }) 
     green: 'bg-emerald-100 text-emerald-800',
     red: 'bg-rose-100 text-rose-800',
     stone: 'bg-stone-100 text-stone-700',
-    purple: 'bg-orange-100 text-orange-600',
   };
   return (
     <span className={cn('inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium', tones[tone])}>
@@ -1271,7 +1268,7 @@ function EmptyState({ icon, title, text }: { icon: React.ReactNode; title: strin
 }
 
 function roleTone(role: PlatformUser['role']): string {
-  if (role === 'owner') return 'purple';
+  if (role === 'owner') return 'orange';
   if (role === 'admin') return 'orange';
   if (role === 'manager') return 'blue';
   return 'stone';
